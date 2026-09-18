@@ -1,0 +1,14 @@
+# Changelog
+
+## 0.1.0, unreleased
+
+First release, of a learning project far from production; the README's
+Status section says what to expect. One trait (`Bits`) over
+`u8`…`u128` and `Wide<N>`: runs, rank/select/positions, scans (prefix
+XOR/OR, Gray, `find_escaped`, Kogge–Stone fills), compact/expand,
+Hacker's Delight ch. 2 basics and Gosper's hack, SWAR byte lanes, delta
+swaps and 8×8 board permutations, dilated integers and Morton codes,
+slice and 2D-grid operations, Myers edit distance / search. Every
+combinator ships with laws; laws are property-tested on all carriers
+with and without BMI2/PCLMULQDQ and exhaustively for widths up to 16
+bits. `hakmem::cookbook` explains how the shipped kernels were composed.

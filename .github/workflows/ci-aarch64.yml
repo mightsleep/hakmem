@@ -1,0 +1,34 @@
+name: aarch64
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# The matrix lives in the flake: `plan` reads the check names, `check` expands them.
+jobs:
+  plan:
+    runs-on: ubuntu-24.04-arm
+    outputs:
+      checks: ${{ steps.plan.outputs.checks }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - id: plan
+        run: echo "checks=$(nix eval --json .#checks.aarch64-linux --apply builtins.attrNames)" >> "$GITHUB_OUTPUT"
+
+  check:
+    needs: plan
+    name: ${{ matrix.check }}
+    runs-on: ubuntu-24.04-arm
+    strategy:
+      fail-fast: false
+      matrix:
+        check: ${{ fromJSON(needs.plan.outputs.checks) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: cachix/cachix-action@v15
+        with:
+          name: hakmem
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix build -L .#checks.aarch64-linux.${{ matrix.check }}

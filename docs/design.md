@@ -1,0 +1,336 @@
+# hakmem: design notes
+
+The decisions behind the crate and the reasons for them, for readers
+who want to extend it (a carrier, a combinator, a backend) or judge
+it. The API reference is the rustdoc; the recipes are
+`hakmem::cookbook`. This document assumes you know what POPCNT, PEXT
+and a carry chain do. If not, Hacker's Delight chapters 2 and 5 are
+the shorter road.
+
+This is a learning project; the Status section of the README says
+what that means in practice. The decisions below are the current
+ones, not final ones. Where one turns out wrong, the law that exposes
+it goes into the test suite first and the decision changes second.
+
+Numbers below were measured on one machine (AMD Zen 5, one thread,
+sandboxed) with the benches in `benches/`. They are evidence for the
+shape of a claim, not a promise about yours.
+
+## 1. The claim
+
+A bit instruction is not a fast loop. It is a fixed parallel circuit
+exposed as an O(1) operation over a container of 64 cells. Each has
+a structural role:
+
+| circuit | instruction | over the container |
+|---|---|---|
+| reduce (arg-min / arg-max) | TZCNT, LZCNT | priority encoder; `⌊log₂ x⌋` |
+| reduce (count) | POPCNT | rank, the pillar of succinct structures |
+| scan | the adder's carry chain; PCLMULQDQ | prefix network; CLMUL is a scan whose operator is the constant |
+| filter | PEXT | keep the cells a mask selects, in order |
+| bijection | PDEP ∘ PEXT | scatter / gather on bits; Morton interleave |
+| permutation | delta swap; a Beneš network of them | any fixed rearrangement of cells |
+
+Chaining them is function composition; the depth of the chain is the
+depth of the circuit. Code written this way exists (simdjson's
+classification masks, Hyperscan, Myers' edit distance, chess
+bitboards, fusion trees) as one-offs. The algebra had no name, no
+types and no crate. What exists on crates.io: `broadword` is a
+collection of functions without laws, `bitintr` wraps intrinsics
+and is unmaintained, `bitvec` is storage, `safe_arch` is a mechanical
+wrapper. None is a composition layer.
+
+The economics that make the composition worth having: one cache miss
+to L2 or L3 costs about as much as 300 chained word operations, and a
+current core retires four to six independent ones per cycle. A chain
+of twelve operations that saves one pointer chase wins. This is why
+two-level bitmap descent beats a free list, and why an edit-distance
+column in a register beats a table in memory.
+
+## 2. Three decisions
+
+### 2.1 Types carry the domain, not only the width
+
+A value is not a `u64`; it is a word in a domain, and operations
+exist where they are lawful. `Dilated<W, D>` has no `Add`: adding a
+plain integer to a Morton coordinate is the bug the type makes
+uncompilable. It has `incr` and `wrapping_add`, which fill the gaps
+with ones so the carry tunnels across them (Raman and Wise).
+
+Where the type system cannot help, the crate does not pretend. The
+mask of `compact` / `expand` is data, and no type can state that two
+run-time masks are equal. A run-time witness `{ bits, mask }` could
+prove that this `expand` belongs to that `compact`, at the cost of a
+second word per value. So `compact` and `expand` are plain functions
+with a law (`compact_expand_roundtrip`) instead of a type. The
+provenance a type carries is limited to masks that are structural,
+such as the stride of a dilated integer.
+
+### 2.2 Selection at compile time, never at run time
+
+For an operation of one to three cycles, run-time dispatch costs more
+than the operation. There is no branch per combinator on a CPUID
+result:
+
+- `#[cfg(target_feature = "bmi2")]` and `pclmulqdq` choose the
+  instruction at compile time, in one module (`word.rs`).
+- Without the target feature every primitive has a portable
+  definition with the same contract. The build is correct
+  everywhere; it is fast with `-C target-feature=+bmi2,+pclmulqdq`
+  or `-C target-cpu=native`.
+- The `portable` cargo feature turns the hardware paths off even when
+  the target feature is on. On AMD Zen 1 and Zen 2, PDEP and PEXT
+  are microcoded, about 18 cycles against 3 on Intel since Haswell
+  and on Zen 3, and the portable definition is faster.
+
+Run-time dispatch belongs a layer up, on whole kernels that run
+thousands of times per call, and that layer is the consumer's.
+
+### 2.3 Laws are the exported API
+
+An algebra without laws is a wrapper. `hakmem::laws` exports each
+law as a function `fn(...) -> bool` over `W: Word`. The crate tests
+them; downstream code runs the same functions over its own carriers
+and backends. A law that fails is a bug in the backend, never a
+caveat in the documentation.
+
+The laws are also what make section 2.2 sound: the hardware and the
+portable definition of a primitive are interchangeable because the
+same laws hold for both, on the same inputs, in the same test run.
+Every law is a rewrite rule, and a kernel may use either side.
+
+## 3. Shape of the API
+
+One trait, `Bits`, with every combinator, and a blanket
+implementation for every `Word`. `use hakmem::Bits;` is the whole
+import. The first draft had one trait per domain (`Runs`, `SetView`,
+`Scan`, `Compact`, and so on): twelve imports for a kernel, and no
+umbrella trait can fix it, because a supertrait's methods are not in
+scope through the subtrait. The domain grouping survives as section
+headings inside `bits.rs`, which is where docs.rs shows it.
+
+Primitives keep the names `std` uses: `count_ones`, `trailing_zeros`,
+`leading_zeros`. The instruction names (POPCNT, TZCNT) are in the
+documentation, not in the API; a Rust programmer searches for the
+`std` name.
+
+`Word` is sealed. It exposes exactly the primitive circuits the
+combinators are built from, so a carrier is one `impl` block and no
+more: bitwise operations, shifts, wrapping `add` / `sub` / `mul`,
+byte splat, `count_ones`, `trailing_zeros`, `leading_zeros`,
+`clear_lowest_set`, `pext`, `pdep`, `select_lowest`, `xor_scan`,
+`low_ones`. Everything else is derived.
+
+Free functions and types stay in their modules: `slice`, `grid`,
+`myers`, `permute::board8`, `dilated::{Dilated, Morton2}`,
+`set::Positions`. The README is the crate documentation
+(`#![doc = include_str!]`) and a doctest, so its examples cannot
+drift from the code.
+
+## 4. Carriers
+
+`Word` is implemented for `u8`, `u16`, `u32`, `u64`, `u128` and for
+`Wide<N>`, which is `[u64; N]` viewed as one word: the carry chain
+propagates across limbs, shifts cross limb boundaries, `count_ones`
+sums. One operation costs `N` limb operations instead of one
+instruction, which is still bit-parallel.
+
+`Wide<N>` is the smallest test of a constraint the carrier trait was
+designed under: a word need not be one register. `myers::edit_distance`
+was written against `Word`, not against `u64`, and it runs on
+`Wide<8>` for 512-byte patterns without a change to the algorithm.
+The same constraint is what a SIMD lane or a GPU warp mask would need
+to become a carrier; neither is in the crate.
+
+## 5. Hardware paths
+
+Exactly four primitives have one:
+
+| primitive | with the target feature | without |
+|---|---|---|
+| `pext`, `pdep` | one BMI2 instruction | a loop over the set bits of the mask, O(popcount(mask)) |
+| `select_lowest` | `trailing_zeros(pdep(1 << k, x))` (Pandey, Bender and Johnson, 2017) | Vigna's broadword select, about 30 ALU operations, no table, constant time |
+| `xor_scan` (prefix XOR) | PCLMULQDQ by all ones | a log-depth smear, six operations on `u64` |
+
+The choice lives in `word.rs` and nowhere else. The `unsafe` in the
+crate is the intrinsic calls in that module, allowed only when the
+matching `target_feature` is a compile-time fact; Miri runs
+`tests/miri.rs` over both paths (`nix run .#miri-hakmem`).
+
+What the bench says about the portable select (`benches/select.rs`,
+1024 words, `k` = half the population):
+
+| `select` on `u64`, per word | dense | sparse |
+|---|---|---|
+| PDEP | 1.1 ns | |
+| Vigna broadword | 4.7 ns | |
+| `x &= x - 1` loop, `k` times | 2.7 ns | 1.05 ns |
+
+A broadword select from 2008 loses to the loop on this
+microarchitecture for `k` below roughly 28: `blsr` has one cycle of
+latency, so the loop is `k` cycles, while the broadword version is
+about 20 serial operations including two multiplications. It is kept
+as the portable definition for two properties the loop lacks:
+constant time (the worst case is `k = 63`) and no data-dependent
+latency. A hybrid for small `k`, or a 2 KB table for the last step
+(what the `broadword` crate does, and why it is 14 % faster than
+this crate's portable path), are open choices.
+
+## 6. Verification
+
+Three layers, all in the test suite:
+
+1. **Laws under proptest**, on `u8` through `u128` and on `Wide<2>`
+   and `Wide<3>`, with and without the hardware paths. 330 property
+   tests.
+2. **Exhaustive sweeps for widths up to 16 bits**, in release builds:
+   every `u8` for the unary laws, every pair of `u8` for the binary
+   ones, every triple for `compact` composition, every `u16` against
+   every structured mask, every Morton coordinate of a 256 × 256 grid,
+   Vigna's select on every 16-bit pattern at every byte offset of a
+   `u64`, every byte value for the SWAR lanes. Fourteen sweeps.
+3. **Kernels without a local algebraic proof** are checked against
+   the textbook algorithm. `myers` has no exported law; it is compared
+   with the dynamic-programming table on `u8`, `u64`, `u128` and
+   `Wide<4>`.
+
+Every bug found in this crate so far was caught by layer 2, not by
+layer 1. One example: the carry into `find_escaped` from the previous
+word may only affect bit 0 of the mask; an earlier version flipped
+the whole word, and the sweep found it at `x = 2, carry = 1`. Random
+inputs at 64 bits do not hit that corner in any reasonable number of
+cases. Write the law before the kernel, and sweep it at 8 and 16
+bits.
+
+CI builds the same matrix as data (`nix/matrix.nix`): hardware path ×
+feature flag, tests and doctests and clippy per cell, rustdoc with
+warnings as errors, the MSRV build from the `cargo package` tarball,
+licence and advisory checks offline. Every cell is a Nix derivation
+without network access.
+
+## 7. Deliberately out
+
+- **Data-dependent control flow and pointer chasing.** The domain is
+  straight-line, fixed-width, data-independent kernels, the same
+  boundary as bitslicing.
+- **Bit storage.** `bitvec` territory. This is an algebra over words,
+  not a container of bits. `slice` is the index-free layer between a
+  word and a succinct structure, not the structure.
+- **Promises about autovectorisation.** A combinator compiles to a
+  known instruction or to a documented fallback. Nothing in between.
+- **Big-integer arithmetic.** `u128` is the register ceiling.
+  `Wide<N>` has what `Word` needs and nothing else.
+- **Division by constants, square roots, CRC, floating point**
+  (Hacker's Delight chapters 8 to 11, 14, 17). A different algebra.
+  Hilbert curves (chapter 16) and the 32 × 32 transpose (section 7-3)
+  wait for a consumer.
+- **Banded Myers.** For two long strings a few edits apart,
+  `triple_accel` beats this crate's full-column Myers on `Wide<8>` by
+  about 2×, because it computes only a diagonal band. The variant is
+  not shipped. The crate's value is primitives with laws and a
+  recipe; racing a specialised implementation on its own ground is
+  not. Recipe 7 of the cookbook sketches the band so that anyone who
+  needs it can build it in an afternoon and check it with the same
+  reference.
+- **SIMD carriers** (PSHUFB tables, GFNI, VPCOMPRESS). They need
+  `portable_simd`, which is nightly; the published crate stays on
+  stable.
+- **Run-time feature detection.** Section 2.2.
+
+## 8. Provenance
+
+Where each combinator comes from. Nothing in the first table is new
+here; the crate names it, gives it a type and a law, and tests it on
+every carrier.
+
+| combinator | source |
+|---|---|
+| `run_starts`, `has_run` (halving chain) | Hacker's Delight §6-2, figure 6-5 |
+| `longest_run` | Hacker's Delight §6-3, as a binary search over `has_run` |
+| `zero_bytes`, `bytes_eq`, `bytes_lt`, `sum_bytes` | Hacker's Delight §6-1 |
+| `lowest_set_mask`, `below_lowest_set`, `up_to_lowest_set`, `clear_lowest_run`, `prefix_or` as `x \| -x` | Hacker's Delight chapter 2 |
+| `round_up_pow2`, `log2_floor` | Hacker's Delight §3-2, §5-3 |
+| `next_same_popcount` | HAKMEM item 175 (Gosper) |
+| `gray_encode`, `gray_decode` | Hacker's Delight chapter 13 |
+| `compact`, `expand` | Hacker's Delight §7-4, §7-5; BMI2 PEXT / PDEP |
+| `delta_swap`, `board8` permutations | Knuth, TAOCP 7.1.3 (δ-swap); Hacker's Delight §7-3; the bitboard literature |
+| `select` with PDEP | Pandey, Bender and Johnson, 2017 |
+| `select` without PDEP | Vigna, 2008 |
+| `prefix_xor` by carry-less multiply; `find_escaped` | Langdale and Lemire, simdjson, 2019 |
+| `fill_up`, `fill_down` | Kogge and Stone, 1973, as used for sliding attacks on bitboards |
+| `Dilated`, `Morton2` | Morton, 1966; Raman and Wise, 2008 |
+| `myers::edit_distance`, `myers::search` | Myers, 1999; Hyyrö's formulation |
+
+What is not in the canon, as far as I know:
+
+- **`grid`: a rectangular run is a separable erosion.** `block_starts`
+  applies the halving chain down the rows first (`⌈log₂ h⌉` passes
+  of AND) and then along each row (`run_starts(w)`), which is
+  `O(log w + log h)` word operations per row instead of `w × h` tests
+  per cell. `find_block` is first fit of a rectangle over a tile
+  bitmap. Morphologists know the separable erosion; allocator authors
+  do not seem to.
+- **The composition and homomorphism laws as an exported, machine-
+  checked family.** `run_starts(a) ∘ run_starts(b) = run_starts(a + b − 1)`
+  (why the halving chain is correct) and its two-dimensional version;
+  `run_starts` preserves AND; `zero_bytes` turns OR into AND; fills are
+  closure operators; `prefix_xor`, Gray codes, `compact`, `expand` and
+  `delta_swap` are XOR-linear; `pdep(pdep(x, n), m) = pdep(x, pdep(n, m))`
+  as the dual of `compact_composes`; delta swaps with one shift and
+  disjoint masks merge; the Gray successor flips exactly
+  `lowest_set_mask(x + 1)`; `select` inverts `rank` on set bits. Each
+  is folklore or a one-line proof. Together, verified exhaustively at
+  8 and 16 bits and by proptest at 128, they are a rule base nobody
+  had written down.
+- **`Wide<N>` as a carrier for the whole algebra**, section 4.
+
+## 9. Compatibility
+
+`no_std`, zero dependencies, stable Rust. MSRV 1.87 (edition 2024
+needs 1.85; `cast_signed` needs 1.87), checked in CI against the
+packaged tarball, not the repository.
+
+What is and is not a breaking change:
+
+- Adding a method to `Bits` or a primitive to `Word` is not: `Word`
+  is sealed, and `Bits` is only implemented through the blanket impl.
+- Adding a carrier is not.
+- Changing what a law states is. A law is API; a kernel downstream
+  may depend on either side of it.
+- Results the documentation calls unspecified (for example
+  `Word::select_lowest` with `k` at or above the population) are not
+  covered by any of this. `Bits::select` returns `Option` and is.
+
+## 10. Open
+
+- A hybrid portable `select` that loops for small `k`, or a table for
+  the last step; section 5 has the numbers to decide by.
+- SIMD carriers behind a nightly feature, once `portable_simd` is
+  stable enough to depend on.
+- Hilbert curves and the 32 × 32 transpose when something needs them.
+- Banded Myers is not planned; recipe 7 of the cookbook is the
+  instruction sheet.
+
+## Sources
+
+- Beeler, Gosper, Schroeppel. *HAKMEM*. MIT AI Memo 239, 1972.
+  Items 161 to 180.
+- Warren. *Hacker's Delight*, 2nd edition. Addison-Wesley, 2012.
+- Knuth. *The Art of Computer Programming*, volume 4A, section 7.1.3,
+  *Bitwise Tricks and Techniques*. 2011.
+- Vigna. *Broadword Implementation of Rank/Select Queries*. WEA 2008.
+- Pandey, Bender, Johnson. *A General-Purpose Counting Filter*.
+  SIGMOD 2017 (the PDEP select).
+- Myers. *A Fast Bit-Vector Algorithm for Approximate String Matching
+  Based on Dynamic Programming*. Journal of the ACM, 1999.
+- Hyyrö. *Explaining and Extending the Bit-parallel Approximate String
+  Matching Algorithm of Myers*. Technical report, 2001.
+- Raman, Wise. *Converting to and from Dilated Integers*. IEEE
+  Transactions on Computers, 2008.
+- Langdale, Lemire. *Parsing Gigabytes of JSON per Second*. The VLDB
+  Journal, 2019.
+- Kogge, Stone. *A Parallel Algorithm for the Efficient Solution of a
+  General Class of Recurrence Equations*. IEEE Transactions on
+  Computers, 1973.
+- Beneš. *Optimal Rearrangeable Multistage Connecting Networks*. Bell
+  System Technical Journal, 1964.

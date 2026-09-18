@@ -1,0 +1,38 @@
+# cargo-deny: licences, bans and sources of dependencies. Runs as the Nix
+# check `hakmem-deny` (nix/deny.nix). Advisories are handled separately by
+# `hakmem-audit` with a pinned RustSec database, so they are off here and
+# the check needs no network.
+#
+# hakmem has zero runtime dependencies; this guards dev-deps and the future.
+
+[graph]
+all-features = true
+
+[advisories]
+ignore = []
+
+[licenses]
+# Permissive licences only, compatible with MIT OR Apache-2.0.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "ISC",
+  "Zlib",
+  "Unicode-3.0",
+  "Unicode-DFS-2016",
+  "CC0-1.0",
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+wildcards = "deny"
+allow-wildcard-paths = true
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

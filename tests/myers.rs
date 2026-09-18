@@ -1,0 +1,79 @@
+//! Myers bit-parallel edit distance against the textbook DP.
+
+use hakmem::myers::edit_distance;
+use proptest::prelude::*;
+
+fn levenshtein_dp(a: &[u8], b: &[u8]) -> u32 {
+    let mut prev: Vec<u32> = (0..=u32::try_from(b.len()).unwrap()).collect();
+    for (i, &ca) in a.iter().enumerate() {
+        let mut cur = vec![u32::try_from(i).unwrap() + 1; b.len() + 1];
+        for (j, &cb) in b.iter().enumerate() {
+            let sub = prev[j] + u32::from(ca != cb);
+            cur[j + 1] = sub.min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        prev = cur;
+    }
+    prev[b.len()]
+}
+
+proptest! {
+    #[test]
+    fn u64_matches_dp(a in prop::collection::vec(0u8..4, 0..=64), b in prop::collection::vec(0u8..4, 0..=80)) {
+        prop_assert_eq!(edit_distance::<u64>(&a, &b), Some(levenshtein_dp(&a, &b)));
+    }
+    #[test]
+    fn u128_matches_dp(a in prop::collection::vec(any::<u8>(), 0..=128), b in prop::collection::vec(any::<u8>(), 0..=100)) {
+        prop_assert_eq!(edit_distance::<u128>(&a, &b), Some(levenshtein_dp(&a, &b)));
+    }
+    #[test]
+    fn u8_full_width_matches_dp(a in prop::collection::vec(0u8..3, 8..=8), b in prop::collection::vec(0u8..3, 0..=20)) {
+        prop_assert_eq!(edit_distance::<u8>(&a, &b), Some(levenshtein_dp(&a, &b)));
+    }
+}
+
+#[test]
+fn rejects_pattern_wider_than_word() {
+    assert_eq!(edit_distance::<u8>(&[0; 9], b"x"), None);
+    assert_eq!(edit_distance::<u8>(&[0; 8], b"x"), Some(8));
+}
+
+/// Semi-global DP: `D[0][j] = 0`, distances of the pattern against the
+/// best-starting substring ending at each `j`.
+fn semi_global_dp(p: &[u8], t: &[u8]) -> Vec<u32> {
+    let mut prev: Vec<u32> = vec![0; t.len() + 1];
+    for (i, &cp) in p.iter().enumerate() {
+        let mut cur = vec![u32::try_from(i).unwrap() + 1; t.len() + 1];
+        for (j, &ct) in t.iter().enumerate() {
+            let sub = prev[j] + u32::from(cp != ct);
+            cur[j + 1] = sub.min(prev[j + 1] + 1).min(cur[j] + 1);
+        }
+        prev = cur;
+    }
+    prev
+}
+
+proptest! {
+    #[test]
+    fn search_matches_semi_global_dp(p in prop::collection::vec(0u8..4, 1..=64), t in prop::collection::vec(0u8..4, 0..=80), k in 0u32..4) {
+        let dp = semi_global_dp(&p, &t);
+        let want: Vec<(usize, u32)> = dp.iter().enumerate().skip(1).filter(|&(_, &d)| d <= k).map(|(j, &d)| (j, d)).collect();
+        let got: Vec<(usize, u32)> = hakmem::myers::search::<u64>(&p, &t, k).unwrap().collect();
+        prop_assert_eq!(got, want);
+        let best = dp.iter().copied().min().unwrap();
+        prop_assert_eq!(hakmem::myers::min_distance::<u64>(&p, &t), Some(best));
+    }
+}
+
+proptest! {
+    #[test]
+    fn wide4_matches_dp(a in prop::collection::vec(any::<u8>(), 0..=256), b in prop::collection::vec(any::<u8>(), 0..=300)) {
+        prop_assert_eq!(edit_distance::<hakmem::Wide<4>>(&a, &b), Some(levenshtein_dp(&a, &b)));
+    }
+    #[test]
+    fn wide4_search_matches_dp(p in prop::collection::vec(0u8..4, 1..=200), t in prop::collection::vec(0u8..4, 0..=120), k in 0u32..4) {
+        let dp = semi_global_dp(&p, &t);
+        let want: Vec<(usize, u32)> = dp.iter().enumerate().skip(1).filter(|&(_, &d)| d <= k).map(|(j, &d)| (j, d)).collect();
+        let got: Vec<(usize, u32)> = hakmem::myers::search::<hakmem::Wide<4>>(&p, &t, k).unwrap().collect();
+        prop_assert_eq!(got, want);
+    }
+}

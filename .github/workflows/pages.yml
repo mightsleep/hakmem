@@ -1,0 +1,55 @@
+name: pages
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: "17 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  docs:
+    name: rustdoc + index
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: cachix/cachix-action@v15
+        with:
+          name: hakmem
+          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+      - run: nix build -L .#checks.x86_64-linux.hakmem-doc -o doc-result
+      - run: nix build -L .#site-index -o index-result
+      - run: |
+          mkdir -p site
+          cp -r doc-result/share/doc site/doc
+          cp index-result site/index.html
+      - uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./site
+          # Bench data live in dev/bench on the same branch; keep them.
+          keep_files: true
+
+  bench:
+    name: bench (criterion, tracked on gh-pages)
+    runs-on: ubuntu-latest
+    # Timed outside the Nix sandbox on a shared runner: a trend, never pass/fail.
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cargo bench --bench incumbents --bench select -- --output-format bencher | tee bench.txt
+        env:
+          RUSTFLAGS: -C target-cpu=native
+      - uses: benchmark-action/github-action-benchmark@v1
+        with:
+          tool: cargo
+          output-file-path: bench.txt
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          auto-push: true
+          benchmark-data-dir-path: dev/bench
+          # Comment on the commit only at a 2× regression; a shared runner is noisy.
+          alert-threshold: "200%"
+          comment-on-alert: true

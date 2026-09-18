@@ -1,0 +1,52 @@
+[package]
+name = "hakmem"
+version = "0.1.0"
+edition = "2024"
+# MSRV: edition 2024 needs 1.85, cast_signed/cast_unsigned 1.87. Checked in CI
+# against the `cargo package` tarball (nix/msrv.nix).
+rust-version = "1.87"
+description = "Bit tricks as a lawful algebra: rank/select, runs, PEXT/PDEP, Morton codes, SWAR byte lanes, Myers edit distance, one trait, property-tested laws, no_std."
+license = "MIT OR Apache-2.0"
+authors = ["Michal <acannix@proton.me>"]
+repository = "https://github.com/mightsleep/hakmem"
+keywords = ["bit-manipulation", "rank-select", "edit-distance", "swar", "no-std"]
+categories = ["algorithms", "no-std"]
+exclude = ["/.github", "/nix", "/flake.*"]
+
+[features]
+default = []
+# Disable every hardware fast path (BMI2 PEXT/PDEP, PCLMULQDQ) even when
+# the target feature is enabled. For microarchitectures where the
+# instruction exists but is microcoded (PDEP/PEXT on AMD Zen 1 and Zen 2:
+# ~18 cycles, hundreds of uops) the broadword definitions are faster.
+portable = []
+
+[dependencies]
+
+[dev-dependencies]
+proptest = "1"
+criterion = { version = "0.5", default-features = false, features = ["cargo_bench_support"] }
+# Incumbents for benches/incumbents.rs: the crates people use today.
+broadword = "0.2"      # Tov: select1/rank in a u64
+strsim = "0.11"        # Levenshtein on &str
+triple_accel = "0.4"   # SIMD-accelerated Myers Levenshtein on bytes
+
+[[bench]]
+name = "select"
+harness = false
+
+[[bench]]
+name = "incumbents"
+harness = false
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "warn"
+missing_docs = "warn"
+unreachable_pub = "warn"
+
+[lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+nursery = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"
+module_name_repetitions = "allow"

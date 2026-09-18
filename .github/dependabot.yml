@@ -1,0 +1,12 @@
+# Dependabot: alerts over Cargo.lock are enabled under Settings, Security;
+# these are the weekly bump PRs. Nix inputs are bumped by update-flake-lock.yml.
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
