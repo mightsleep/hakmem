@@ -14,7 +14,7 @@ jobs:
     name: rustdoc + index
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v16
       - uses: cachix/cachix-action@v15
         with:
@@ -38,7 +38,7 @@ jobs:
     runs-on: ubuntu-latest
     # Timed outside the Nix sandbox on a shared runner: a trend, never pass/fail.
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
       - run: cargo bench --bench incumbents --bench select -- --output-format bencher | tee bench.txt
         env:
