@@ -380,3 +380,41 @@ mod board8 {
         }
     }
 }
+
+// Byte lanes: both carriers against the per-lane definitions, the table
+// composition, the bridge to the word algebra, and the wide carrier
+// against its two SWAR halves (which on x86 with SSSE3 and on aarch64
+// pits the vector instructions against the scalar definitions).
+mod lanes {
+    use hakmem::lanes::{Lanes, U8x8, U8x16};
+    use hakmem::laws;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn u8x8_matches_reference(a in any::<u64>(), b in any::<u64>(), n in 0u32..10, t in any::<[u8; 16]>()) {
+            prop_assert!(laws::lanes_match_reference(U8x8::new(a), U8x8::new(b), n, t));
+        }
+
+        #[test]
+        fn u8x16_matches_reference(a in any::<[u8; 16]>(), b in any::<[u8; 16]>(), n in 0u32..10, t in any::<[u8; 16]>()) {
+            prop_assert!(laws::lanes_match_reference(U8x16::load(&a), U8x16::load(&b), n, t));
+        }
+
+        #[test]
+        fn lut16_composes(x in any::<[u8; 16]>(), a in any::<[u8; 16]>(), b in any::<[u8; 16]>()) {
+            prop_assert!(laws::lut16_composes(U8x16::load(&x), a, b));
+            prop_assert!(laws::lut16_composes(U8x8::load(&x[..8]), a, b));
+        }
+
+        #[test]
+        fn lanes_agree_with_bits(x in any::<u64>(), b in any::<u8>()) {
+            prop_assert!(laws::lanes_agree_with_bits(x, b));
+        }
+
+        #[test]
+        fn u8x16_agrees_with_halves(a in any::<(u64, u64)>(), b in any::<(u64, u64)>(), n in 0u32..10, t in any::<[u8; 16]>()) {
+            prop_assert!(laws::u8x16_agrees_with_halves(a, b, n, t));
+        }
+    }
+}

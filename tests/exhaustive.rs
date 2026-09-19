@@ -413,3 +413,30 @@ fn u8_u16_broadword_compress_expand_match_loop() {
         }
     }
 }
+
+/// Every pair of byte values in every lane of the SWAR carrier, every
+/// shift, and every lane value through the table lookup. The lane ops
+/// are lane-independent by construction, so pairs cover the space.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8x8_lanes_all_byte_pairs() {
+    use hakmem::lanes::{Lanes, U8x8};
+    let table = [
+        0x00, 0x81, 0x7F, 0x10, 0xFF, 0x0F, 0x80, 0x01, 0x55, 0xAA, 0x3C, 0xC3, 0x02, 0x40, 0xFE,
+        0x7E,
+    ];
+    for a in 0..=255u8 {
+        // `a` in the even lanes, its complement in the odd ones, so the
+        // borrow and carry between neighbouring lanes is exercised too.
+        let x = U8x8::load(&[a, !a, a, !a, a, !a, a, !a]);
+        for b in 0..=255u8 {
+            let y = U8x8::load(&[b, b, !b, !b, b, !b, b, !b]);
+            for n in 0..9 {
+                assert!(
+                    laws::lanes_match_reference(x, y, n, table),
+                    "a={a:#04x} b={b:#04x} n={n}"
+                );
+            }
+        }
+    }
+}

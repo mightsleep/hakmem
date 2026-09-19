@@ -139,12 +139,24 @@ instruction, which is still bit-parallel.
 designed under: a word need not be one register. `myers::edit_distance`
 was written against `Word`, not against `u64`, and it runs on
 `Wide<8>` for 512-byte patterns without a change to the algorithm.
-The same constraint is what a SIMD lane or a GPU warp mask would need
-to become a carrier; neither is in the crate.
+
+A vector register is not a `Word`: its lanes do not carry into each
+other, so the laws of the carry chain do not hold across it. It gets
+its own trait, `Lanes`, with the operations that are lawful lane by
+lane (bitwise, wrapping add and subtract, shifts, unsigned compares to
+masks, the 16-entry table lookup) and one bridge, `to_bits`, which
+folds a lane mask into a `Word` with a bit per lane. That bridge is
+where simdjson's first stage hands its masks to its second, and where
+this crate's two algebras meet. The carriers are `U8x8` (eight lanes in
+a `u64` by SWAR, the exhaustive-test carrier) and `U8x16` (SSSE3 or
+NEON, chosen by `cfg(target_feature)` like BMI2; two `U8x8` halves
+otherwise). Wider carriers are more `impl` blocks. A GPU warp mask
+would be a third kind of carrier again; it is not in the crate.
 
 ## 5. Hardware paths
 
-Exactly four primitives have one:
+Exactly four `Word` primitives have one, and every `Lanes` method of
+`U8x16`, which is a different register:
 
 | primitive | with the target feature | without |
 |---|---|---|
@@ -152,10 +164,13 @@ Exactly four primitives have one:
 | `select_lowest` | `trailing_zeros(pdep(1 << k, x))` (Pandey, Bender and Johnson, 2017) | Vigna's broadword select, about 30 ALU operations, no table, constant time |
 | `xor_scan` (prefix XOR) | PCLMULQDQ by all ones | a log-depth smear, six operations on `u64` |
 
-The choice lives in `word.rs` and nowhere else. The `unsafe` in the
-crate is the intrinsic calls in that module, allowed only when the
-matching `target_feature` is a compile-time fact; Miri runs
-`tests/miri.rs` over both paths (`nix run .#miri-hakmem`).
+The choice lives in `word.rs` and, for the lanes, `lanes.rs`, and
+nowhere else. The `unsafe` in the crate is the intrinsic calls in those
+two modules, allowed only when the matching `target_feature` is a
+compile-time fact. The safe-intrinsics route of Rust 1.87 does not
+apply: it needs `#[target_feature]` on the calling function, which a
+trait method cannot carry, and the build configuration does not count.
+Miri runs `tests/miri.rs` over both paths (`nix run .#miri-hakmem`).
 
 What the bench says about the portable select (`benches/select.rs`,
 1024 words, `k` = half the population):
@@ -246,9 +261,11 @@ that derivation was built and passed (`.github/plan.sh`).
   not. Recipe 7 of the cookbook sketches the band so that anyone who
   needs it can build it in an afternoon and check it with the same
   reference.
-- **SIMD carriers** (PSHUFB tables, GFNI, VPCOMPRESS). They need
-  `portable_simd`, which is nightly; the published crate stays on
-  stable.
+- **Wider and richer lanes** (AVX2, AVX-512 with VPCOMPRESSB, GFNI as
+  a GF(2) matrix on bytes). `Lanes` on stable is `core::arch` behind
+  `cfg`; `std::simd` is nightly and would buy only generic width.
+  Byte compress and expand are the next lane primitives, after the
+  first consumer.
 - **Run-time feature detection.** Section 2.2.
 
 ## 8. Provenance
@@ -275,6 +292,10 @@ every carrier.
 | `Dilated`, `Morton2` | Morton, 1966; Raman and Wise, 2008 |
 | `myers::edit_distance`, `myers::search` | Myers, 1999; Hyyrö's formulation |
 | `rank9::Rank9` | Vigna, 2008: rank9, and a select inventory in the shape of his select9, cases cut at block boundaries |
+| `lanes::U8x8` add and subtract | Hacker's Delight 2-18 (SWAR without inter-lane carry) |
+| `lanes::Lanes::cmp_le` on SWAR | Hacker's Delight 6-1, the lane compare with full lanes |
+| `lanes::Lanes::to_bits` on SWAR | the multiply that gathers the top bits of eight bytes; on NEON the `shrn` narrowing of a compare mask |
+| `lanes::Lanes::lut16`, the nibble classifier | simdjson (Langdale and Lemire, 2019), after Muła's PSHUFB lookups |
 
 What is not in the canon, as far as I know:
 

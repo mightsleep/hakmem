@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0, unreleased
+
+`hakmem::lanes`: the SIMD half of the algebra on stable Rust. `Lanes` is
+the trait for independent 8-bit lanes (bitwise, wrapping add and
+subtract, per-lane shifts, unsigned compares to masks, the 16-entry
+table lookup of PSHUFB / `tbl`, and `to_bits`, the fold of a lane mask
+into a `Word` where the carry algebra takes over). Carriers: `U8x8`,
+eight lanes in a `u64` by SWAR, and `U8x16`, sixteen lanes on SSSE3 or
+NEON, two SWAR halves otherwise. Laws: per-lane definitions, table
+composition, agreement with `Bits`' byte tests, and the wide carrier
+against its halves; the SWAR carrier is swept over every byte pair.
+
 ## 0.1.0, 2026-09-19
 
 First release, of a learning project far from production; the README's

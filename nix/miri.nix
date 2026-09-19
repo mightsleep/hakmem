@@ -1,5 +1,5 @@
-# Miri over the single unsafe module (BMI2 / PCLMULQDQ intrinsics in
-# word.rs). Not a `check`: `cargo miri setup` builds a sysroot from
+# Miri over the unsafe modules (BMI2 / PCLMULQDQ intrinsics in word.rs,
+# SSSE3 in lanes.rs). Not a `check`: `cargo miri setup` builds a sysroot from
 # rust-src and fetches crates, which the Nix sandbox without network cannot
 # do. Runs as an app outside the sandbox.
 #
@@ -32,9 +32,9 @@
             RUSTFLAGS="$1" cargo miri test --test miri
           }
           # Portable paths first, then the intrinsics; Miri has shims for
-          # BMI2 and PCLMULQDQ.
+          # BMI2, PCLMULQDQ and SSSE3.
           run ""
-          run "-C target-feature=+bmi2,+pclmulqdq"
+          run "-C target-feature=+bmi2,+pclmulqdq,+ssse3"
         '';
       });
     };

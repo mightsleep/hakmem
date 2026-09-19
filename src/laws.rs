@@ -7,6 +7,7 @@
 //! functions over their own types. A law that fails is a bug in the
 //! backend, never a caveat in the docs.
 
+use crate::lanes::{Lanes, U8x8, U8x16};
 use crate::permute::board8::{self, Dir};
 use crate::prelude::*;
 use crate::rank9::Rank9;
@@ -860,4 +861,98 @@ pub fn board8_slides_match_reference(pieces: u64, empty: u64, dir: Dir) -> bool 
         }
     }
     board8::slide(pieces, empty, dir) == expect
+}
+
+// --- lanes ------------------------------------------------------------
+
+/// Every [`Lanes`] operation against its per-lane scalar definition, on
+/// `a` and `b` with shift `n` and lookup `table`, and the fold to bits.
+#[must_use]
+pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) -> bool {
+    let mask = |c: bool| if c { 0xFF } else { 0 };
+    let lut = |v: u8| {
+        if v & 0x80 == 0 {
+            table[usize::from(v & 15)]
+        } else {
+            0
+        }
+    };
+    let bits = lhs.to_bits();
+    (0..L::LANES).all(|i| {
+        let (x, y) = (lhs.lane(i), rhs.lane(i));
+        let lane_bit = u32::try_from(i).is_ok_and(|i| bits.bit(i));
+        lhs.and(rhs).lane(i) == x & y
+            && lhs.or(rhs).lane(i) == x | y
+            && lhs.xor(rhs).lane(i) == x ^ y
+            && lhs.not().lane(i) == !x
+            && lhs.add(rhs).lane(i) == x.wrapping_add(y)
+            && lhs.sub(rhs).lane(i) == x.wrapping_sub(y)
+            && lhs.shl(n).lane(i) == if n >= 8 { 0 } else { x << n }
+            && lhs.shr(n).lane(i) == if n >= 8 { 0 } else { x >> n }
+            && lhs.cmp_eq(rhs).lane(i) == mask(x == y)
+            && lhs.cmp_le(rhs).lane(i) == mask(x <= y)
+            && lhs.cmp_lt(rhs).lane(i) == mask(x < y)
+            && lhs.cmp_ge(rhs).lane(i) == mask(x >= y)
+            && lhs.cmp_gt(rhs).lane(i) == mask(x > y)
+            && lhs.min(rhs).lane(i) == x.min(y)
+            && lhs.max(rhs).lane(i) == x.max(y)
+            && lhs.blend(rhs, lhs.cmp_le(rhs)).lane(i) == if x <= y { y } else { x }
+            && lhs.lut16(table).lane(i) == lut(x)
+            && lane_bit == (x & 0x80 != 0)
+    }) && L::splat(0x5A).lane(L::LANES - 1) == 0x5A
+        && L::zero() == L::splat(0)
+}
+
+/// Two table lookups are one: on lanes with the top bit clear,
+/// `lut16(lut16(x, a), b) == lut16(x, b ∘ a)`, the composed table
+/// applying PSHUFB's zero-on-top-bit rule to `a`'s entries.
+#[must_use]
+pub fn lut16_composes<L: Lanes>(x: L, a: [u8; 16], b: [u8; 16]) -> bool {
+    let x = x.and(L::splat(0x7F));
+    let mut composed = [0u8; 16];
+    for (c, &v) in composed.iter_mut().zip(a.iter()) {
+        *c = if v & 0x80 == 0 {
+            b[usize::from(v & 15)]
+        } else {
+            0
+        };
+    }
+    x.lut16(a).lut16(b) == x.lut16(composed)
+}
+
+/// The lane algebra and the word algebra agree where they meet: a
+/// compare folded to bits is the SWAR byte test of [`Bits`], and the
+/// count of matching lanes is [`Bits::count_bytes_eq`].
+#[must_use]
+pub fn lanes_agree_with_bits(x: u64, b: u8) -> bool {
+    let lanes = U8x8::new(x);
+    let eq = lanes.cmp_eq(U8x8::splat(b)).to_bits();
+    eq.count_ones() == x.count_bytes_eq(b)
+        && lanes.cmp_eq(U8x8::zero()).to_bits() == U8x8::new(x.zero_bytes()).to_bits()
+        && lanes.cmp_lt(U8x8::splat(0x80)).to_bits() == U8x8::new(x.bytes_lt(0x80)).to_bits()
+}
+
+/// The sixteen-lane carrier, whatever it compiles to, is two eight-lane
+/// SWAR carriers side by side.
+#[must_use]
+pub fn u8x16_agrees_with_halves(lhs: (u64, u64), rhs: (u64, u64), n: u32, table: [u8; 16]) -> bool {
+    let wide = |p: (u64, u64)| U8x16::from_halves(p.0, p.1);
+    let narrow = |p: (u64, u64)| (U8x8::new(p.0), U8x8::new(p.1));
+    let (x, y) = (wide(lhs), wide(rhs));
+    let ((xl, xh), (yl, yh)) = (narrow(lhs), narrow(rhs));
+    let pair = |l: U8x8, h: U8x8| (l.bits(), h.bits());
+    x.and(y).halves() == pair(xl.and(yl), xh.and(yh))
+        && x.or(y).halves() == pair(xl.or(yl), xh.or(yh))
+        && x.xor(y).halves() == pair(xl.xor(yl), xh.xor(yh))
+        && x.not().halves() == pair(xl.not(), xh.not())
+        && x.add(y).halves() == pair(xl.add(yl), xh.add(yh))
+        && x.sub(y).halves() == pair(xl.sub(yl), xh.sub(yh))
+        && x.shl(n).halves() == pair(xl.shl(n), xh.shl(n))
+        && x.shr(n).halves() == pair(xl.shr(n), xh.shr(n))
+        && x.cmp_eq(y).halves() == pair(xl.cmp_eq(yl), xh.cmp_eq(yh))
+        && x.cmp_le(y).halves() == pair(xl.cmp_le(yl), xh.cmp_le(yh))
+        && x.lut16(table).halves() == pair(xl.lut16(table), xh.lut16(table))
+        && x.to_bits() == u16::from(xl.to_bits()) | u16::from(xh.to_bits()) << 8
+        && x.lane(3) == xl.lane(3)
+        && x.lane(11) == xh.lane(3)
 }

@@ -10,6 +10,7 @@ pub mod bits;
 pub mod cookbook;
 pub mod dilated;
 pub mod grid;
+pub mod lanes;
 pub mod laws;
 pub mod myers;
 pub mod permute;

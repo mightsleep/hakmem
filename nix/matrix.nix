@@ -38,11 +38,11 @@
         ++ lib.optionals isX86 [
           {
             name = "bmi2";
-            rustflags = "-C target-feature=+bmi2,+pclmulqdq";
+            rustflags = "-C target-feature=+bmi2,+pclmulqdq,+ssse3";
             # A builder without BMI2 would die with SIGILL; fail with a
             # readable message instead.
             guard = ''
-              grep -qw bmi2 /proc/cpuinfo && grep -qw pclmulqdq /proc/cpuinfo \
+              grep -qw bmi2 /proc/cpuinfo && grep -qw pclmulqdq /proc/cpuinfo && grep -qw ssse3 /proc/cpuinfo \
                 || { echo "builder CPU lacks bmi2/pclmulqdq; cannot run this cell" >&2; exit 1; }
             '';
           }
