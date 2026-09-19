@@ -121,3 +121,63 @@ function formatNs(ns) {
   if (ns >= 1e3) return (ns / 1e3).toFixed(2) + " µs";
   return Math.round(ns) + " ns";
 }
+
+// Bounds for a log axis: whole decades around the data with a margin, so a
+// few percent of noise draws flat instead of filling the chart, and every
+// chart of a view can share the same bounds. `anchor` is forced into the
+// range (1 for ratios, so parity is always on the axis).
+function decadeRange(values, anchor) {
+  const v = values.filter((x) => typeof x === "number" && x > 0);
+  if (anchor !== undefined) v.push(anchor);
+  if (!v.length) return { min: 1, max: 10 };
+  const lo = Math.min(...v);
+  const hi = Math.max(...v);
+  let min = 10 ** Math.floor(Math.log10(lo));
+  let max = 10 ** Math.ceil(Math.log10(hi));
+  if (min === lo) min /= 10;
+  if (max === hi) max *= 10;
+  return { min, max };
+}
+
+function isDecade(v) {
+  const l = Math.log10(v);
+  return Math.abs(l - Math.round(l)) < 1e-9;
+}
+
+// A history as percent of its first run, per param: 100 is the first run
+// that had the value. Linear and dimensionless, so one axis serves every
+// size and every group, and a 20 % regression is the same height at 262 ns
+// and at 28 µs. `abs` keeps the original values for tooltips.
+// { group: { params, points: [{ sha, pct: { param }, abs: { param } }] } }
+function relativeSeries(series, key) {
+  const out = {};
+  for (const [name, s] of Object.entries(series)) {
+    const base = {};
+    out[name] = {
+      params: s.params,
+      points: s.points.map((pt) => {
+        const pct = {};
+        for (const p of s.params) {
+          const v = pt[key][p];
+          if (v === undefined) continue;
+          base[p] ??= v;
+          pct[p] = (v / base[p]) * 100;
+        }
+        return { sha: pt.sha, pct, abs: pt[key] };
+      }),
+    };
+  }
+  return out;
+}
+
+// Bounds for the percent axis: tens, at least 90 to 110, with a margin.
+function percentRange(values) {
+  const v = values.filter((x) => typeof x === "number" && Number.isFinite(x));
+  let min = 90;
+  let max = 110;
+  for (const x of v) {
+    if (x - 5 < min) min = Math.floor((x - 5) / 10) * 10;
+    if (x + 5 > max) max = Math.ceil((x + 5) / 10) * 10;
+  }
+  return { min: Math.max(0, min), max };
+}

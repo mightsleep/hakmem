@@ -43,13 +43,19 @@
       <h2>hakmem over the best incumbent</h2>
       <p>Best hakmem variant divided by the best incumbent in the same run, per
          size. Both sides share the machine and the minute, so a slower runner
-         cancels out. 0.1 means ten times faster; above 1 the incumbent wins.</p>
+         cancels out. The charts show each ratio as percent of its first run,
+         100 being where it started. The table holds the newest values: 0.1
+         means ten times faster, above 1 the incumbent wins.</p>
       <div id="ratio"></div>
+      <table id="ratios">
+        <thead><tr><th>group</th><th>size</th><th>ratio</th><th>hakmem</th><th>best incumbent</th></tr></thead>
+        <tbody></tbody>
+      </table>
 
       <h2>hakmem alone</h2>
-      <p>Best hakmem variant per size, in time. This view moves with the
-         runner's CPU: read it for trends across runs on the same hardware,
-         not across hardware.</p>
+      <p>Best hakmem variant per size as percent of its first run. This view
+         moves with the runner's CPU: a step in every size at once is a
+         different runner, a step in one size is the code.</p>
       <div id="ours"></div>
 
       <h2>Runs</h2>
@@ -93,12 +99,42 @@
             config.options = Object.assign({ responsive: true, maintainAspectRatio: false }, config.options);
             new Chart(canvas, config);
           };
-          var logNs = function (title) {
-            return { type: "logarithmic", title: { display: true, text: title },
-                     ticks: { callback: function (v) { return formatNs(v); } } };
+          // Newest run: a log axis in whole decades, shared by its charts, with
+          // labels only at the decades. It is the only way to have 260 ns and
+          // 656 µs in one picture; a centimetre is a factor, not a difference.
+          var logAxis = function (title, range, fmt) {
+            return {
+              type: "logarithmic", min: range.min, max: range.max,
+              title: { display: true, text: title },
+              ticks: { autoSkip: false, callback: function (v) { return isDecade(v) ? fmt(v) : null; } },
+            };
+          };
+          // Histories: linear percent of the first run, one range for all of
+          // them, so a centimetre is the same ten percent in every chart.
+          var pctAxis = function (range) {
+            return {
+              type: "linear", min: range.min, max: range.max,
+              title: { display: true, text: "% of first run" },
+              ticks: { stepSize: 10, callback: function (v) { return v + " %"; } },
+              grid: { color: function (ctx) { return ctx.tick.value === 100 ? tok("overlay0") : tok("surface0"); } },
+            };
           };
           var nsTooltip = { callbacks: { label: function (c) { return c.dataset.label + ": " + formatNs(c.parsed.y); } } };
-          var lines = function (parent, series, key, yAxis, tooltip) {
+          var pctTooltip = function (fmt) {
+            return { callbacks: { label: function (c) {
+              return c.dataset.label + ": " + c.parsed.y.toFixed(1) + " % (" + fmt(c.dataset.abs[c.dataIndex]) + ")";
+            } } };
+          };
+          var pctValues = function (series) {
+            var out = [];
+            Object.keys(series).forEach(function (name) {
+              series[name].points.forEach(function (pt) {
+                Object.keys(pt.pct).forEach(function (p) { out.push(pt.pct[p]); });
+              });
+            });
+            return out;
+          };
+          var histories = function (parent, series, range, fmt) {
             Object.keys(series).forEach(function (name) {
               var s = series[name];
               chart(parent, name, {
@@ -107,13 +143,20 @@
                   labels: s.points.map(function (p) { return p.sha; }),
                   datasets: s.params.map(function (p, k) {
                     var colour = pick(accents, k);
-                    return { label: p || name, data: s.points.map(function (pt) { return pt[key][p] === undefined ? null : pt[key][p]; }),
+                    return { label: p || name,
+                             data: s.points.map(function (pt) { return pt.pct[p] === undefined ? null : pt.pct[p]; }),
+                             abs: s.points.map(function (pt) { return pt.abs[p]; }),
                              borderColor: colour, backgroundColor: colour, tension: 0, spanGaps: true };
                   }),
                 },
-                options: { scales: { y: yAxis }, plugins: { tooltip: tooltip } },
+                options: { scales: { y: pctAxis(range) }, plugins: { tooltip: pctTooltip(fmt) } },
               });
             });
+          };
+          var cell = function (tr, text) {
+            var td = document.createElement("td");
+            td.textContent = text;
+            tr.appendChild(td);
           };
 
           var data = window.BENCHMARK_DATA;
@@ -132,6 +175,12 @@
           newest.appendChild(document.createTextNode(", " + last.date.toISOString().slice(0, 10) + ", " + last.benches + " benches. " + last.message));
 
           var latest = document.getElementById("latest");
+          var latestValues = [];
+          Object.keys(last.groups).forEach(function (name) {
+            var g = last.groups[name];
+            g.impls.forEach(function (impl) { g.params.forEach(function (p) { latestValues.push(g.value[impl][p]); }); });
+          });
+          var latestRange = decadeRange(latestValues);
           Object.keys(last.groups).forEach(function (name) {
             var g = last.groups[name];
             var byParam = g.params.length > 1 || g.params[0] !== "";
@@ -151,7 +200,7 @@
                              data: g.params.map(function (p) { var v = g.value[impl][p]; return v === undefined ? null : v; }) };
                   }),
                 },
-                options: { scales: { y: logNs("ns/iter, log") }, plugins: { tooltip: nsTooltip } },
+                options: { scales: { y: logAxis("ns/iter, log", latestRange, formatNs) }, plugins: { tooltip: nsTooltip } },
               };
             } else {
               config = {
@@ -161,16 +210,35 @@
                   datasets: [{ label: "ns/iter", data: g.impls.map(function (impl) { return g.value[impl][""]; }),
                                backgroundColor: g.impls.map(colourFor) }],
                 },
-                options: { scales: { y: logNs("ns/iter, log") }, plugins: { legend: { display: false }, tooltip: nsTooltip } },
+                options: { scales: { y: logAxis("ns/iter, log", latestRange, formatNs) }, plugins: { legend: { display: false }, tooltip: nsTooltip } },
               };
             }
             chart(latest, name, config);
           });
 
-          lines(document.getElementById("ratio"), ratioSeries(rs), "ratio",
-                { type: "logarithmic", title: { display: true, text: "hakmem / best incumbent, log" } },
-                { callbacks: { label: function (c) { return c.dataset.label + ": " + c.parsed.y.toFixed(3); } } });
-          lines(document.getElementById("ours"), oursSeries(rs), "ns", logNs("ns/iter, log"), nsTooltip);
+          var ratios = ratioSeries(rs);
+          var relRatios = relativeSeries(ratios, "ratio");
+          var relOurs = relativeSeries(oursSeries(rs), "ns");
+          var range = percentRange(pctValues(relRatios).concat(pctValues(relOurs)));
+          histories(document.getElementById("ratio"), relRatios, range, function (v) { return v.toFixed(3); });
+          histories(document.getElementById("ours"), relOurs, range, formatNs);
+
+          var sides = currentImpls(rs);
+          var rbody = document.querySelector("#ratios tbody");
+          Object.keys(ratios).forEach(function (name) {
+            var g = last.groups[name];
+            var newestRatio = ratios[name].points[ratios[name].points.length - 1].ratio;
+            g.params.forEach(function (p) {
+              if (newestRatio[p] === undefined) return;
+              var tr = document.createElement("tr");
+              cell(tr, name);
+              cell(tr, p || "-");
+              cell(tr, newestRatio[p].toFixed(3));
+              cell(tr, formatNs(minOver(g.value, sides[name].ours, p)));
+              cell(tr, formatNs(minOver(g.value, sides[name].theirs, p)));
+              rbody.appendChild(tr);
+            });
+          });
 
           var tbody = document.querySelector("#runs tbody");
           rs.slice().reverse().forEach(function (r) {
@@ -182,10 +250,10 @@
             td.appendChild(a);
             tr.appendChild(td);
             [r.date.toISOString().slice(0, 10), String(r.benches), r.message].forEach(function (text, i) {
-              var cell = document.createElement("td");
-              if (i === 2) cell.className = "msg";
-              cell.textContent = text;
-              tr.appendChild(cell);
+              var c = document.createElement("td");
+              if (i === 2) c.className = "msg";
+              c.textContent = text;
+              tr.appendChild(c);
             });
             tbody.appendChild(tr);
           });
