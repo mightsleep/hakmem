@@ -4,20 +4,26 @@ on:
     branches: [main]
   pull_request:
 
-# The matrix lives in the flake: `plan` reads the check names, `check` expands them.
+# The matrix lives in the flake: `plan` reads the check names and asks the
+# binary cache which outputs already exist, `check` builds only the rest
+# (.github/plan.sh). A cell whose output is in the cache passed by
+# construction; `status` records it as such.
 jobs:
   plan:
     runs-on: ubuntu-24.04-arm
     outputs:
       checks: ${{ steps.plan.outputs.checks }}
+      cached: ${{ steps.plan.outputs.cached }}
     steps:
       - uses: actions/checkout@v7
       - uses: DeterminateSystems/nix-installer-action@v23
       - id: plan
-        run: echo "checks=$(nix eval --json .#checks.aarch64-linux --apply builtins.attrNames)" >> "$GITHUB_OUTPUT"
+        run: .github/plan.sh aarch64-linux
 
   check:
     needs: plan
+    # GitHub rejects an empty matrix; nothing to build is a valid plan.
+    if: needs.plan.outputs.checks != '[]'
     name: ${{ matrix.check }}
     runs-on: ubuntu-24.04-arm
     strategy:
@@ -47,3 +53,4 @@ jobs:
       - uses: ./.github/actions/status
         with:
           system: aarch64-linux
+          cached: ${{ needs.plan.outputs.cached }}

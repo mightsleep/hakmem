@@ -99,7 +99,9 @@
       <h2>Checks on <code>main</code></h2>
       <p>Every cell is one Nix derivation built in a sandbox without network;
          the matrix lives in <code>nix/matrix.nix</code> and the workflow reads
-         it at run time. CI writes each result here after every push
+         it at run time. Only cells whose output is not yet in the binary
+         cache are built; a cell in the cache passed by construction. CI
+         writes each result here after every push
          (<code>.github/status.sh</code>). Benchmarks are tracked over time,
          never pass/fail.</p>
       <table>

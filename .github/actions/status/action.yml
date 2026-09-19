@@ -7,6 +7,10 @@ inputs:
   system:
     description: Nix system of the matrix this run built (x86_64-linux, aarch64-linux).
     required: true
+  cached:
+    description: JSON array of checks the plan skipped as cache hits (recorded as pass).
+    required: false
+    default: "[]"
 runs:
   using: composite
   steps:
@@ -19,7 +23,11 @@ runs:
         GH_TOKEN: ${{ github.token }}
       run: gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
     - shell: bash
-      run: .github/status.sh "${{ inputs.system }}" jobs.json site/status
+      env:
+        CACHED: ${{ inputs.cached }}
+      run: |
+        printf '%s' "$CACHED" > cached.json
+        .github/status.sh "${{ inputs.system }}" jobs.json site/status cached.json
     - shell: bash
       working-directory: site
       run: |

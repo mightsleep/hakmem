@@ -206,7 +206,10 @@ CI builds the same matrix as data (`nix/matrix.nix`): hardware path ×
 feature flag, tests and doctests and clippy per cell, rustdoc with
 warnings as errors, the MSRV build from the `cargo package` tarball,
 licence and advisory checks offline. Every cell is a Nix derivation
-without network access.
+without network access, and only the cells whose output is not yet in
+the binary cache are built: the output path is a function of the inputs
+and is known before building, and a path exists in the cache only if
+that derivation was built and passed (`.github/plan.sh`).
 
 ## 7. Deliberately out
 

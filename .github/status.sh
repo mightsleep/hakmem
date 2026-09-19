@@ -2,17 +2,21 @@
 # The result of every job of one CI run as shields.io endpoint JSON, one
 # file per job plus all.json for the run, under <outdir>/<system>/.
 #
-#   status.sh <system> <jobs.json> <outdir>
+#   status.sh <system> <jobs.json> <outdir> [cached.json]
 #
 # jobs.json is the /repos/{repo}/actions/runs/{id}/jobs response; a job's
 # name is its check name (the workflows set `name: ${{ matrix.check }}`).
-# `plan` and `status` are bookkeeping, not checks, and are left out.
+# `plan` and `status` are bookkeeping, not checks, and are left out. The
+# optional cached.json is the plan's `cached` array: cells it skipped because
+# their output was already in the binary cache, which only a passing build
+# produces, so they are written as pass.
 # Colours are Catppuccin Mocha: green pass, red fail, overlay0 otherwise.
 set -euo pipefail
 
 system=$1
 jobs=$2
 out=$3/$system
+cached=${4:-}
 mkdir -p "$out"
 
 badge() {
@@ -24,16 +28,24 @@ badge() {
   esac
 }
 
+write() {
+  jq -n --arg l "$1" --arg m "$2" --arg c "$3" \
+    '{schemaVersion: 1, label: $l, message: $m, color: $c, labelColor: "313244"}' \
+    > "$out/$4.json"
+}
+
 overall=success
 while IFS=$'\t' read -r name conclusion; do
   read -r message colour < <(badge "$conclusion")
-  jq -n --arg m "$message" --arg c "$colour" \
-    '{schemaVersion: 1, label: "", message: $m, color: $c, labelColor: "313244"}' \
-    > "$out/$name.json"
+  write "" "$message" "$colour" "$name"
   [ "$conclusion" = success ] || overall=failure
 done < <(jq -r '.jobs[] | select(.name != "plan" and .name != "status") | [.name, (.conclusion // "unknown")] | @tsv' "$jobs")
 
+if [ -n "$cached" ]; then
+  while IFS= read -r name; do
+    write "" pass a6e3a1 "$name"
+  done < <(jq -r '.[]' "$cached")
+fi
+
 read -r message colour < <(badge "$overall")
-jq -n --arg l "${system%%-*}" --arg m "$message" --arg c "$colour" \
-  '{schemaVersion: 1, label: $l, message: $m, color: $c, labelColor: "313244"}' \
-  > "$out/all.json"
+write "${system%%-*}" "$message" "$colour" all
