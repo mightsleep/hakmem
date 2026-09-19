@@ -130,19 +130,6 @@ fn bench_edit_distance(c: &mut Criterion) {
                 b.iter(|| triple_accel::levenshtein_exp(black_box(p), black_box(t)));
             },
         );
-        // Their design point: a small edit bound k lets the SIMD band skip
-        // most cells. hakmem computes the full distance either way.
-        for k in [4u32, 32] {
-            group.bench_with_input(
-                BenchmarkId::new(format!("triple_accel_simd_k{k}"), &id),
-                &(&p, &t),
-                |b, (p, t)| {
-                    b.iter(|| {
-                        triple_accel::levenshtein::levenshtein_simd_k(black_box(p), black_box(t), k)
-                    });
-                },
-            );
-        }
         group.bench_with_input(BenchmarkId::new("strsim", &id), &(&ps, &ts), |b, (p, t)| {
             b.iter(|| strsim::levenshtein(black_box(p), black_box(t)));
         });
@@ -197,7 +184,9 @@ fn bench_similar_strings(c: &mut Criterion) {
             },
         );
         group.bench_with_input(
-            BenchmarkId::new(format!("triple_accel_simd_k{k}"), &id),
+            // k is not a free choice: twice the edits, one per size, so the id
+            // carries no k; the README names the column the same way.
+            BenchmarkId::new("triple_accel_simd_k", &id),
             &(&a, &b),
             |bb, (a, b)| {
                 bb.iter(|| {

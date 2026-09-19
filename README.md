@@ -139,11 +139,18 @@ on every push to `main`. The badges are written by CI after each run
 
 ## Benchmarks against the crates people use
 
-Criterion, AMD Zen 5, one thread, `cargo bench -p hakmem --bench
+Criterion, AMD Zen 5, one thread, `cargo bench --bench
 incumbents`. Numbers are from a sandboxed run; rerun on your machine
 before believing them. What the table does not hide: without BMI2 the
 select is slower than the `broadword` crate's, and `Wide<N>` pays `N`
 limb operations per step.
+
+The same benches run in CI on a shared GitHub runner after every change
+to `src/`, `benches/` or the Cargo files, and the
+[benchmarks page](https://mightsleep.github.io/hakmem/dev/bench/) keeps
+every run. Absolute times there move with the runner; the ratio to the
+best incumbent inside one run does not, and that ratio is what the page
+tracks.
 
 | select in a `u64` (1024 words) | portable | `+bmi2` |
 |---|---|---|
@@ -173,8 +180,9 @@ Longer patterns use `Wide<N>` (`N × 64` bits as one word): each step
 then costs `N` limb operations, still well below per-cell DP.
 
 `triple_accel`'s own design point is two strings of similar length that
-differ in a few edits, with a known bound `k` (`levenshtein_simd_k`).
-There it catches up and, past a couple of words, wins:
+differ in a few edits, with a known bound `k` (`levenshtein_simd_k`;
+below, `k` is twice the edits). There it catches up and, past a couple
+of words, wins:
 
 | same length, few edits | `hakmem` | `triple_accel_simd_k` | `triple_accel_exp` | `strsim` |
 |---|---|---|---|---|

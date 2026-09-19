@@ -46,10 +46,14 @@ jobs:
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix build -L .#checks.x86_64-linux.hakmem-doc -o doc-result
       - run: nix build -L .#site-index -o index-result
+      - run: nix build -L .#bench-index -o bench-index-result
       - run: |
-          mkdir -p site
+          mkdir -p site/dev/bench
           cp -r doc-result/share/doc site/doc
           cp index-result site/index.html
+          # Replaces the default page of github-action-benchmark and ships
+          # Chart.js next to it; data.js stays.
+          cp -r bench-index-result/. site/dev/bench/
       - uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -67,7 +71,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
       - uses: dtolnay/rust-toolchain@stable
-      - run: cargo bench --bench incumbents --bench select -- --output-format bencher | tee bench.txt
+      # Two seconds per bench: run-to-run noise on one runner type is a few
+      # percent, five seconds bought nothing but fourteen-minute jobs.
+      - run: cargo bench --bench incumbents --bench select -- --output-format bencher --warm-up-time 1 --measurement-time 2 | tee bench.txt
         env:
           RUSTFLAGS: -C target-cpu=native
       - uses: benchmark-action/github-action-benchmark@v1

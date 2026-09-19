@@ -27,6 +27,13 @@
       url = "github:rustsec/advisory-db";
       flake = false;
     };
+    # Chart.js for the bench page (nix/bench.nix), served from gh-pages next
+    # to it. `@4` is a jsdelivr semver range, so the same weekly PR bumps it
+    # to the newest 4.x and the lock pins the bytes.
+    chartjs = {
+      url = "file+https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.js";
+      flake = false;
+    };
   };
 
   outputs = inputs @ {flake-parts, ...}:

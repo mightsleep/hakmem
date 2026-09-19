@@ -18,5 +18,10 @@ jobs:
       - uses: DeterminateSystems/nix-installer-action@v23
       - uses: DeterminateSystems/update-flake-lock@v29
         with:
+          # A PR opened with the default GITHUB_TOKEN triggers no workflows, so
+          # CI would never run on it. FLAKE_LOCK_TOKEN is a fine-grained PAT
+          # (contents + pull requests, this repo only); until it exists the
+          # default token still opens the PR, just without CI.
+          token: ${{ secrets.FLAKE_LOCK_TOKEN || github.token }}
           pr-title: "flake.lock: weekly update"
           pr-labels: dependencies

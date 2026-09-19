@@ -16,6 +16,18 @@
         "type": "github"
       }
     },
+    "chartjs": {
+      "flake": false,
+      "locked": {
+        "narHash": "sha256-JkYBGLJjk9897I7t9pKLoyyVkJ2WZCY5y+R9pMSSHEA=",
+        "type": "file",
+        "url": "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.js"
+      },
+      "original": {
+        "type": "file",
+        "url": "https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.js"
+      }
+    },
     "crane": {
       "locked": {
         "lastModified": 1788465171,
@@ -106,6 +118,7 @@
     "root": {
       "inputs": {
         "advisory-db": "advisory-db",
+        "chartjs": "chartjs",
         "crane": "crane",
         "fenix": "fenix",
         "flake-parts": "flake-parts",

@@ -1,8 +1,8 @@
 # gh-pages front page: the check matrix of `main` read live from the
 # status JSON that CI writes (status/<system>/<check>.json, see
-# .github/status.sh), links to rustdoc and the bench trend. Catppuccin
-# Latte by default, Mocha for a dark colour scheme. Built in the pages
-# workflow from the current matrix; not kept in the repository.
+# .github/status.sh), links to rustdoc and the bench trend. Palette and
+# base styles come from _palette.nix. Built in the pages workflow from the
+# current matrix; not kept in the repository.
 {lib, ...}: {
   perSystem = {
     config,
@@ -48,36 +48,7 @@
       <meta name="viewport" content="width=device-width, initial-scale=1">
       <title>hakmem</title>
       <style>
-        :root {
-          --base: #eff1f5; --mantle: #e6e9ef; --crust: #dce0e8;
-          --surface0: #ccd0da; --surface1: #bcc0cc;
-          --text: #4c4f69; --subtext0: #6c6f85; --overlay0: #9ca0b0;
-          --blue: #1e66f5; --green: #40a02b; --red: #d20f39; --yellow: #df8e1d;
-          --mauve: #8839ef; --lavender: #7287fd;
-        }
-        @media (prefers-color-scheme: dark) {
-          :root {
-            --base: #1e1e2e; --mantle: #181825; --crust: #11111b;
-            --surface0: #313244; --surface1: #45475a;
-            --text: #cdd6f4; --subtext0: #a6adc8; --overlay0: #6c7086;
-            --blue: #89b4fa; --green: #a6e3a1; --red: #f38ba8; --yellow: #f9e2af;
-            --mauve: #cba6f7; --lavender: #b4befe;
-          }
-        }
-        html { background: var(--base); color: var(--text); }
-        body { font: 16px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1rem; }
-        h1 { font-size: 2rem; margin: 0; }
-        h1 + p { color: var(--subtext0); margin-top: 0.25rem; }
-        h2 { font-size: 1.25rem; margin-top: 2.5rem; }
-        a { color: var(--blue); text-decoration: none; }
-        a:hover { text-decoration: underline; }
-        nav a + a::before { content: "·"; color: var(--overlay0); margin: 0 0.6rem; }
-        code { font-family: ui-monospace, monospace; font-size: 0.85em; color: var(--mauve); }
-        table { border-collapse: collapse; width: 100%; background: var(--mantle); border-radius: 0.5rem; overflow: hidden; }
-        th, td { padding: 0.5rem 0.9rem; text-align: left; border-top: 1px solid var(--surface0); }
-        thead th { background: var(--surface0); border-top: 0; font-weight: 600; }
-        th[scope=row] { font-weight: 400; }
-        th[scope=row] code { color: var(--subtext0); }
+      ${import ./_palette.nix}
         td[data-check] { white-space: nowrap; font-family: ui-monospace, monospace; font-size: 0.85em; }
         .dot { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; background: var(--surface1); margin-right: 0.5em; vertical-align: -0.05em; }
         .pass .dot { background: var(--green); }
@@ -85,7 +56,6 @@
         .other .dot { background: var(--yellow); }
         .na { color: var(--overlay0); }
         .na .dot { background: transparent; border: 1px solid var(--surface1); }
-        footer { margin-top: 3rem; color: var(--subtext0); font-size: 0.9rem; border-top: 1px solid var(--surface0); padding-top: 1rem; }
       </style>
       <h1>hakmem</h1>
       <p>Bit tricks as a lawful algebra. A learning project; the README's Status section says what to expect.</p>
