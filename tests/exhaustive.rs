@@ -440,3 +440,116 @@ fn u8x8_lanes_all_byte_pairs() {
         }
     }
 }
+
+/// Two's-complement overflow from three sign bits, against the
+/// standard library's checked arithmetic on the signed twin: every
+/// pair of bytes, and every `u16` against the structured masks.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn signed_overflow_matches_checked_arithmetic() {
+    for a in u8::MIN..=u8::MAX {
+        for b in u8::MIN..=u8::MAX {
+            let (x, y) = (a.cast_signed(), b.cast_signed());
+            assert_eq!(
+                a.signed_add_overflows(b),
+                x.checked_add(y).is_none(),
+                "a={a} b={b}"
+            );
+            assert_eq!(
+                a.signed_sub_overflows(b),
+                x.checked_sub(y).is_none(),
+                "a={a} b={b}"
+            );
+            assert!(laws::signed_overflow_matches_sign_test(a, b), "a={a} b={b}");
+        }
+    }
+    let masks = masks16();
+    for a in u16::MIN..=u16::MAX {
+        for &b in &masks {
+            let (x, y) = (a.cast_signed(), b.cast_signed());
+            assert_eq!(
+                a.signed_add_overflows(b),
+                x.checked_add(y).is_none(),
+                "a={a} b={b}"
+            );
+            assert_eq!(
+                a.signed_sub_overflows(b),
+                x.checked_sub(y).is_none(),
+                "a={a} b={b}"
+            );
+        }
+    }
+}
+
+/// Every truth table on every pair of bytes, with a third operand from
+/// a small structured set; and the named functions on all pairs.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8_ternary_all_tables_all_pairs() {
+    for table in u8::MIN..=u8::MAX {
+        for a in u8::MIN..=u8::MAX {
+            for b in u8::MIN..=u8::MAX {
+                for c in [0x00, 0xFF, 0x0F, 0xF0, 0x55, 0xAA, a ^ b, a.wrapping_add(b)] {
+                    assert!(
+                        laws::ternary_is_truth_table(a, b, c, table),
+                        "a={a} b={b} c={c} table={table:#04x}"
+                    );
+                }
+            }
+        }
+    }
+    for a in u8::MIN..=u8::MAX {
+        for b in u8::MIN..=u8::MAX {
+            assert!(laws::truth_table_names_the_function(
+                a,
+                b,
+                a.wrapping_mul(b)
+            ));
+        }
+    }
+}
+
+/// The GF(2) affine maps: the named ones on every byte and shift
+/// count, and a spread of random maps on every byte, alone, composed,
+/// and as lanes of the SWAR carrier.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn affine_all_bytes() {
+    use hakmem::affine::Affine8;
+    let mut maps = vec![
+        Affine8::IDENTITY,
+        Affine8::NOT,
+        Affine8::ZERO,
+        Affine8::REVERSE,
+        Affine8::PARITY,
+    ];
+    for n in 0..9 {
+        maps.extend([
+            Affine8::shl(n),
+            Affine8::shr(n),
+            Affine8::sra(n),
+            Affine8::rotl(n),
+        ]);
+    }
+    let mut s: u64 = 0x9E37_79B9_7F4A_7C15;
+    for _ in 0..64 {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        // The low byte is as random as any.
+        #[allow(clippy::cast_possible_truncation)]
+        maps.push(Affine8::new(s, s as u8));
+    }
+    for x in u8::MIN..=u8::MAX {
+        for n in 0..12 {
+            assert!(laws::affine_named_maps_match_ops(x, n), "x={x} n={n}");
+        }
+        let word = (u64::from(x) * 0x0101_0101_0101_0101) ^ 0xF0E1_D2C3_B4A5_9687;
+        for &a in &maps {
+            assert!(laws::affine_matches_reference(a, word), "x={x} a={a:?}");
+            for &b in &maps {
+                assert!(laws::affine_composes(a, b, x), "x={x} a={a:?} b={b:?}");
+            }
+        }
+    }
+}

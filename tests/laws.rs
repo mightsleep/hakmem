@@ -226,6 +226,19 @@ macro_rules! laws_for {
                 fn morton_aligned_block_is_contiguous(x in $strategy, y in $strategy) {
                     prop_assert!(laws::morton_aligned_block_is_contiguous(x, y));
                 }
+                // ternary and sign bits
+                #[test]
+                fn ternary_is_truth_table(a in $strategy, b in $strategy, c in $strategy, t in any::<u8>()) {
+                    prop_assert!(laws::ternary_is_truth_table(a, b, c, t));
+                }
+                #[test]
+                fn truth_table_names_the_function(a in $strategy, b in $strategy, c in $strategy) {
+                    prop_assert!(laws::truth_table_names_the_function(a, b, c));
+                }
+                #[test]
+                fn signed_overflow_matches_sign_test(a in $strategy, b in $strategy) {
+                    prop_assert!(laws::signed_overflow_matches_sign_test(a, b));
+                }
             }
         }
     };
@@ -386,6 +399,7 @@ mod board8 {
 // against its two SWAR halves (which on x86 with SSSE3 and on aarch64
 // pits the vector instructions against the scalar definitions).
 mod lanes {
+    use hakmem::affine::Affine8;
     use hakmem::lanes::{Lanes, U8x8, U8x16};
     use hakmem::laws;
     use proptest::prelude::*;
@@ -415,6 +429,21 @@ mod lanes {
         #[test]
         fn u8x16_agrees_with_halves(a in any::<(u64, u64)>(), b in any::<(u64, u64)>(), n in 0u32..10, t in any::<[u8; 16]>()) {
             prop_assert!(laws::u8x16_agrees_with_halves(a, b, n, t));
+        }
+
+        #[test]
+        fn affine_matches_reference(m in any::<u64>(), add in any::<u8>(), w in any::<u64>()) {
+            prop_assert!(laws::affine_matches_reference(Affine8::new(m, add), w));
+        }
+
+        #[test]
+        fn affine_composes(a in any::<(u64, u8)>(), b in any::<(u64, u8)>(), x in any::<u8>()) {
+            prop_assert!(laws::affine_composes(Affine8::new(a.0, a.1), Affine8::new(b.0, b.1), x));
+        }
+
+        #[test]
+        fn affine_named_maps_match_ops(x in any::<u8>(), n in 0u32..12) {
+            prop_assert!(laws::affine_named_maps_match_ops(x, n));
         }
     }
 }

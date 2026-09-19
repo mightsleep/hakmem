@@ -34,8 +34,8 @@ in {
       };
       msrvVersion = lib.mkOption {
         type = t.str;
-        default = "1.87.0";
-        description = "hakmem's MSRV (edition 2024 needs 1.85, cast_signed 1.87). Must match rust-version in Cargo.toml.";
+        default = "1.89.0";
+        description = "hakmem's MSRV (edition 2024 needs 1.85, cast_signed 1.87, the GFNI intrinsics 1.89). Must match rust-version in Cargo.toml.";
       };
       craneLib = lib.mkOption {
         type = t.raw;
@@ -60,7 +60,7 @@ in {
       msrv =
         (fenixPkgs.toolchainOf {
           channel = config.rust.msrvVersion;
-          sha256 = "sha256-KUm16pHj+cRedf8vxs/Hd2YWxpOrWZ7UOrwhILdSJBU=";
+          sha256 = "sha256-+9FmLhAOezBZCOziO0Qct1NOrfpjNsXxc/8I0c7BdKE=";
         })
         .minimalToolchain;
       craneLib = (inputs.crane.mkLib pkgs).overrideToolchain (_: config.rust.nightly);

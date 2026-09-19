@@ -6,6 +6,7 @@
 #[cfg(feature = "alloc")]
 extern crate alloc;
 
+pub mod affine;
 pub mod bits;
 pub mod cookbook;
 pub mod dilated;

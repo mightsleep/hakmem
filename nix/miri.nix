@@ -1,7 +1,7 @@
 # Miri over the unsafe modules (BMI2 / PCLMULQDQ intrinsics in word.rs,
-# SSSE3 in lanes.rs). Not a `check`: `cargo miri setup` builds a sysroot from
-# rust-src and fetches crates, which the Nix sandbox without network cannot
-# do. Runs as an app outside the sandbox.
+# SSSE3 and GFNI in lanes.rs). Not a `check`: `cargo miri setup` builds a
+# sysroot from rust-src and fetches crates, which the Nix sandbox without
+# network cannot do. Runs as an app outside the sandbox.
 #
 # Miri interprets MIR, about 100× slower than a debug build. The laws
 # against the reference loops over u128 / Wide<N> would take tens of
@@ -16,7 +16,7 @@
   }: {
     apps.miri-hakmem = {
       type = "app";
-      meta.description = "Miri over hakmem's unsafe module (both hardware paths), outside the sandbox";
+      meta.description = "Miri over hakmem's unsafe modules (every hardware path), outside the sandbox";
       program = pkgs.lib.getExe (pkgs.writeShellApplication {
         name = "miri-hakmem";
         # stdenv.cc: the Miri sysroot links the std/libc build scripts natively.
@@ -32,9 +32,12 @@
             RUSTFLAGS="$1" cargo miri test --test miri
           }
           # Portable paths first, then the intrinsics; Miri has shims for
-          # BMI2, PCLMULQDQ and SSSE3.
+          # BMI2, PCLMULQDQ, SSSE3 and GFNI. The GFNI cell is Miri-only: the
+          # GitHub runners are a mix of Zen 3 (no GFNI) and Ice Lake, so a
+          # native cell would SIGILL at random; the interpreter does not care.
           run ""
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3"
+          run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+gfni"
         '';
       });
     };

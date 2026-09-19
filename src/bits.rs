@@ -428,6 +428,81 @@ pub trait Bits: Word {
         self.xor(self.xor(other).and(mask))
     }
 
+    /// Any Boolean function of three words, bit by bit, from its 8-bit
+    /// truth table: bit `4 a + 2 b + c` of `table` is the result for
+    /// input bits `a` (from `self`), `b`, `c`. This is VPTERNLOG's
+    /// contract; the table of a function `f` is `f(0xF0, 0xCC, 0xAA)`
+    /// ([`truth_table`]). Provided as a Shannon expansion, at most ten
+    /// operations, which a compiler with AVX-512 folds back into the
+    /// instruction.
+    ///
+    /// ```
+    /// use hakmem::bits::truth_table;
+    /// use hakmem::prelude::*;
+    ///
+    /// let majority = |a: u8, b: u8, c: u8| (a & b) | (a & c) | (b & c);
+    /// assert_eq!(truth_table(majority), 0xE8);
+    /// assert_eq!(0b1100u32.ternary(0b1010, 0b0110, 0xE8), 0b1110);
+    /// ```
+    #[inline]
+    #[must_use]
+    fn ternary(self, b: Self, c: Self, table: u8) -> Self {
+        let leaf = |t: u8| match t & 3 {
+            0 => Self::ZERO,
+            1 => c.not(),
+            2 => c,
+            _ => Self::ONES,
+        };
+        let on_b = |t: u8| b.and(leaf(t >> 2)).or(b.not().and(leaf(t)));
+        self.and(on_b(table >> 4)).or(self.not().and(on_b(table)))
+    }
+
+    /// Overflow of `self + other` read as two's complement, from the
+    /// sign bits alone (Hacker's Delight 2-13): the operands agree in
+    /// sign and the sum does not, so `!(x ^ y) & (x ^ (x + y))` has its
+    /// top bit set. The carrier being unsigned does not matter; the test
+    /// reads three bits. As a function of `(x, y, x + y)` its truth
+    /// table is `0x42`: one VPTERNLOG for a register of lanes.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// assert!(100u8.signed_add_overflows(100));
+    /// assert!(!100u8.signed_add_overflows(27));
+    /// for a in 0..=255u8 {
+    ///     for b in [0, 1, 0x7F, 0x80, 0xFF] {
+    ///         let checked = (a as i8).checked_add(b as i8).is_none();
+    ///         assert_eq!(a.signed_add_overflows(b), checked);
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    #[must_use]
+    fn signed_add_overflows(self, other: Self) -> bool {
+        self.xor(other)
+            .not()
+            .and(self.xor(self.wrapping_add(other)))
+            .bit(Self::BITS - 1)
+    }
+
+    /// Overflow of `self − other` read as two's complement: the operands
+    /// differ in sign and the difference disagrees with `self`, so
+    /// `(x ^ y) & (x ^ (x − y))` has its top bit set; truth table `0x18`.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// assert!(0x80u8.signed_sub_overflows(1)); // -128 - 1
+    /// assert!(!0x80u8.signed_sub_overflows(0xFF)); // -128 - (-1)
+    /// ```
+    #[inline]
+    #[must_use]
+    fn signed_sub_overflows(self, other: Self) -> bool {
+        self.xor(other)
+            .and(self.xor(self.wrapping_sub(other)))
+            .bit(Self::BITS - 1)
+    }
+
     /// Gosper's hack (HAKMEM 175): the next larger integer with the
     /// same number of set bits, or `None` when there is none in the
     /// word (or `self` is zero). Iterating from `low_ones(k)`
@@ -659,3 +734,23 @@ pub trait Bits: Word {
 }
 
 impl<W: Word> Bits for W {}
+
+/// The truth table of a Boolean function of three words: `f(0xF0, 0xCC, 0xAA)`.
+///
+/// This is the immediate VPTERNLOG and [`Bits::ternary`] take. Bit `k` of
+/// those three bytes is bit 2, 1 and 0 of `k`, so across their eight bit
+/// positions they enumerate the eight input combinations, and the
+/// function evaluated once on them is its own table.
+///
+/// ```
+/// use hakmem::bits::truth_table;
+///
+/// assert_eq!(truth_table(|a, b, c| (a & b) | (a & c) | (b & c)), 0xE8);
+/// assert_eq!(truth_table(|a, b, s| !(a ^ b) & (a ^ s)), 0x42); // signed add overflows
+/// assert_eq!(truth_table(|a, b, d| (a ^ b) & (a ^ d)), 0x18); // signed sub overflows
+/// ```
+#[inline]
+#[must_use]
+pub fn truth_table(f: impl Fn(u8, u8, u8) -> u8) -> u8 {
+    f(0xF0, 0xCC, 0xAA)
+}

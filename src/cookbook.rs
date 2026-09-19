@@ -263,3 +263,119 @@
 //! `None`-agreement with the DP when it is small. Both are one
 //! proptest each against `tests/myers.rs`'s reference. Do that and you
 //! have your microkernel; it will be shorter than this paragraph.
+//!
+//! # 8. Every byte map is one instruction, or two lookups
+//!
+//! **Problem.** Shift, rotate or reverse the bits of every byte in a
+//! register. SSE has no 8-bit shift at all; NEON has the shifts and
+//! `rbit` but no rotate; and a kernel usually wants three of these in
+//! a row.
+//!
+//! **Decomposition.** Each of those is XOR-linear in the bits of the
+//! byte, so each is an 8×8 matrix over GF(2), an
+//! [`Affine8`](crate::affine::Affine8); NOT adds a constant. GFNI's
+//! `gf2p8affineqb` applies one to sixteen bytes in one instruction,
+//! and matrix multiplication ([`then`](crate::affine::Affine8::then))
+//! composes them, so a chain of byte tricks is one constant and one
+//! instruction. Without GFNI, linearity gives `A·x = A·hi ⊕ A·lo`: two
+//! nibble lookups ([`lut16`](crate::lanes::Lanes::lut16)) and an XOR,
+//! the tables folded at compile time. The named maps are the identity
+//! matrix moved: a left shift by `n` is the identity shifted right by
+//! `8 n` bits, the arithmetic shift adds `0x80` rows for the vacated
+//! bits, the reversal reverses the rows (Wunkolo, 2020).
+//!
+//! ```
+//! use hakmem::affine::Affine8;
+//! use hakmem::lanes::{Lanes, U8x16};
+//!
+//! let x = U8x16::load(b"0123456789abcdef");
+//! // Reverse the bits, then shift left by one, as one map.
+//! let map = Affine8::REVERSE.then(Affine8::shl(1));
+//! assert_eq!(x.affine(map), x.reverse_bits().shl(1));
+//! // The matrices are the ones in Wunkolo's posts.
+//! assert_eq!(Affine8::shl(1).matrix(), 0x0001_0204_0810_2040);
+//! assert_eq!(Affine8::sra(2).matrix(), 0x0408_1020_4080_8080);
+//! ```
+//!
+//! **Laws.** `affine_matches_reference` (the scalar, the SWAR word,
+//! the nibble tables and the lanes against the bit-by-bit definition),
+//! `affine_composes` (`then` is `apply` after `apply`; the identity is
+//! neutral), `affine_named_maps_match_ops` (each named map is the `u8`
+//! operation, for every shift count), `lane_maps_match_reference`.
+//!
+//! **Cost.** One instruction with GFNI (latency 3, one every other
+//! cycle on Ice Lake, per uops.info); five without (two PSHUFB, a
+//! shift, an AND, an XOR); on the SWAR carrier eight rounds of seven
+//! operations.
+//!
+//! # 9. The truth table is the function at `(0xF0, 0xCC, 0xAA)`
+//!
+//! **Problem.** VPTERNLOG computes any Boolean function of three
+//! registers from an 8-bit immediate. Which immediate? And the
+//! question it is usually asked for: signed saturation on lanes that
+//! have no signed saturating add.
+//!
+//! **Decomposition.** Bit `k` of `0xF0`, `0xCC`, `0xAA` is bit 2, 1, 0
+//! of `k`, so across their bit positions the three bytes enumerate
+//! the eight inputs; the function evaluated once on them is its table
+//! ([`truth_table`](crate::bits::truth_table)), and
+//! [`ternary`](crate::Bits::ternary) reads the table back. Signed
+//! overflow needs only sign bits (Hacker's Delight 2-13): the operands
+//! agree and the sum disagrees, `!(x ^ y) & (x ^ s)`. Its table is
+//! `0x42`; the subtraction's, `(x ^ y) & (x ^ d)`, is `0x18`. Those are
+//! the immediates in Wunkolo's saturation kernel, derived instead of
+//! looked up. [`signed_add_overflows`](crate::Bits::signed_add_overflows)
+//! is the scalar form.
+//!
+//! ```
+//! use hakmem::Bits;
+//! use hakmem::bits::truth_table;
+//!
+//! assert_eq!(truth_table(|a, b, s| !(a ^ b) & (a ^ s)), 0x42);
+//! assert_eq!(truth_table(|a, b, d| (a ^ b) & (a ^ d)), 0x18);
+//! let (a, b) = (100u8, 100u8);
+//! let sum = a.wrapping_add(b);
+//! assert_eq!(
+//!     a.ternary(b, sum, 0x42) & 0x80 != 0,
+//!     a.signed_add_overflows(b)
+//! );
+//! assert!(a.signed_add_overflows(b)); // 100 + 100 does not fit an i8
+//! ```
+//!
+//! **Laws.** `ternary_is_truth_table` (against the bit-by-bit reading
+//! of the table), `truth_table_names_the_function` (mux, majority,
+//! XOR3 and the two overflow tests come back as themselves, with
+//! `0x42` and `0x18`), `signed_overflow_matches_sign_test`; and
+//! `i8::checked_add` on every pair of bytes as the outside witness.
+//!
+//! **Cost.** One VPTERNLOG per register with AVX-512; the provided
+//! expansion is at most ten operations, fewer once a constant table
+//! folds.
+//!
+//! # 10. Constants from registers
+//!
+//! **Problem.** `splat(0x80)`, the sign mask, is a load, like every
+//! lane constant. In a loop that is a port and a cache line; and SSE
+//! cannot build `0x80` from all-ones in registers, having no byte
+//! shift.
+//!
+//! **Decomposition.** All-ones is a compare of a register with itself.
+//! The rounding average of `0x00` and `0xFF` is `(0 + 255 + 1) >> 1 =
+//! 0x80` (PAVGB; Wunkolo, 2022), and
+//! [`avg_round`](crate::lanes::Lanes::avg_round) is that instruction,
+//! with Hacker's Delight 2-5 as the definition where there is none:
+//! `(x | y) − ((x ^ y) >> 1)` cannot overflow.
+//!
+//! ```
+//! use hakmem::lanes::{Lanes, U8x16};
+//!
+//! let ones = U8x16::zero().not(); // pcmpeqb x, x
+//! assert_eq!(U8x16::zero().avg_round(ones), U8x16::splat(0x80)); // pavgb
+//! assert_eq!(U8x16::splat(7).avg_round(U8x16::splat(8)), U8x16::splat(8));
+//! assert_eq!(U8x16::splat(7).avg_floor(U8x16::splat(8)), U8x16::splat(7));
+//! ```
+//!
+//! **Laws.** `lane_maps_match_reference`: both averages against 16-bit
+//! arithmetic on every lane, and the sign mask from the average.
+//!
+//! **Cost.** Two instructions, no memory.

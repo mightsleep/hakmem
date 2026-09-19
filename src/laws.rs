@@ -7,6 +7,8 @@
 //! functions over their own types. A law that fails is a bug in the
 //! backend, never a caveat in the docs.
 
+use crate::affine::Affine8;
+use crate::bits::truth_table;
 use crate::lanes::{Lanes, U8x8, U8x16};
 use crate::permute::board8::{self, Dir};
 use crate::prelude::*;
@@ -210,6 +212,7 @@ pub fn morton_aligned_block_is_contiguous<W: Word>(x: W, y: W) -> bool {
 /// Bit-loop reference semantics. Slow, obviously correct, the thing
 /// every combinator is measured against.
 pub mod reference {
+    use crate::affine::Affine8;
     use crate::word::Word;
 
     /// Bit `p` set iff bits `p..p + k` of `x` are all set.
@@ -348,6 +351,34 @@ pub mod reference {
                     out = out.or(W::ONE.shl(i));
                 }
                 k += 1;
+            }
+        }
+        out
+    }
+
+    /// `x ↦ A·x ⊕ b` on one byte, bit by bit: output bit `i` is the XOR
+    /// over `j` of `row_i[j] & x[j]`, then bit `i` of the constant.
+    #[must_use]
+    pub fn affine(map: Affine8, x: u8) -> u8 {
+        let mut out = 0u8;
+        for i in 0..8 {
+            let mut bit = map.add() >> i & 1;
+            for j in 0..8 {
+                bit ^= (map.row(i) >> j & 1) & (x >> j & 1);
+            }
+            out |= bit << i;
+        }
+        out
+    }
+
+    /// Bit `i` of the result is bit `4 a_i + 2 b_i + c_i` of `table`.
+    #[must_use]
+    pub fn ternary<W: Word>(a: W, b: W, c: W, table: u8) -> W {
+        let mut out = W::ZERO;
+        for i in 0..W::BITS {
+            let k = u32::from(a.bit(i)) << 2 | u32::from(b.bit(i)) << 1 | u32::from(c.bit(i));
+            if table >> k & 1 == 1 {
+                out = out.or(W::ONE.shl(i));
             }
         }
         out
@@ -953,6 +984,7 @@ pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) 
         && madd
         && L::splat(0x5A).lane(lanes - 1) == 0x5A
         && L::zero() == L::splat(0)
+        && lane_maps_match_reference(lhs, rhs, n, table)
 }
 
 /// Two table lookups are one: on lanes with the top bit clear,
@@ -993,6 +1025,9 @@ pub fn u8x16_agrees_with_halves(lhs: (u64, u64), rhs: (u64, u64), n: u32, table:
     let (x, y) = (wide(lhs), wide(rhs));
     let ((xl, xh), (yl, yh)) = (narrow(lhs), narrow(rhs));
     let pair = |l: U8x8, h: U8x8| (l.bits(), h.bits());
+    let mut matrix = [0u8; 8];
+    matrix.copy_from_slice(&table[..8]);
+    let map = Affine8::new(u64::from_le_bytes(matrix), table[8]);
     x.and(y).halves() == pair(xl.and(yl), xh.and(yh))
         && x.or(y).halves() == pair(xl.or(yl), xh.or(yh))
         && x.xor(y).halves() == pair(xl.xor(yl), xh.xor(yh))
@@ -1009,6 +1044,148 @@ pub fn u8x16_agrees_with_halves(lhs: (u64, u64), rhs: (u64, u64), n: u32, table:
         && x.sub_sat(y).halves() == pair(xl.sub_sat(yl), xh.sub_sat(yh))
         && x.mul_add_pairs(y).halves() == pair(xl.mul_add_pairs(yl), xh.mul_add_pairs(yh))
         && x.sum_abs_diff(y) == xl.sum_abs_diff(yl) + xh.sum_abs_diff(yh)
+        && x.affine(map).halves() == pair(xl.affine(map), xh.affine(map))
+        && x.reverse_bits().halves() == pair(xl.reverse_bits(), xh.reverse_bits())
+        && x.sra(n).halves() == pair(xl.sra(n), xh.sra(n))
+        && x.rotl(n).halves() == pair(xl.rotl(n), xh.rotl(n))
+        && x.avg_round(y).halves() == pair(xl.avg_round(yl), xh.avg_round(yh))
+        && x.avg_floor(y).halves() == pair(xl.avg_floor(yl), xh.avg_floor(yh))
+        && x.ternary(y, x.not(), table[9]).halves()
+            == pair(
+                xl.ternary(yl, xl.not(), table[9]),
+                xh.ternary(yh, xh.not(), table[9]),
+            )
         && x.lane(3) == xl.lane(3)
         && x.lane(11) == xh.lane(3)
+}
+
+// --- ternary and sign-bit tests ---------------------------------------
+
+/// [`Bits::ternary`] agrees with the bit-by-bit reading of the table.
+#[must_use]
+pub fn ternary_is_truth_table<W: Word>(a: W, b: W, c: W, table: u8) -> bool {
+    a.ternary(b, c, table) == reference::ternary(a, b, c, table)
+}
+
+/// The table of a function is the function at `(0xF0, 0xCC, 0xAA)`.
+///
+/// For a handful of named functions, `ternary` with that table is the
+/// function, and the overflow tests of Hacker's Delight 2-13 come out
+/// as the immediates `0x42` and `0x18`.
+#[must_use]
+pub fn truth_table_names_the_function<W: Word>(a: W, b: W, c: W) -> bool {
+    fn mux<W: Word>(m: W, x: W, y: W) -> W {
+        m.and(x).or(m.not().and(y))
+    }
+    fn majority<W: Word>(a: W, b: W, c: W) -> W {
+        a.and(b).or(a.and(c)).or(b.and(c))
+    }
+    fn xor3<W: Word>(a: W, b: W, c: W) -> W {
+        a.xor(b).xor(c)
+    }
+    fn add_overflow<W: Word>(a: W, b: W, s: W) -> W {
+        a.xor(b).not().and(a.xor(s))
+    }
+    fn sub_overflow<W: Word>(a: W, b: W, d: W) -> W {
+        a.xor(b).and(a.xor(d))
+    }
+    a.ternary(b, c, truth_table(mux::<u8>)) == mux(a, b, c)
+        && a.ternary(b, c, truth_table(majority::<u8>)) == majority(a, b, c)
+        && a.ternary(b, c, truth_table(xor3::<u8>)) == xor3(a, b, c)
+        && truth_table(add_overflow::<u8>) == 0x42
+        && truth_table(sub_overflow::<u8>) == 0x18
+        && a.ternary(b, c, 0x42) == add_overflow(a, b, c)
+        && a.ternary(b, c, 0x18) == sub_overflow(a, b, c)
+}
+
+/// Signed overflow from three sign bits agrees with the sign comparison.
+///
+/// For addition the operands agree in sign and the sum does not; for
+/// subtraction they differ and the difference disagrees with the
+/// minuend; and both tests are the ternary immediates `0x42` and `0x18`.
+#[must_use]
+pub fn signed_overflow_matches_sign_test<W: Word>(a: W, b: W) -> bool {
+    let top = |w: W| w.bit(W::BITS - 1);
+    let (sum, diff) = (a.wrapping_add(b), a.wrapping_sub(b));
+    a.signed_add_overflows(b) == (top(a) == top(b) && top(sum) != top(a))
+        && a.signed_sub_overflows(b) == (top(a) != top(b) && top(diff) != top(a))
+        && a.signed_add_overflows(b) == top(a.ternary(b, sum, 0x42))
+        && a.signed_sub_overflows(b) == top(a.ternary(b, diff, 0x18))
+}
+
+// --- affine -----------------------------------------------------------
+
+/// An [`Affine8`] map agrees with its bit-by-bit definition: on one
+/// byte (`apply`), on every byte of a word (`apply8`), through the
+/// nibble tables, and on every lane of the SWAR carrier.
+#[must_use]
+pub fn affine_matches_reference(map: Affine8, word: u64) -> bool {
+    let (lo, hi) = map.tables();
+    let by_word = map.apply8(word).to_le_bytes();
+    let by_lanes = U8x8::new(word).affine(map);
+    word.to_le_bytes().iter().enumerate().all(|(i, &x)| {
+        let want = reference::affine(map, x);
+        map.apply(x) == want
+            && by_word[i] == want
+            && by_lanes.lane(i) == want
+            && lo[usize::from(x & 15)] ^ hi[usize::from(x >> 4)] == want
+    })
+}
+
+/// Composition is matrix multiplication: `a.then(b)` applied is `b`
+/// after `a`, `compose` is the same map written the other way round,
+/// and the identity is neutral on both sides.
+#[must_use]
+pub fn affine_composes(a: Affine8, b: Affine8, x: u8) -> bool {
+    let splat = u64::from(x) * 0x0101_0101_0101_0101;
+    a.then(b).apply(x) == b.apply(a.apply(x))
+        && b.compose(a) == a.then(b)
+        && Affine8::IDENTITY.then(a) == a
+        && a.then(Affine8::IDENTITY) == a
+        && a.then(b).apply8(splat) == b.apply8(a.apply8(splat))
+}
+
+/// The named maps are the byte operations they are named after, for
+/// every shift count including those past the width.
+#[must_use]
+pub fn affine_named_maps_match_ops(x: u8, n: u32) -> bool {
+    let shl = if n >= 8 { 0 } else { x << n };
+    let shr = if n >= 8 { 0 } else { x >> n };
+    let sra = (x.cast_signed() >> n.min(7)).cast_unsigned();
+    let parity = if x.count_ones() & 1 == 1 { 0xFF } else { 0 };
+    Affine8::IDENTITY.apply(x) == x
+        && Affine8::NOT.apply(x) == !x
+        && Affine8::ZERO.apply(x) == 0
+        && Affine8::REVERSE.apply(x) == x.reverse_bits()
+        && Affine8::PARITY.apply(x) == parity
+        && Affine8::shl(n).apply(x) == shl
+        && Affine8::shr(n).apply(x) == shr
+        && Affine8::sra(n).apply(x) == sra
+        && Affine8::rotl(n).apply(x) == x.rotate_left(n)
+        && Affine8::rotr(n).apply(x) == x.rotate_right(n)
+        && Affine8::from_rows([1, 2, 4, 8, 16, 32, 64, 128], 0) == Affine8::IDENTITY
+        && (0..8).all(|i| Affine8::IDENTITY.row(i) == 1 << i)
+}
+
+/// The byte maps of [`Lanes`] against their scalar definitions, on
+/// `lhs` and `rhs` with shift `n`; the map under test is built from
+/// `table`, and so is the ternary truth table.
+#[must_use]
+pub fn lane_maps_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) -> bool {
+    let mut matrix = [0u8; 8];
+    matrix.copy_from_slice(&table[..8]);
+    let map = Affine8::new(u64::from_le_bytes(matrix), table[8]);
+    let truth = table[9];
+    let third = lhs.add(rhs);
+    (0..L::LANES).all(|i| {
+        let (x, y, z) = (lhs.lane(i), rhs.lane(i), third.lane(i));
+        lhs.affine(map).lane(i) == map.apply(x)
+            && lhs.reverse_bits().lane(i) == x.reverse_bits()
+            && lhs.sra(n).lane(i) == (x.cast_signed() >> n.min(7)).cast_unsigned()
+            && lhs.rotl(n).lane(i) == x.rotate_left(n)
+            && lhs.rotr(n).lane(i) == x.rotate_right(n)
+            && u16::from(lhs.avg_round(rhs).lane(i)) == (u16::from(x) + u16::from(y) + 1) >> 1
+            && u16::from(lhs.avg_floor(rhs).lane(i)) == u16::midpoint(u16::from(x), u16::from(y))
+            && lhs.ternary(rhs, third, truth).lane(i) == x.ternary(y, z, truth)
+    }) && L::zero().avg_round(L::zero().not()) == L::splat(0x80)
 }

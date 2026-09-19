@@ -2,10 +2,11 @@
 name = "hakmem"
 version = "0.2.0"
 edition = "2024"
-# MSRV: edition 2024 needs 1.85, cast_signed/cast_unsigned 1.87. Checked in CI
+# MSRV: edition 2024 needs 1.85, cast_signed/cast_unsigned 1.87, the GFNI
+# intrinsics 1.89. Checked in CI
 # against the `cargo package` tarball (nix/msrv.nix).
-rust-version = "1.87"
-description = "Bit tricks as a lawful algebra: rank/select, runs, PEXT/PDEP, Morton codes, byte lanes (SWAR, SSSE3, NEON), Myers edit distance, property-tested laws, no_std."
+rust-version = "1.89"
+description = "Bit tricks as a lawful algebra: rank/select, runs, PEXT/PDEP, Morton codes, byte lanes (SWAR, SSSE3, GFNI, NEON), Myers edit distance, property-tested laws, no_std."
 license = "MIT OR Apache-2.0"
 authors = ["Michal <acannix@proton.me>"]
 repository = "https://github.com/mightsleep/hakmem"

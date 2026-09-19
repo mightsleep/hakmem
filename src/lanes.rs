@@ -47,7 +47,15 @@
 //!     assert_eq!(w == u16::MAX, b" \t\n\r".contains(&c), "{c:#04x}");
 //! }
 //! ```
+//!
+//! The second lane instruction without a scalar sibling is GFNI's
+//! `gf2p8affineqb`, an 8×8 bit matrix applied to every byte:
+//! [`Lanes::affine`] with an [`Affine8`], the map that every byte
+//! shift, rotate, reversal, and any composition of them, is an instance
+//! of. Without GFNI the same map is two nibble lookups by linearity,
+//! which is why `lut16` is the primitive and `affine` is provided.
 
+use crate::affine::Affine8;
 use crate::bits::Bits;
 use crate::word::Word;
 
@@ -299,6 +307,97 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
         }
         Self::load(&out[..Self::LANES])
     }
+
+    // --- byte maps: GF(2) affine, and the shapes built on it ------------
+
+    /// Apply an [`Affine8`] map to every lane: `gf2p8affineqb`, one
+    /// instruction with GFNI. Without it, linearity splits the map into
+    /// two nibble lookups (`A·x = A·hi ⊕ A·lo`), so two
+    /// [`lut16`](Self::lut16) and an XOR, the tables folded at compile
+    /// time whenever the map is a constant; the SWAR carrier folds
+    /// parities instead ([`Affine8::apply8`]).
+    #[inline]
+    #[must_use]
+    fn affine(self, map: Affine8) -> Self {
+        let (lo, hi) = map.tables();
+        self.and(Self::splat(0x0F))
+            .lut16(lo)
+            .xor(self.shr(4).lut16(hi))
+    }
+
+    /// Reverse the bits of every lane: [`Affine8::REVERSE`]; `rbit` on
+    /// NEON.
+    #[inline]
+    #[must_use]
+    fn reverse_bits(self) -> Self {
+        self.affine(Affine8::REVERSE)
+    }
+
+    /// Arithmetic shift right per lane: the top bit fills the vacated
+    /// bits, so `n >= 8` leaves every lane `0x00` or `0xFF`. Without a
+    /// signed byte shift (SSE) or GFNI: the logical shift, OR the
+    /// sign mask shifted into place.
+    #[inline]
+    #[must_use]
+    fn sra(self, n: u32) -> Self {
+        let n = n.min(8);
+        let sign = self.cmp_ge(Self::splat(0x80));
+        self.shr(n).or(sign.shl(8 - n))
+    }
+
+    /// Rotate every lane left by `n mod 8`.
+    #[inline]
+    #[must_use]
+    fn rotl(self, n: u32) -> Self {
+        let n = n % 8;
+        if n == 0 {
+            self
+        } else {
+            self.shl(n).or(self.shr(8 - n))
+        }
+    }
+
+    /// Rotate every lane right by `n mod 8`.
+    #[inline]
+    #[must_use]
+    fn rotr(self, n: u32) -> Self {
+        self.rotl((8 - n % 8) % 8)
+    }
+
+    /// `(x + y + 1) / 2` per lane, no overflow (PAVGB, `urhadd`):
+    /// Hacker's Delight 2-5, `(x | y) − ((x ^ y) >> 1)`. Of `0x00` and
+    /// `0xFF` it makes `0x80`, the sign mask, in registers and without
+    /// a load; SSE has no byte shift to make it any other way.
+    #[inline]
+    #[must_use]
+    fn avg_round(self, other: Self) -> Self {
+        self.or(other).sub(self.xor(other).shr(1))
+    }
+
+    /// `(x + y) / 2` per lane, rounding down (`uhadd`):
+    /// `(x & y) + ((x ^ y) >> 1)`.
+    #[inline]
+    #[must_use]
+    fn avg_floor(self, other: Self) -> Self {
+        self.and(other).add(self.xor(other).shr(1))
+    }
+
+    /// Any Boolean function of three registers, bit by bit, from its
+    /// truth table: VPTERNLOG's contract, as [`Bits::ternary`] on words.
+    /// The table of a function `f` is `f(0xF0, 0xCC, 0xAA)`
+    /// ([`truth_table`](crate::bits::truth_table)).
+    #[inline]
+    #[must_use]
+    fn ternary(self, b: Self, c: Self, table: u8) -> Self {
+        let leaf = |t: u8| match t & 3 {
+            0 => Self::zero(),
+            1 => c.not(),
+            2 => c,
+            _ => Self::zero().not(),
+        };
+        let on_b = |t: u8| b.and(leaf(t >> 2)).or(b.not().and(leaf(t)));
+        self.and(on_b(table >> 4)).or(self.not().and(on_b(table)))
+    }
 }
 
 /// Eight lanes in a `u64` by SWAR: portable, and the carrier the
@@ -443,6 +542,18 @@ impl Lanes for U8x8 {
         let gathered = ((self.0 & MSBS_STEP_8).wrapping_mul(GATHER_MSBS_8) >> 56) as u8;
         gathered
     }
+
+    /// Eight parity folds: [`Affine8::apply8`].
+    #[inline]
+    fn affine(self, map: Affine8) -> Self {
+        Self(map.apply8(self.0))
+    }
+
+    /// Reverse the word, then put its bytes back in order.
+    #[inline]
+    fn reverse_bits(self) -> Self {
+        Self(self.0.reverse_bits().swap_bytes())
+    }
 }
 
 // --- U8x16: SSSE3 -------------------------------------------------------
@@ -459,13 +570,19 @@ impl Lanes for U8x8 {
 #[allow(unsafe_code)]
 mod x16 {
     use core::arch::x86_64::{
-        __m128i, _mm_add_epi8, _mm_adds_epu8, _mm_alignr_epi8, _mm_and_si128, _mm_cmpeq_epi8,
-        _mm_cvtsi32_si128, _mm_cvtsi128_si64, _mm_maddubs_epi16, _mm_min_epu8, _mm_movemask_epi8,
-        _mm_or_si128, _mm_sad_epu8, _mm_set_epi64x, _mm_set1_epi8, _mm_shuffle_epi8, _mm_sll_epi16,
-        _mm_srl_epi16, _mm_srli_si128, _mm_sub_epi8, _mm_subs_epu8, _mm_unpackhi_epi8,
-        _mm_unpacklo_epi8, _mm_xor_si128,
+        __m128i, _mm_add_epi8, _mm_adds_epu8, _mm_alignr_epi8, _mm_and_si128, _mm_avg_epu8,
+        _mm_cmpeq_epi8, _mm_cvtsi128_si64, _mm_maddubs_epi16, _mm_min_epu8, _mm_movemask_epi8,
+        _mm_or_si128, _mm_sad_epu8, _mm_set_epi64x, _mm_set1_epi8, _mm_shuffle_epi8,
+        _mm_srli_si128, _mm_sub_epi8, _mm_subs_epu8, _mm_unpackhi_epi8, _mm_unpacklo_epi8,
+        _mm_xor_si128,
     };
+    #[cfg(not(target_feature = "gfni"))]
+    use core::arch::x86_64::{_mm_cvtsi32_si128, _mm_sll_epi16, _mm_srl_epi16};
+    #[cfg(target_feature = "gfni")]
+    use core::arch::x86_64::{_mm_gf2p8affine_epi64_epi8, _mm_set1_epi64x};
 
+    #[cfg(target_feature = "gfni")]
+    use super::Affine8;
     use super::{Lanes, U8x8};
 
     /// Sixteen lanes in an XMM register (SSSE3).
@@ -564,7 +681,8 @@ mod x16 {
         }
 
         /// No 8-bit shift in SSE: shift 16-bit lanes and mask the bits
-        /// that crossed a byte.
+        /// that crossed a byte. With GFNI the shift is a matrix, below.
+        #[cfg(not(target_feature = "gfni"))]
         #[inline]
         fn shl(self, n: u32) -> Self {
             if n >= 8 {
@@ -575,6 +693,7 @@ mod x16 {
             Self(shifted).and(Self::splat(0xFFu8 << n))
         }
 
+        #[cfg(not(target_feature = "gfni"))]
         #[inline]
         fn shr(self, n: u32) -> Self {
             if n >= 8 {
@@ -583,6 +702,18 @@ mod x16 {
             // SAFETY: SSE2 is enabled by cfg.
             let shifted = unsafe { _mm_srl_epi16(self.0, _mm_cvtsi32_si128(n.cast_signed())) };
             Self(shifted).and(Self::splat(0xFF >> n))
+        }
+
+        #[cfg(target_feature = "gfni")]
+        #[inline]
+        fn shl(self, n: u32) -> Self {
+            self.affine(Affine8::shl(n))
+        }
+
+        #[cfg(target_feature = "gfni")]
+        #[inline]
+        fn shr(self, n: u32) -> Self {
+            self.affine(Affine8::shr(n))
         }
 
         #[inline]
@@ -676,6 +807,48 @@ mod x16 {
             // SAFETY: SSSE3 is enabled by cfg.
             Self(unsafe { _mm_maddubs_epi16(self.0, weights.0) })
         }
+
+        #[inline]
+        fn avg_round(self, other: Self) -> Self {
+            // SAFETY: SSE2 is enabled by cfg.
+            Self(unsafe { _mm_avg_epu8(self.0, other.0) })
+        }
+
+        /// One `gf2p8affineqb`. Its immediate is the constant term, but
+        /// an immediate must be a literal and the map is a value, so the
+        /// constant goes in as an XOR after the instruction; a linear
+        /// map, which every named one is, needs nothing after it.
+        #[cfg(target_feature = "gfni")]
+        #[inline]
+        fn affine(self, map: Affine8) -> Self {
+            // SAFETY: GFNI is enabled by cfg, and SSE2 with it.
+            let linear = Self(unsafe {
+                _mm_gf2p8affine_epi64_epi8::<0>(self.0, _mm_set1_epi64x(map.matrix().cast_signed()))
+            });
+            if map.is_linear() {
+                linear
+            } else {
+                linear.xor(Self::splat(map.add()))
+            }
+        }
+
+        #[cfg(target_feature = "gfni")]
+        #[inline]
+        fn sra(self, n: u32) -> Self {
+            self.affine(Affine8::sra(n))
+        }
+
+        #[cfg(target_feature = "gfni")]
+        #[inline]
+        fn rotl(self, n: u32) -> Self {
+            self.affine(Affine8::rotl(n))
+        }
+
+        #[cfg(target_feature = "gfni")]
+        #[inline]
+        fn rotr(self, n: u32) -> Self {
+            self.affine(Affine8::rotr(n))
+        }
     }
 
     impl PartialEq for U8x16 {
@@ -712,11 +885,11 @@ mod x16 {
         uint8x16_t, uint8x16x2_t, vabdq_u8, vaddlvq_u8, vaddq_u8, vandq_u8, vceqq_u8, vcleq_u8,
         vcltzq_s8, vcombine_s16, vcombine_u8, vcreate_u8, vdupq_n_s8, vdupq_n_u8, veorq_u8,
         vget_high_s8, vget_high_u8, vget_lane_u64, vget_low_s8, vget_low_s16, vget_low_u8,
-        vgetq_lane_u64, vmovl_s8, vmovl_u8, vmull_high_s16, vmull_s16, vmvnq_u8, vorrq_u8,
-        vpaddq_s32, vqaddq_u8, vqmovn_s32, vqsubq_u8, vqtbl1q_u8, vqtbl2q_u8, vreinterpret_u64_u8,
-        vreinterpretq_s8_u8, vreinterpretq_s16_u16, vreinterpretq_u8_s8, vreinterpretq_u8_s16,
-        vreinterpretq_u16_u8, vreinterpretq_u64_u8, vshlq_u8, vshrn_n_u16, vsubq_u8, vzip1q_u8,
-        vzip2q_u8,
+        vgetq_lane_u64, vhaddq_u8, vmovl_s8, vmovl_u8, vmull_high_s16, vmull_s16, vmvnq_u8,
+        vorrq_u8, vpaddq_s32, vqaddq_u8, vqmovn_s32, vqsubq_u8, vqtbl1q_u8, vqtbl2q_u8, vrbitq_u8,
+        vreinterpret_u64_u8, vreinterpretq_s8_u8, vreinterpretq_s16_u16, vreinterpretq_u8_s8,
+        vreinterpretq_u8_s16, vreinterpretq_u16_u8, vreinterpretq_u64_u8, vrhaddq_u8, vshlq_s8,
+        vshlq_u8, vshrn_n_u16, vsubq_u8, vzip1q_u8, vzip2q_u8,
     };
 
     use super::{Lanes, U8x8};
@@ -957,6 +1130,37 @@ mod x16 {
                 vreinterpretq_u8_s16(sums)
             })
         }
+
+        #[inline]
+        fn reverse_bits(self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe { vrbitq_u8(self.0) })
+        }
+
+        /// A negative count on signed lanes is the arithmetic shift;
+        /// past the width it leaves the sign.
+        #[inline]
+        fn sra(self, n: u32) -> Self {
+            // `n.min(8)` fits an i8.
+            #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+            let count = -(n.min(8) as i8);
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe {
+                vreinterpretq_u8_s8(vshlq_s8(vreinterpretq_s8_u8(self.0), vdupq_n_s8(count)))
+            })
+        }
+
+        #[inline]
+        fn avg_round(self, other: Self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe { vrhaddq_u8(self.0, other.0) })
+        }
+
+        #[inline]
+        fn avg_floor(self, other: Self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe { vhaddq_u8(self.0, other.0) })
+        }
     }
 
     impl PartialEq for U8x16 {
@@ -993,7 +1197,7 @@ mod x16 {
     )
 )))]
 mod x16 {
-    use super::{Lanes, U8x8};
+    use super::{Affine8, Lanes, U8x8};
 
     /// Sixteen lanes as two [`U8x8`] halves: the portable definition.
     #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -1106,6 +1310,16 @@ mod x16 {
         #[inline]
         fn to_bits(self) -> u16 {
             u16::from(self.0.to_bits()) | u16::from(self.1.to_bits()) << 8
+        }
+
+        #[inline]
+        fn affine(self, map: Affine8) -> Self {
+            Self(self.0.affine(map), self.1.affine(map))
+        }
+
+        #[inline]
+        fn reverse_bits(self) -> Self {
+            Self(self.0.reverse_bits(), self.1.reverse_bits())
         }
     }
 }

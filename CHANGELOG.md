@@ -16,6 +16,19 @@ permute by data), `concat_shift` (a window across two registers),
 `add_sat` / `sub_sat`, `unpack_lo` / `unpack_hi` (interleave), and the
 two horizontal ones, `sum_abs_diff` and `mul_add_pairs`.
 
+`hakmem::affine::Affine8`: the affine maps on the bits of a byte, 8×8
+matrices over GF(2) with a constant, `const` throughout, composition
+as matrix multiplication. `Lanes::affine` applies one to every lane
+(`gf2p8affineqb` with `+gfni`, two nibble lookups by linearity
+otherwise, parity folds on the SWAR carrier); `reverse_bits`, `sra`,
+`rotl` and `rotr` are named maps, and so are the x86 lane shifts under
+GFNI. `Lanes::avg_round` / `avg_floor` (PAVGB, `urhadd`; Hacker's
+Delight 2-5). `Bits::ternary` and `Lanes::ternary` with
+`bits::truth_table`: VPTERNLOG's immediate is the function at
+`(0xF0, 0xCC, 0xAA)`. `Bits::signed_add_overflows` /
+`signed_sub_overflows` from the sign bits (Hacker's Delight 2-13).
+Cookbook recipes 8 to 10. MSRV 1.89, for the GFNI intrinsics.
+
 ## 0.1.0, 2026-09-19
 
 First release, of a learning project far from production; the README's
