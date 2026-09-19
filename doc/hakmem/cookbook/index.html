@@ -1,0 +1,209 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="How the shipped kernels were composed, so you can compose your own."><title>hakmem::cookbook - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (330d31712 2026-09-17)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module cookbook</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../hakmem/index.html">hakmem</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module cookbook</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#reading-a-sentence" title="Reading a sentence">Reading a sentence</a></li><li><a href="#verifying-your-own" title="Verifying your own">Verifying your own</a></li><li><a href="#1-the-inside-string-mask-simdjson" title="1. The inside-string mask (simdjson)">1. The inside-string mask (simdjson)</a></li><li><a href="#2-first-fit-of-a-run-across-words" title="2. First fit of a run across words">2. First fit of a run across words</a></li><li><a href="#3-the-myers-column-step" title="3. The Myers column step">3. The Myers column step</a></li><li><a href="#4-morton-neighbours-without-decoding" title="4. Morton neighbours without decoding">4. Morton neighbours without decoding</a></li><li><a href="#5-strlen-in-one-word" title="5. `strlen` in one word">5. <code>strlen</code> in one word</a></li><li><a href="#6-sliding-piece-attacks-koggestone" title="6. Sliding-piece attacks (Kogge–Stone)">6. Sliding-piece attacks (Kogge–Stone)</a></li><li><a href="#7-not-built-here-banded-myers-over-widen" title="7. Not built here: banded Myers over `Wide&#60;N&#62;`">7. Not built here: banded Myers over <code>Wide&lt;N&gt;</code></a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate hakmem</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">hakmem</a></div><h1>Module <span>cookbook</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/hakmem/cookbook.rs.html#1-265">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>How the shipped kernels were composed, so you can compose your own.</p>
+<p>This module is documentation only. Every recipe has the same shape:
+the <strong>problem</strong>, the <strong>decomposition</strong> into combinators, the
+<strong>laws</strong> that justify each step (all of them live in <a href="../laws/index.html" title="mod hakmem::laws"><code>crate::laws</code></a>
+and run in the test suite), and the <strong>cost</strong> in word operations.
+Snippets are doctests, so the text cannot drift from the code.</p>
+<h2 id="reading-a-sentence"><a class="doc-anchor" href="#reading-a-sentence">§</a>Reading a sentence</h2>
+<p>A register is a container of <code>BITS</code> cells. Each instruction is one
+of five shapes, and a kernel is a short sentence in them:</p>
+<div class="table"><table><thead><tr><th>shape</th><th>combinators</th><th>what it does to the container</th></tr></thead><tbody>
+<tr><td>map</td><td><code>and</code>, <code>or</code>, <code>xor</code>, <code>not</code>, <code>delta_swap</code></td><td>every cell independently, or a fixed permutation</td></tr>
+<tr><td>scan</td><td><code>wrapping_add</code>, <code>prefix_xor</code>, <code>prefix_or</code>, <code>fill_up</code></td><td>information flows along the word (the carry chain is the scan primitive)</td></tr>
+<tr><td>filter</td><td><code>compact</code>, <code>expand</code></td><td>keep the cells a mask selects, in order</td></tr>
+<tr><td>reduce</td><td><code>count_ones</code>, <code>trailing_zeros</code>, <code>select</code>, <code>longest_run</code></td><td>one number out</td></tr>
+<tr><td>window</td><td><code>run_starts</code>, <code>zero_bytes</code>, <code>bytes_eq</code></td><td>a predicate over each cell’s neighbourhood, all cells at once</td></tr>
+</tbody></table>
+</div>
+<p>The economics that make sentences worth writing: one cache miss is
+worth ~300 chained word operations, and a modern core retires four
+to six independent ones per cycle. A sentence of twelve operations
+that replaces a loop over sixty-four cells changes the complexity
+class per word.</p>
+<h2 id="verifying-your-own"><a class="doc-anchor" href="#verifying-your-own">§</a>Verifying your own</h2>
+<p>Write the law before the kernel. A law is a <code>fn(...) -&gt; bool</code> over
+<code>W: Word</code> comparing your combinator against a bit-by-bit loop (see
+<code>laws::reference</code>). Run it with proptest on <code>u64</code>, and exhaustively
+on <code>u8</code> / <code>u16</code>, every kernel in this crate that had a bug was
+caught by the exhaustive sweep, not by proptest. Then run the whole
+thing with and without <code>-C target-feature=+bmi2,+pclmulqdq</code>; the
+hardware and portable paths must agree bit for bit.</p>
+<hr />
+<h2 id="1-the-inside-string-mask-simdjson"><a class="doc-anchor" href="#1-the-inside-string-mask-simdjson">§</a>1. The inside-string mask (simdjson)</h2>
+<p><strong>Problem.</strong> Given the positions of <code>"</code> and <code>\</code> in a block of text,
+which bytes are inside a string literal? Quotes preceded by an odd
+number of backslashes are escaped and do not count.</p>
+<p><strong>Decomposition.</strong> Escaped positions are the ends of odd-length
+backslash runs: <a href="../bits/trait.Bits.html#method.find_escaped" title="method hakmem::bits::Bits::find_escaped"><code>crate::Bits::find_escaped</code></a>, a carry-chain trick, runs
+starting on even and on odd positions are added separately, so each
+run’s end parity falls out of an alternating mask. Real quotes are
+<code>quotes &amp; !escaped</code>. Each real quote <em>toggles</em> the in-string state,
+and a toggle mask becomes a region mask by <a href="../bits/trait.Bits.html#method.prefix_xor" title="method hakmem::bits::Bits::prefix_xor"><code>crate::Bits::prefix_xor</code></a>
+(PCLMULQDQ by all-ones, or a smear).</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::Bits;
+
+<span class="comment">// text:    a " b \ " c " d
+// index:   0 1 2 3 4 5 6 7
+</span><span class="kw">let </span>quotes: u8 = <span class="number">0b0101_0010</span>;
+<span class="kw">let </span>backslashes: u8 = <span class="number">0b0000_1000</span>;
+<span class="kw">let </span>(escaped, _carry) = backslashes.find_escaped(<span class="bool-val">false</span>);
+<span class="kw">let </span>real = quotes &amp; !escaped; <span class="comment">// the quote at 4 is escaped
+</span><span class="kw">let </span>inside = real.prefix_xor();
+<span class="macro">assert_eq!</span>(inside, <span class="number">0b0011_1110</span>); <span class="comment">// bytes 1..=5 are in the string</span></code></pre></div>
+<p><strong>Laws.</strong> <code>find_escaped_matches_reference</code> (parity walk, carry
+included); <code>prefix_xor_after_delta_is_identity</code> and its converse:
+toggles and regions are inverse views, so nothing is lost either
+way; <code>xor_linear_combinators</code>, <code>prefix_xor</code> distributes over XOR,
+which is why two independent toggle masks can be combined first and
+scanned once.</p>
+<p><strong>Cost.</strong> <code>find_escaped</code> is ~14 operations with two additions;
+<code>prefix_xor</code> is one instruction with PCLMULQDQ, six otherwise. Per
+64 bytes of text.</p>
+<h2 id="2-first-fit-of-a-run-across-words"><a class="doc-anchor" href="#2-first-fit-of-a-run-across-words">§</a>2. First fit of a run across words</h2>
+<p><strong>Problem.</strong> In a bitmap of free slots, find the lowest position
+where <code>k</code> consecutive slots are free, when the run may straddle a
+word boundary.</p>
+<p><strong>Decomposition.</strong> Inside one word, <a href="../bits/trait.Bits.html#method.run_starts" title="method hakmem::bits::Bits::run_starts"><code>crate::Bits::run_starts</code></a> (Hacker’s
+Delight fig. 6-5): repeat <code>x &amp;= x &gt;&gt; s</code> with <code>s</code> halving; after
+<code>⌈log₂ k⌉</code> steps bit <code>p</code> is set iff bits <code>p..p + k</code> were all set.
+Across the boundary there is exactly one candidate: the word’s top
+run of ones (<code>leading_ones</code>) continued by the next word’s bottom run
+(<code>trailing_ones</code>). No wider window is needed; an earlier version
+of this kernel widened to <code>u128</code> and was 1.6–2.2× slower for it.
+Shipped as <a href="../slice/fn.find_run.html" title="fn hakmem::slice::find_run"><code>crate::slice::find_run</code></a>.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::slice::find_run;
+
+<span class="comment">// 60 free slots, then 4 taken, then all free: a 6-run must straddle.
+</span><span class="kw">let </span>words = [u64::MAX &gt;&gt; <span class="number">4</span>, u64::MAX];
+<span class="macro">assert_eq!</span>(find_run(<span class="kw-2">&amp;</span>words, <span class="number">6</span>), <span class="prelude-val">Some</span>(<span class="number">0</span>));
+<span class="kw">let </span>words = [<span class="number">0xFFu64 </span>&lt;&lt; <span class="number">56</span>, u64::MAX];
+<span class="macro">assert_eq!</span>(find_run(<span class="kw-2">&amp;</span>words, <span class="number">16</span>), <span class="prelude-val">Some</span>(<span class="number">56</span>));</code></pre></div>
+<p><strong>Laws.</strong> <code>run_starts_composes</code>: <code>run_starts(a) ∘ run_starts(b) = run_starts(a + b − 1)</code>. This is <em>why</em> the halving chain is
+correct, each halving step is a composition. <code>run_starts_shrinks</code>
+(longer runs start at a subset of positions) is what makes binary
+search for <a href="../bits/trait.Bits.html#method.longest_run" title="method hakmem::bits::Bits::longest_run"><code>crate::Bits::longest_run</code></a> valid. <code>slice_ops_match_reference</code>
+covers the boundary case.</p>
+<p><strong>Cost.</strong> ≤ 6 operations per word for <code>k ≤ 64</code> plus two count-ones
+at a boundary; the scan is memory-bound, not ALU-bound.</p>
+<h2 id="3-the-myers-column-step"><a class="doc-anchor" href="#3-the-myers-column-step">§</a>3. The Myers column step</h2>
+<p><strong>Problem.</strong> Levenshtein distance is a dynamic-programming table;
+compute it without touching cells one at a time.</p>
+<p><strong>Decomposition.</strong> Adjacent cells in a DP column differ by −1, 0 or
++1, so a column of <code>m</code> cells is two <code>m</code>-bit words: <code>Pv</code> (delta +1)
+and <code>Mv</code> (delta −1). Matches of the next text character are a mask
+<code>Eq</code>. The step is</p>
+<div class="example-wrap"><pre class="language-text"><code>Xh = ((Eq &amp; Pv) + Pv) ^ Pv | Eq     // matches propagate down the column
+Ph = Mv | !(Xh | Pv)                // horizontal deltas out
+Mh = Pv &amp; Xh
+score += top bit of Ph, −= top bit of Mh
+Pv = (Mh &lt;&lt; 1) | !(Xv | (Ph &lt;&lt; 1))  // shift deltas one row down
+Mv = (Ph &lt;&lt; 1) &amp; Xv</code></pre></div>
+<p>The addition is the whole trick: a carry chain is a scan, and the
+DP’s “a match at row <code>i</code> lets the score at row <code>i+1</code> stay flat”
+is exactly carry propagation. The DP boundary <code>D[0][j] = j</code> is one
+bit shifted into <code>Ph</code> (global) or not (semi-global search). Shipped
+as <a href="../myers/index.html" title="mod hakmem::myers"><code>crate::myers</code></a>, written against <a href="../word/trait.Word.html" title="trait hakmem::word::Word"><code>crate::Word</code></a> so that
+<a href="../wide/struct.Wide.html" title="struct hakmem::wide::Wide"><code>crate::wide::Wide</code></a> runs it unchanged for long patterns.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::myers::{edit_distance, search};
+
+<span class="macro">assert_eq!</span>(edit_distance::&lt;u64&gt;(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>));
+<span class="kw">let </span>ends: Vec&lt;<span class="kw">_</span>&gt; = search::&lt;u64&gt;(<span class="string">b"lo"</span>, <span class="string">b"hello lo"</span>, <span class="number">0</span>).unwrap().collect();
+<span class="macro">assert_eq!</span>(ends, [(<span class="number">5</span>, <span class="number">0</span>), (<span class="number">8</span>, <span class="number">0</span>)]);</code></pre></div>
+<p><strong>Laws.</strong> None of the exported ones, the kernel is verified against
+the textbook DP by property tests on <code>u8</code>, <code>u64</code>, <code>u128</code> and
+<code>Wide&lt;4&gt;</code> (<code>tests/myers.rs</code>). That is the honest way to say “this
+sentence has no local algebraic proof, only a global one”.</p>
+<p><strong>Cost.</strong> ~12 operations per text byte, independent of pattern
+length up to the word width; <code>N</code> limbs for <code>Wide&lt;N&gt;</code>.</p>
+<h2 id="4-morton-neighbours-without-decoding"><a class="doc-anchor" href="#4-morton-neighbours-without-decoding">§</a>4. Morton neighbours without decoding</h2>
+<p><strong>Problem.</strong> Cells of a 2D grid are stored in Z-order (Morton
+codes). Step to the east neighbour without splitting the code into
+<code>(x, y)</code> and back.</p>
+<p><strong>Decomposition.</strong> A Morton code interleaves <code>x</code> and <code>y</code>, so <code>x</code>
+lives in the even bits, a <em>dilated</em> integer. Adding one to a
+dilated integer must carry across the zero gaps: fill the gaps with
+ones first, add, mask back. <a href="../dilated/struct.Dilated.html#method.incr" title="method hakmem::dilated::Dilated::incr"><code>crate::Dilated::incr</code></a> does exactly that,
+and <a href="../dilated/struct.Dilated.html" title="struct hakmem::dilated::Dilated"><code>crate::Dilated</code></a> has no <code>+</code> on purpose, plain integer addition on
+a dilated value is the bug this type makes uncompilable.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::Morton2;
+
+<span class="kw">let </span>m = Morton2::&lt;u32&gt;::encode(<span class="number">3</span>, <span class="number">5</span>);
+<span class="macro">assert_eq!</span>(m.step_x().decode(), (<span class="number">4</span>, <span class="number">5</span>));
+<span class="macro">assert_eq!</span>(m.step_y().decode(), (<span class="number">3</span>, <span class="number">6</span>));</code></pre></div>
+<p><strong>Laws.</strong> <code>dilated_incr_is_add_one</code>, <code>dilated_add_is_add</code>
+(dilation is a homomorphism of addition modulo the width),
+<code>morton_steps_are_unit_moves</code>, <code>morton_aligned_block_is_contiguous</code>
+(aligned power-of-two blocks are contiguous code ranges, the
+reason a 1D allocator can run over a 2D texture).</p>
+<p><strong>Cost.</strong> <code>incr</code> is three operations; <code>encode</code> / <code>decode</code> are two
+PDEP / PEXT, or a five-step spread without BMI2.</p>
+<h2 id="5-strlen-in-one-word"><a class="doc-anchor" href="#5-strlen-in-one-word">§</a>5. <code>strlen</code> in one word</h2>
+<p><strong>Problem.</strong> Find the first zero byte of a word, the inner loop of
+<code>strlen</code>, <code>memchr</code> and every delimiter scan.</p>
+<p><strong>Decomposition.</strong> <a href="../bits/trait.Bits.html#method.zero_bytes" title="method hakmem::bits::Bits::zero_bytes"><code>crate::Bits::zero_bytes</code></a> sets the high bit of every
+zero lane, exactly: <code>!((x &amp; 0x7f…) + 0x7f… | x | 0x7f…)</code>. The
+classic <code>(x − 0x01…) &amp; !x &amp; 0x80…</code> is one operation shorter and
+<em>wrong</em> above the first zero byte (a borrow leaks into the next
+lane); it is fine for “is there any”, not for “which”. Then
+<code>trailing_zeros / 8</code> names the lane. <a href="../bits/trait.Bits.html#method.bytes_eq" title="method hakmem::bits::Bits::bytes_eq"><code>crate::Bits::bytes_eq</code></a> is the
+same sentence after <code>x ^ splat(b)</code>.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::Bits;
+
+<span class="kw">let </span>word = u64::from_le_bytes(<span class="kw-2">*</span><span class="string">b"hello\0!!"</span>);
+<span class="macro">assert_eq!</span>(word.first_zero_byte(), <span class="prelude-val">Some</span>(<span class="number">5</span>));
+<span class="macro">assert_eq!</span>(word.bytes_eq(<span class="string">b'l'</span>).count_ones(), <span class="number">2</span>);</code></pre></div>
+<p><strong>Laws.</strong> <code>swar_lanes_match_reference</code> (every lane predicate against
+a byte loop, exhaustive over all bytes for <code>u8</code>/<code>u16</code>);
+<code>zero_bytes_turns_or_into_and</code> (a lane is zero in <code>x | y</code> iff zero
+in both), the De Morgan shape that lets you test two words with
+one scan.</p>
+<p><strong>Cost.</strong> Four operations for the mask, one <code>trailing_zeros</code> for
+the index; eight bytes per iteration instead of one.</p>
+<h2 id="6-sliding-piece-attacks-koggestone"><a class="doc-anchor" href="#6-sliding-piece-attacks-koggestone">§</a>6. Sliding-piece attacks (Kogge–Stone)</h2>
+<p><strong>Problem.</strong> On an 8×8 bitboard, which squares does a rook attack
+northward, given the occupied squares?</p>
+<p><strong>Decomposition.</strong> “Slide until blocked” is a prefix OR along a
+stride of 8 through a propagation mask (the empty squares):
+<a href="../bits/trait.Bits.html#method.fill_up" title="method hakmem::bits::Bits::fill_up"><code>crate::Bits::fill_up</code></a>. Kogge–Stone doubles the stride each round
+(<code>gen |= prop &amp; gen &lt;&lt; s; prop &amp;= prop &lt;&lt; s</code>), three rounds for
+eight ranks. The attacked set includes the blocker: shift the fill
+once more.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::Bits;
+
+<span class="kw">let </span>rook = <span class="number">1u64</span>; <span class="comment">// a1
+</span><span class="kw">let </span>occupied = <span class="number">1u64 </span>&lt;&lt; <span class="number">32</span>; <span class="comment">// a5
+</span><span class="kw">let </span>attacks = rook.fill_up(!occupied, <span class="number">8</span>) &lt;&lt; <span class="number">8</span>;
+<span class="macro">assert_eq!</span>(attacks &amp; <span class="number">0x0101_0101_0101_0101</span>, <span class="number">0x0000_0001_0101_0100</span>); <span class="comment">// a2..a5</span></code></pre></div>
+<p><strong>Laws.</strong> <code>fills_match_reference</code> (the doubling rounds equal
+iterating single steps), <code>fills_are_closure_operators</code> (idempotent
+and extensive, filling twice is filling once, which is what makes
+“occupancy changed only here” updates safe). With a full mask and
+stride 1, <code>fill_up</code> <em>is</em> <code>prefix_or</code>.</p>
+<p><strong>Cost.</strong> Three rounds of three operations per direction; the
+eight directions of a queen are 72 operations, no table.</p>
+<h2 id="7-not-built-here-banded-myers-over-widen"><a class="doc-anchor" href="#7-not-built-here-banded-myers-over-widen">§</a>7. Not built here: banded Myers over <code>Wide&lt;N&gt;</code></h2>
+<p>For two long strings that differ in few edits, <code>triple_accel</code>
+beats recipe 3 on <code>Wide&lt;8&gt;</code> by about 2× (see the README table),
+because it only computes a diagonal band. This crate does not ship
+that variant, deliberately. Everything needed is here.</p>
+<p>A <code>Wide&lt;N&gt;</code> column is <code>N</code> limbs. Run the step of recipe 3 per limb
+with an explicit horizontal delta between limbs: the top bit of
+<code>Ph</code> / <code>Mh</code> leaving limb <code>i</code> is the bit shifted into limb <code>i + 1</code>
+(this is exactly what <a href="../word/trait.Word.html#tymethod.wrapping_add" title="method hakmem::word::Word::wrapping_add"><code>crate::Word::wrapping_add</code></a> does across limbs
+implicitly, the banded version makes the carry explicit so it can
+stop). Keep the score of the last active limb’s bottom cell; while
+it exceeds <code>k + (limbs left) × 64</code>, the limbs below it cannot come
+back under <code>k</code> and need not be updated (Ukkonen’s cut-off, Hyyrö’s
+block formulation). Cost drops from <code>N</code> limbs per text byte to the
+active band, typically one or two. The laws you would write:
+agreement with recipe 3 on the same inputs when <code>k</code> is large, and
+<code>None</code>-agreement with the DP when it is small. Both are one
+proptest each against <code>tests/myers.rs</code>’s reference. Do that and you
+have your microkernel; it will be shorter than this paragraph.</p>
+</div></details></section></div></main></body></html>

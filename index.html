@@ -1,0 +1,35 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>hakmem</title>
+<style>
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1rem; color: #222; }
+  table { border-collapse: collapse; }
+  td, th { border-bottom: 1px solid #ddd; padding: 0.3rem 0.8rem; text-align: left; }
+  .badges img { vertical-align: middle; margin-right: 0.4rem; }
+</style>
+<h1>hakmem</h1>
+<p>Bit tricks as a lawful algebra; a learning project, see the README's Status section.
+   <a href="doc/hakmem/">API docs (main)</a> ·
+   <a href="dev/bench/">benchmarks over time</a> ·
+   <a href="https://github.com/mightsleep/hakmem">source</a></p>
+<p class="badges"><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml"><img src="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml/badge.svg" alt="ci-x86_64"></a> <a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml"><img src="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml/badge.svg" alt="ci-aarch64"></a> <a href="https://github.com/mightsleep/hakmem/actions/workflows/pages.yml"><img src="https://github.com/mightsleep/hakmem/actions/workflows/pages.yml/badge.svg" alt="pages"></a></p>
+<h2>What CI checks on x86_64-linux</h2>
+<p>Every row is one Nix derivation built in a sandbox without network;
+   the matrix lives in <code>nix/matrix.nix</code> and the workflow reads
+   it at run time. Miri runs as a separate job; benchmarks are tracked
+   over time, never pass/fail.</p>
+<table><tr><th>check</th></tr>
+<tr><td><code>hakmem-audit</code></td></tr>
+<tr><td><code>hakmem-clippy-bmi2-default</code></td></tr>
+<tr><td><code>hakmem-clippy-bmi2-portable-feature</code></td></tr>
+<tr><td><code>hakmem-clippy-portable-default</code></td></tr>
+<tr><td><code>hakmem-deny</code></td></tr>
+<tr><td><code>hakmem-doc</code></td></tr>
+<tr><td><code>hakmem-doctest-bmi2</code></td></tr>
+<tr><td><code>hakmem-doctest-portable</code></td></tr>
+<tr><td><code>hakmem-msrv</code></td></tr>
+<tr><td><code>hakmem-test-bmi2-default</code></td></tr>
+<tr><td><code>hakmem-test-bmi2-portable-feature</code></td></tr>
+<tr><td><code>hakmem-test-portable-default</code></td></tr>
+<tr><td><code>treefmt</code></td></tr>
+</table>

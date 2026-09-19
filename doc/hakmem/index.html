@@ -1,0 +1,166 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="hakmem"><title>hakmem - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (330d31712 2026-09-17)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate hakmem</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../hakmem/index.html">hakmem</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#hakmem" title="hakmem">hakmem</a><ul><li><a href="#status" title="Status">Status</a></li><li><a href="#benchmarks-against-the-crates-people-use" title="Benchmarks against the crates people use">Benchmarks against the crates people use</a></li><li><a href="#cookbook" title="Cookbook">Cookbook</a></li><li><a href="#hardware-paths" title="Hardware paths">Hardware paths</a></li><li><a href="#laws" title="Laws">Laws</a></li></ul></li></ul><h3><a href="#modules">Crate Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1>Crate <span>hakmem</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/hakmem/lib.rs.html#1-27">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h2 id="hakmem"><a class="doc-anchor" href="#hakmem">§</a>hakmem</h2>
+<p><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml"><img src="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml/badge.svg" alt="x86_64" /></a>
+<a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml"><img src="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml/badge.svg" alt="aarch64" /></a>
+<a href="https://crates.io/crates/hakmem"><img src="https://img.shields.io/crates/v/hakmem.svg" alt="crates.io" /></a>
+<a href="https://docs.rs/hakmem"><img src="https://img.shields.io/docsrs/hakmem" alt="docs.rs" /></a>
+<a href="https://github.com/mightsleep/hakmem/blob/main/Cargo.toml"><img src="https://img.shields.io/badge/msrv-1.87-blue" alt="msrv 1.87" /></a>
+<img src="https://img.shields.io/badge/no__std-yes-blue" alt="no-std" />
+<img src="https://img.shields.io/badge/license-MIT%2FApache--2.0-blue" alt="license" /></p>
+<p>Typed combinator algebra over machine words. A register is an 8- to
+128-element container; an instruction (POPCNT, TZCNT, the carry chain,
+PEXT/PDEP, PCLMULQDQ) is a combinator; a kernel is a composition. The
+crate names the combinators, restricts them to the domains where they
+are lawful, and exports the laws they obey so downstream code can
+property-test its own carriers and backends.</p>
+<p>Named after <a href="https://en.wikipedia.org/wiki/HAKMEM">HAKMEM</a> (MIT AI Memo
+239, 1972), items 161–180 of which are the first catalogue of these
+sentences.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::{Bits, Morton2};
+
+<span class="comment">// Runs: bit p set iff bits p..p+3 are all set (Hacker's Delight 6-5).
+</span><span class="kw">let </span>x: u64 = <span class="number">0b0111_0110</span>;
+<span class="macro">assert_eq!</span>(x.run_starts(<span class="number">3</span>).first_set(), <span class="prelude-val">Some</span>(<span class="number">4</span>));
+
+<span class="comment">// Rank / select / positions: succinct-structure primitives, O(1).
+</span><span class="macro">assert_eq!</span>(x.rank_below(<span class="number">4</span>), <span class="number">2</span>);
+<span class="macro">assert_eq!</span>(x.select(<span class="number">2</span>), <span class="prelude-val">Some</span>(<span class="number">4</span>));
+<span class="macro">assert_eq!</span>(x.positions().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;(), [<span class="number">1</span>, <span class="number">2</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>]);
+
+<span class="comment">// Scans: prefix XOR turns quote toggles into an inside-string mask;
+// Kogge–Stone fills slide along a stride through a propagation mask.
+</span><span class="macro">assert_eq!</span>(<span class="number">0b0100_0100u64</span>.prefix_xor(), <span class="number">0b0011_1100</span>);
+<span class="macro">assert_eq!</span>(<span class="number">1u8</span>.fill_up(<span class="number">0b0000_0111</span>, <span class="number">1</span>), <span class="number">0b0000_0111</span>);
+
+<span class="comment">// SWAR byte lanes: exact zero/equal/less-than tests, eight at a time.
+</span><span class="macro">assert_eq!</span>(<span class="number">0x41_0A_42_09u32</span>.bytes_lt(<span class="number">0x20</span>), <span class="number">0x00_80_00_80</span>);
+<span class="macro">assert!</span>(<span class="number">0x0012_0034u32</span>.has_zero_byte());
+
+<span class="comment">// Compact / expand: PEXT / PDEP with a portable fallback.
+</span><span class="macro">assert_eq!</span>(<span class="number">0b1001u32</span>.compact(<span class="number">0b1010</span>), <span class="number">0b10</span>);
+
+<span class="comment">// Dilated integers and Morton codes for 2D addressing.
+</span><span class="kw">let </span>m = Morton2::&lt;u32&gt;::encode(<span class="number">3</span>, <span class="number">5</span>);
+<span class="macro">assert_eq!</span>(m.step_x().decode(), (<span class="number">4</span>, <span class="number">5</span>));
+
+<span class="comment">// 8×8 bit matrices: three delta swaps per transpose.
+</span><span class="kw">use </span>hakmem::permute::board8::transpose;
+<span class="macro">assert_eq!</span>(transpose(<span class="number">1 </span>&lt;&lt; (<span class="number">8 </span>* <span class="number">1 </span>+ <span class="number">5</span>)), <span class="number">1 </span>&lt;&lt; (<span class="number">8 </span>* <span class="number">5 </span>+ <span class="number">1</span>));
+
+<span class="comment">// Hacker's Delight ch. 2 and HAKMEM 175, named and lawful.
+</span><span class="macro">assert_eq!</span>(<span class="number">0b1011_0110u32</span>.clear_lowest_run(), <span class="number">0b1011_0000</span>);
+<span class="macro">assert_eq!</span>(<span class="number">37u32</span>.round_up_pow2(), <span class="prelude-val">Some</span>(<span class="number">64</span>));
+<span class="macro">assert_eq!</span>(<span class="number">0b0011u8</span>.next_same_popcount(), <span class="prelude-val">Some</span>(<span class="number">0b0101</span>)); <span class="comment">// Gosper's hack
+</span><span class="macro">assert_eq!</span>(<span class="number">0b0111_0110u32</span>.longest_run(), <span class="number">3</span>);
+
+<span class="comment">// simdjson's find_escaped: quotes preceded by an odd run of backslashes.
+</span><span class="kw">let </span>(escaped, _carry) = <span class="number">0b01_1101_1010u16</span>.find_escaped(<span class="bool-val">false</span>);
+<span class="macro">assert_eq!</span>(escaped, <span class="number">0b10_0000_0100</span>);
+
+<span class="comment">// The carry chain as a dynamic-programming column (Myers 1999).
+</span><span class="kw">use </span>hakmem::myers::{edit_distance, search};
+<span class="macro">assert_eq!</span>(edit_distance::&lt;u64&gt;(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>));
+<span class="kw">let </span>hits: Vec&lt;<span class="kw">_</span>&gt; = search::&lt;u64&gt;(<span class="string">b"lo"</span>, <span class="string">b"hello lo"</span>, <span class="number">0</span>).unwrap().collect();
+<span class="macro">assert_eq!</span>(hits, [(<span class="number">5</span>, <span class="number">0</span>), (<span class="number">8</span>, <span class="number">0</span>)]);
+
+<span class="comment">// Patterns wider than a register: `Wide&lt;N&gt;` is `[u64; N]` as one word,
+// and the same Myers code runs on it unchanged.
+</span><span class="kw">use </span>hakmem::Wide;
+<span class="kw">let </span>long = [<span class="string">b'a'</span>; <span class="number">200</span>];
+<span class="macro">assert_eq!</span>(edit_distance::&lt;Wide&lt;<span class="number">4</span>&gt;&gt;(<span class="kw-2">&amp;</span>long, <span class="kw-2">&amp;</span>long[..<span class="number">190</span>]), <span class="prelude-val">Some</span>(<span class="number">10</span>));
+
+<span class="comment">// 2D runs: a w×h block in a bitmap of rows, by two halving chains
+// (binary erosion by a rectangle; first-fit for tile allocators).
+</span><span class="kw">let </span>rows = [<span class="number">0b0111_1000u8</span>, <span class="number">0b0111_1100</span>, <span class="number">0b0011_1100</span>, <span class="number">0</span>];
+<span class="kw">let </span><span class="kw-2">mut </span>scratch = [<span class="number">0u8</span>; <span class="number">4</span>];
+<span class="macro">assert_eq!</span>(hakmem::grid::find_block(<span class="kw-2">&amp;</span>rows, <span class="number">2</span>, <span class="number">2</span>, <span class="kw-2">&amp;mut </span>scratch), <span class="prelude-val">Some</span>((<span class="number">0</span>, <span class="number">3</span>)));
+
+<span class="comment">// Slices of words, no index needed.
+</span><span class="macro">assert_eq!</span>(hakmem::slice::find_run(<span class="kw-2">&amp;</span>[<span class="number">0xFFu64 </span>&lt;&lt; <span class="number">56</span>, u64::MAX], <span class="number">16</span>), <span class="prelude-val">Some</span>(<span class="number">56</span>));</code></pre></div><h3 id="status"><a class="doc-anchor" href="#status">§</a>Status</h3>
+<p>This is a learning project, one person’s, and far from production.
+I am working through the broadword literature by giving each trick a
+type, a law and a test; the crate is what that leaves behind. Expect
+the API to change between minor versions, and do not expect every
+definition to be the best one available: the portable <code>select</code> loses
+to a plain loop for small <code>k</code>, the portable <code>pext</code> is a loop over the
+mask, and definitions were chosen for clarity and lawfulness before
+speed.</p>
+<p>What I do take seriously is finding bugs. Every combinator ships
+with laws; the laws run on every carrier, with and without the
+hardware paths, exhaustively at 8 and 16 bits, and under Miri for
+the intrinsics; CI builds all of it as sandboxed Nix derivations on
+x86_64 and aarch64. A wrong result is a bug and I want to hear about
+it. A slow one may be known; the design notes linked at the end list
+what is.</p>
+<p>If you need a stable dependency today, take the two or three lines
+you need from Hacker’s Delight; that is where this crate started. If
+you want to see them named, typed and checked, read on.</p>
+<h3 id="benchmarks-against-the-crates-people-use"><a class="doc-anchor" href="#benchmarks-against-the-crates-people-use">§</a>Benchmarks against the crates people use</h3>
+<p>Criterion, AMD Zen 5, one thread, <code>cargo bench -p hakmem --bench incumbents</code>. Numbers are from a sandboxed run; rerun on your machine
+before believing them. What the table does not hide: without BMI2 the
+select is slower than the <code>broadword</code> crate’s, and <code>Wide&lt;N&gt;</code> pays <code>N</code>
+limb operations per step.</p>
+<div class="table"><table><thead><tr><th>select in a <code>u64</code> (1024 words)</th><th>portable</th><th><code>+bmi2</code></th></tr></thead><tbody>
+<tr><td><code>hakmem</code> <code>Bits::select</code></td><td>5.24 µs</td><td><strong>1.21 µs</strong></td></tr>
+<tr><td><code>broadword::select1_raw</code></td><td><strong>4.60 µs</strong></td><td>4.54 µs</td></tr>
+</tbody></table>
+</div><div class="table"><table><thead><tr><th>Levenshtein, pattern m × text n</th><th><code>hakmem</code> u64</th><th><code>hakmem</code> u128</th><th><code>triple_accel</code></th><th><code>triple_accel_exp</code></th><th><code>strsim</code></th></tr></thead><tbody>
+<tr><td>16 × 64</td><td><strong>153 ns</strong></td><td>224 ns</td><td>852 ns</td><td>590 ns</td><td>711 ns</td></tr>
+<tr><td>32 × 256</td><td><strong>602 ns</strong></td><td>829 ns</td><td>19.6 µs</td><td>6.10 µs</td><td>5.74 µs</td></tr>
+<tr><td>64 × 256</td><td><strong>614 ns</strong></td><td>860 ns</td><td>21.4 µs</td><td>6.80 µs</td><td>11.4 µs</td></tr>
+<tr><td>64 × 1024</td><td><strong>2.37 µs</strong></td><td>3.26 µs</td><td>235 µs</td><td>221 µs</td><td>44.1 µs</td></tr>
+<tr><td>128 × 1024</td><td>n/a</td><td><strong>3.24 µs</strong></td><td>249 µs</td><td>231 µs</td><td>90.0 µs</td></tr>
+</tbody></table>
+</div><div class="table"><table><thead><tr><th>Longer patterns, <code>Wide&lt;N&gt;</code></th><th><code>hakmem</code> <code>Wide&lt;4&gt;</code></th><th><code>hakmem</code> <code>Wide&lt;8&gt;</code></th><th><code>triple_accel</code></th><th><code>triple_accel_exp</code></th><th><code>strsim</code></th></tr></thead><tbody>
+<tr><td>128 × 1024</td><td><strong>7.41 µs</strong></td><td>19.3 µs</td><td>245 µs</td><td>231 µs</td><td>109 µs</td></tr>
+<tr><td>256 × 1024</td><td><strong>8.06 µs</strong></td><td>20.4 µs</td><td>274 µs</td><td>257 µs</td><td>176 µs</td></tr>
+<tr><td>512 × 1024</td><td>n/a</td><td><strong>22.3 µs</strong></td><td>326 µs</td><td>307 µs</td><td>352 µs</td></tr>
+</tbody></table>
+</div>
+<p>Why the gap: Myers’ bit-parallel column costs ~12 word operations per
+text byte for the whole pattern (64 cells per word), the state lives in
+registers, nothing is allocated and no UTF-8 is decoded; the others pay
+per cell, and <code>triple_accel</code>’s full-distance API searches upward over
+the band width, which is a poor fit when the lengths differ a lot.
+Longer patterns use <code>Wide&lt;N&gt;</code> (<code>N × 64</code> bits as one word): each step
+then costs <code>N</code> limb operations, still well below per-cell DP.</p>
+<p><code>triple_accel</code>’s own design point is two strings of similar length that
+differ in a few edits, with a known bound <code>k</code> (<code>levenshtein_simd_k</code>).
+There it catches up and, past a couple of words, wins:</p>
+<div class="table"><table><thead><tr><th>same length, few edits</th><th><code>hakmem</code></th><th><code>triple_accel_simd_k</code></th><th><code>triple_accel_exp</code></th><th><code>strsim</code></th></tr></thead><tbody>
+<tr><td>64, 4 edits (u64)</td><td><strong>165 ns</strong></td><td>980 ns</td><td>1.03 µs</td><td>2.74 µs</td></tr>
+<tr><td>128, 8 edits (u128)</td><td><strong>494 ns</strong></td><td>1.86 µs</td><td>1.94 µs</td><td>11.7 µs</td></tr>
+<tr><td>512, 8 edits (<code>Wide&lt;8&gt;</code>)</td><td>13.5 µs</td><td><strong>7.13 µs</strong></td><td>7.39 µs</td><td>177 µs</td></tr>
+<tr><td>512, 32 edits (<code>Wide&lt;8&gt;</code>)</td><td>13.8 µs</td><td>10.1 µs</td><td><strong>7.39 µs</strong></td><td>178 µs</td></tr>
+</tbody></table>
+</div>
+<p><code>hakmem</code> always computes the full distance; a banded variant (Ukkonen
+cut-off over the active blocks) is the obvious next step for long
+similar strings and is not implemented.</p>
+<h3 id="cookbook"><a class="doc-anchor" href="#cookbook">§</a>Cookbook</h3>
+<p><code>hakmem::cookbook</code> explains how the shipped kernels were composed:
+the simdjson inside-string mask, first-fit runs across words, the
+Myers column step, Morton neighbours, <code>strlen</code> in one word, sliding
+attacks, each as problem, decomposition, the laws that justify it,
+and cost, with doctests. The last recipe is the one deliberately left
+unbuilt (banded Myers over <code>Wide&lt;N&gt;</code>), sketched so you can.</p>
+<h3 id="hardware-paths"><a class="doc-anchor" href="#hardware-paths">§</a>Hardware paths</h3>
+<p>Chosen at compile time, never at run time: build with
+<code>-C target-feature=+bmi2,+pclmulqdq</code> (or <code>-C target-cpu=native</code>) and
+<code>pext</code>/<code>pdep</code>/<code>select</code>/<code>prefix_xor</code> become single instructions; without
+them every combinator has a portable definition with the same
+contract. The <code>portable</code> cargo feature turns the hardware paths off even
+when the target feature is present, for the microarchitectures where the
+instruction exists but is microcoded (PDEP/PEXT on AMD Zen 1 and 2).</p>
+<h3 id="laws"><a class="doc-anchor" href="#laws">§</a>Laws</h3>
+<p>Every combinator ships with the laws it obeys (<code>hakmem::laws</code>), checked
+by property tests on all carriers with and without the hardware paths,
+and exhaustively for widths up to 16 bits. A backend that fails a law
+is a bug, never a documented caveat.</p>
+<p><code>no_std</code>, zero dependencies, stable Rust.</p>
+<p>Design: <a href="https://github.com/mightsleep/hakmem/blob/main/docs/design.md"><code>docs/design.md</code></a>,
+the decisions behind the API, the hardware policy, how the laws are
+verified, and where every combinator comes from.</p>
+</div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><dl class="item-table reexports"><dt><code>pub use <a class="mod" href="prelude/index.html" title="mod hakmem::prelude">prelude</a>::*;</code></dt></dl><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="bits/index.html" title="mod hakmem::bits">bits</a></dt><dd>The one trait to import: every combinator, on every carrier.</dd><dt><a class="mod" href="cookbook/index.html" title="mod hakmem::cookbook">cookbook</a></dt><dd>How the shipped kernels were composed, so you can compose your own.</dd><dt><a class="mod" href="dilated/index.html" title="mod hakmem::dilated">dilated</a></dt><dd>Dilated integers and Morton (Z-order) codes.</dd><dt><a class="mod" href="grid/index.html" title="mod hakmem::grid">grid</a></dt><dd>Two-dimensional runs: rectangular blocks in a bitmap of rows.</dd><dt><a class="mod" href="laws/index.html" title="mod hakmem::laws">laws</a></dt><dd>The algebra’s laws as exported property functions.</dd><dt><a class="mod" href="myers/index.html" title="mod hakmem::myers">myers</a></dt><dd>Bit-parallel edit distance (Myers 1999, Hyyrö’s formulation).</dd><dt><a class="mod" href="permute/index.html" title="mod hakmem::permute">permute</a></dt><dd>Permutations built from delta swaps.</dd><dt><a class="mod" href="prelude/index.html" title="mod hakmem::prelude">prelude</a></dt><dd>Everything most code needs: the <a href="bits/trait.Bits.html" title="trait hakmem::bits::Bits"><code>Bits</code></a> trait, the <a href="word/trait.Word.html" title="trait hakmem::word::Word"><code>Word</code></a>
+carrier trait, and the dilated / Morton / positions types.</dd><dt><a class="mod" href="set/index.html" title="mod hakmem::set">set</a></dt><dd>Set view: a word as a set of positions <code>0..BITS</code>.</dd><dt><a class="mod" href="slice/index.html" title="mod hakmem::slice">slice</a></dt><dd>Bit-set operations over a slice of words: the index-free layer
+between single-word combinators and a real succinct structure.</dd><dt><a class="mod" href="wide/index.html" title="mod hakmem::wide">wide</a></dt><dd>A multi-limb carrier: <code>N × 64</code> bits that behave as one word.</dd><dt><a class="mod" href="word/index.html" title="mod hakmem::word">word</a></dt><dd>The carrier: a fixed-width word viewed as a container of bits.</dd></dl></section></div></main></body></html>

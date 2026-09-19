@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"fn":["flip_vertical","mirror_horizontal","rotate_180","rotate_90_ccw","rotate_90_cw","transpose"]};
