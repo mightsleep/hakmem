@@ -239,6 +239,20 @@ macro_rules! laws_for {
                 fn signed_overflow_matches_sign_test(a in $strategy, b in $strategy) {
                     prop_assert!(laws::signed_overflow_matches_sign_test(a, b));
                 }
+                // carry-rippler and gather
+                #[test]
+                fn next_subset_is_increment_in_mask(x in $strategy, m in $strategy) {
+                    prop_assert!(laws::next_subset_is_increment_in_mask(x, m));
+                }
+                #[test]
+                fn subsets_enumerate_each_once(m in $strategy) {
+                    let small = <$t as hakmem::Word>::low_ones(12.min(BITS));
+                    prop_assert!(laws::subsets_enumerate_each_once(hakmem::Word::and(m, small)));
+                }
+                #[test]
+                fn strided_gather_is_exact(x in $strategy, start in 0..BITS, stride in 1..BITS, k in 1u32..=8, target in 0..BITS) {
+                    prop_assert!(laws::strided_gather_is_exact(x, start, stride, k, target));
+                }
             }
         }
     };
@@ -444,6 +458,75 @@ mod lanes {
         #[test]
         fn affine_named_maps_match_ops(x in any::<u8>(), n in 0u32..12) {
             prop_assert!(laws::affine_named_maps_match_ops(x, n));
+        }
+    }
+}
+
+/// The Kindergarten constants. Every file gathers into a byte with the
+/// derived factor. Every diagonal and antidiagonal gathers by column
+/// onto the top rank with the a-file factor, exactly, the antidiagonal
+/// against bit order; the literature's b-file factor lands one column
+/// up and drops the h-file off the top, which is exact once that cell
+/// is left out, as the six-inner-bits index does.
+#[test]
+fn kindergarten_gathers_are_exact() {
+    use hakmem::prelude::*;
+    const A_FILE: u64 = 0x0101_0101_0101_0101;
+    const B_FILE: u64 = 0x0202_0202_0202_0202;
+    let square = |r: u32, c: u32| 1u64 << (8 * r + c);
+    for f in 0..8 {
+        let file: u64 = (0..8).map(|r| square(r, f)).fold(0, |m, b| m | b);
+        let factor = u64::gather_factor(file, 56).unwrap();
+        assert!(laws::gather_is_exact(file, factor, 56), "file {f}");
+        assert_eq!(factor, 0x0102_0408_1020_4080 >> f, "file {f}");
+    }
+    for d in -7i32..=7 {
+        for anti in [false, true] {
+            // Cells in bit order (rank ascending), with their columns.
+            let cells: Vec<(u32, u32)> = (0..8i32)
+                .filter_map(|r| {
+                    let c = if anti { d + 7 - r } else { r + d };
+                    (0..8)
+                        .contains(&c)
+                        .then(|| (r.cast_unsigned(), c.cast_unsigned()))
+                })
+                .collect();
+            let mask = cells
+                .iter()
+                .map(|&(r, c)| square(r, c))
+                .fold(0u64, |m, b| m | b);
+            let c_min = cells.iter().map(|&(_, c)| c).min().unwrap();
+            let target = 56 + c_min;
+            let place = |i: u32| 56 + cells[i as usize].1;
+            let factor = u64::gather_factor_by(mask, place).unwrap();
+            assert_eq!(factor & !A_FILE, 0, "d={d} anti={anti}");
+            assert!(
+                laws::gather_is_exact_by(mask, factor, target, place),
+                "d={d} anti={anti}"
+            );
+            assert!(
+                laws::gather_is_exact_by(mask, A_FILE, target, place),
+                "d={d} anti={anti} a-file"
+            );
+            if !anti {
+                assert_eq!(u64::gather_factor(mask, target), Some(factor), "d={d}");
+                assert!(laws::gather_is_exact(mask, A_FILE, target), "d={d} a-file");
+            }
+            // The b-file variant: one column up, h-file left out.
+            let inner: Vec<(u32, u32)> = cells.iter().copied().filter(|&(_, c)| c < 7).collect();
+            if inner.is_empty() {
+                continue;
+            }
+            let mask = inner
+                .iter()
+                .map(|&(r, c)| square(r, c))
+                .fold(0u64, |m, b| m | b);
+            let target = 57 + inner.iter().map(|&(_, c)| c).min().unwrap();
+            let place = |i: u32| 57 + inner[i as usize].1;
+            assert!(
+                laws::gather_is_exact_by(mask, B_FILE, target, place),
+                "d={d} anti={anti} b-file"
+            );
         }
     }
 }

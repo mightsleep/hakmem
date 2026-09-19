@@ -313,6 +313,8 @@ every carrier.
 | `Bits::ternary`, `Lanes::ternary`, `bits::truth_table` | VPTERNLOG; `f(0xF0, 0xCC, 0xAA)` is the immediate's own definition read backwards |
 | `Bits::signed_add_overflows`, `signed_sub_overflows` | Hacker's Delight 2-13; the lane form with VPTERNLOG `0x42` / `0x18`: Wunkolo, *vpternlog: Signed Saturation*, 2025 |
 | `Lanes::avg_round`, `avg_floor`; `0x80` as the average of `0x00` and `0xFF` | Hacker's Delight 2-5; PAVGB, `urhadd`; Wunkolo, *pavgb: most-significant-bit constant*, 2022 |
+| `Bits::next_subset`, `subsets` | the carry-rippler, `(x − m) & m`, chess programming folklore (Isenberg's wiki, *Traversing Subsets of a Set*) |
+| `Bits::gather`, `gather_factor`, `gather_factor_by` | multiply as parallel shift-and-add; Kindergarten bitboards (Isenberg, 2007) as the named instance, the file and diagonal constants re-derived |
 
 What is not in the canon, as far as I know:
 
@@ -390,6 +392,9 @@ What is and is not a breaking change:
   *gf2p8affineqb: int8 shifting*, *pavgb: most-significant-bit
   constant*, *vpternlog: Signed Saturation*.
   <https://wunkolo.github.io/>
+- Isenberg et al. *Chess Programming Wiki*: *Kindergarten Bitboards*,
+  *Traversing Subsets of a Set*, *Obstruction Difference*.
+  <https://www.chessprogramming.org/>
 - Langdale, Lemire. *Parsing Gigabytes of JSON per Second*. The VLDB
   Journal, 2019.
 - Kogge, Stone. *A Parallel Algorithm for the Efficient Solution of a

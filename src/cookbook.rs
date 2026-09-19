@@ -379,3 +379,79 @@
 //! arithmetic on every lane, and the sign mask from the average.
 //!
 //! **Cost.** Two instructions, no memory.
+//!
+//! # 11. Every occupancy of a mask, in order
+//!
+//! **Problem.** Fill a table indexed by the occupancy of a set of
+//! squares (a magic-bitboard table, a Kindergarten row), or search
+//! every subset of a mask for a constant that works. Walking `0..2^k`
+//! and depositing each with PDEP is one way; the carry-rippler is
+//! the way without PDEP.
+//!
+//! **Decomposition.** `(x − mask) & mask` is the next subset of `mask`
+//! after `x`: subtracting the mask borrows through the selected bits
+//! the way adding one carries through contiguous ones, so the step
+//! is `+ 1` in the compacted domain without ever compacting.
+//! [`next_subset`](crate::Bits::next_subset) is the step,
+//! [`subsets`](crate::Bits::subsets) the iterator from zero to the mask.
+//!
+//! ```
+//! use hakmem::prelude::*;
+//!
+//! let relevant = 0b1010_0100u8;
+//! let occupancies: Vec<u8> = relevant.subsets().collect();
+//! assert_eq!(occupancies.len(), 8);
+//! assert_eq!(occupancies[..4], [0, 0b100, 0b10_0000, 0b10_0100]);
+//! // The same walk through PEXT / PDEP.
+//! for (i, s) in relevant.subsets().enumerate() {
+//!     assert_eq!(u8::try_from(i).unwrap().expand(relevant), s);
+//! }
+//! ```
+//!
+//! **Laws.** `next_subset_is_increment_in_mask` (the step is
+//! `expand(compact(x) + 1)`), `subsets_enumerate_each_once` (`2^k`
+//! items, consecutive in the compacted domain, all inside the mask).
+//!
+//! **Cost.** Two operations per subset, no table, no PDEP.
+//!
+//! # 12. A column as a byte, by one multiply (Kindergarten)
+//!
+//! **Problem.** The occupancy of a file, a diagonal or an antidiagonal
+//! of a bitboard as a small integer, to index a table: the bits are
+//! eight or nine apart and a table wants them adjacent.
+//!
+//! **Decomposition.** A multiply by a constant is the sum of the
+//! operand shifted left by each set bit of the constant. Choose one
+//! shift per selected bit, the distance from where it is to where it
+//! should land, and if no two of the shifted copies ever put a bit on
+//! the same position the sum is an OR and the product holds the
+//! gathered bits: PEXT by arithmetic. [`gather`](crate::Bits::gather)
+//! is the multiply, mask and shift; [`gather_factor`](crate::Bits::gather_factor)
+//! derives the constant, and it derives the ones in the literature: a
+//! file's factor is the identity matrix of recipe 8, a diagonal's
+//! read by column is the a-file `0x0101…01`. For bits `stride` apart
+//! with `stride ≥ k` the copies cannot meet
+//! (`strided_gather_is_exact`), which covers files and diagonals;
+//! anything else is one brute-force run of `gather_is_exact` over the
+//! `2^k` occupancies of recipe 11.
+//!
+//! ```
+//! use hakmem::prelude::*;
+//!
+//! // The a1-h8 diagonal, read by column onto the top rank.
+//! let diagonal = 0x8040_2010_0804_0201u64;
+//! let factor = u64::gather_factor(diagonal, 56).unwrap();
+//! assert_eq!(factor, 0x0101_0101_0101_0101);
+//! let occupied = diagonal & 0xFFFFu64; // ranks 1 and 2
+//! assert_eq!(occupied.gather(diagonal, factor, 56), 0b11);
+//! assert!(hakmem::laws::gather_is_exact(diagonal, factor, 56));
+//! ```
+//!
+//! **Laws.** `gather_is_exact_by` (agreement with `compact` on every
+//! occupancy, for any placement), `strided_gather_is_exact` (the
+//! theorem that makes files and diagonals safe without the sweep),
+//! and `kindergarten_gathers_are_exact` in `tests/laws.rs`, every
+//! file, diagonal and antidiagonal of the board.
+//!
+//! **Cost.** One multiply, one shift, one AND; a 64-entry table per
+//! line instead of a magic-bitboard's per-square tables.

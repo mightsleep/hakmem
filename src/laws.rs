@@ -1189,3 +1189,107 @@ pub fn lane_maps_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 1
             && lhs.ternary(rhs, third, truth).lane(i) == x.ternary(y, z, truth)
     }) && L::zero().avg_round(L::zero().not()) == L::splat(0x80)
 }
+
+// --- carry-rippler and gather ------------------------------------------
+
+/// The carry-rippler is `+ 1` in the compacted domain: the next subset
+/// of `mask` after `x` is `expand(compact(x) + 1)`, and `None` exactly
+/// after the mask itself. Bits of `x` outside the mask are ignored.
+#[must_use]
+pub fn next_subset_is_increment_in_mask<W: Word>(x: W, mask: W) -> bool {
+    let s = x.and(mask);
+    let want = if s == mask {
+        None
+    } else {
+        Some(s.compact(mask).wrapping_add(W::ONE).expand(mask))
+    };
+    s.next_subset(mask) == want && x.next_subset(mask) == want
+}
+
+/// [`Bits::subsets`] enumerates every subset of `mask` exactly once,
+/// consecutive in the compacted domain, from zero to the mask. `mask`
+/// with at most 16 set bits;
+/// wider masks pass vacuously.
+#[must_use]
+pub fn subsets_enumerate_each_once<W: Word>(mask: W) -> bool {
+    let k = mask.count_ones();
+    if k > 16 {
+        return true;
+    }
+    let mut count = 0u32;
+    let mut previous = None;
+    for s in mask.subsets() {
+        count += 1;
+        let consecutive =
+            previous.is_none_or(|p: W| p.compact(mask).wrapping_add(W::ONE) == s.compact(mask));
+        if !consecutive || s.and(mask) != s {
+            return false;
+        }
+        previous = Some(s);
+    }
+    count == 1 << k && previous == Some(mask)
+}
+
+/// A gather triple with placement `place` agrees with [`Bits::compact`].
+///
+/// On every subset of the mask the result carries bit `i` of the
+/// compacted subset at bit `place(i) − target` and nothing else; since
+/// [`Bits::gather`] masks its input first, that is every input. `mask`
+/// with at most 16 set bits; wider masks pass vacuously.
+#[must_use]
+pub fn gather_is_exact_by<W: Word>(
+    mask: W,
+    factor: W,
+    target: u32,
+    place: impl Fn(u32) -> u32,
+) -> bool {
+    if mask.count_ones() > 16 {
+        return true;
+    }
+    mask.subsets().all(|s| {
+        let packed = s.compact(mask);
+        let mut want = W::ZERO;
+        for i in 0..mask.count_ones() {
+            if packed.bit(i) {
+                want = want.or(W::ONE.shl(place(i) - target));
+            }
+        }
+        s.gather(mask, factor, target) == want
+    })
+}
+/// An order-preserving gather triple agrees with [`Bits::compact`].
+///
+/// [`gather_is_exact_by`] with `place(i) = target + i`. `mask` with at
+/// most 16 set bits; wider masks pass vacuously.
+#[must_use]
+pub fn gather_is_exact<W: Word>(mask: W, factor: W, target: u32) -> bool {
+    gather_is_exact_by(mask, factor, target, |i| target + i)
+}
+
+/// Bits `stride` apart with `stride >= k` gather exactly.
+///
+/// The order-preserving factor exists iff every bit moves left and the
+/// window fits, and then the gather agrees with `compact`: the partial
+/// products `target + i + stride (j − i)` are distinct for distinct
+/// `(i, j)`, so nothing is ever added. Parameter sets the theorem does
+/// not cover pass vacuously.
+#[must_use]
+pub fn strided_gather_is_exact<W: Word>(
+    x: W,
+    start: u32,
+    stride: u32,
+    k: u32,
+    target: u32,
+) -> bool {
+    if k == 0 || stride < k || start + stride * (k - 1) >= W::BITS {
+        return true;
+    }
+    let mut mask = W::ZERO;
+    for i in 0..k {
+        mask = mask.or(W::ONE.shl(start + stride * i));
+    }
+    let fits = target + k <= W::BITS && target >= start + (stride - 1) * (k - 1);
+    W::gather_factor(mask, target).map_or(!fits, |factor| {
+        fits && x.gather(mask, factor, target) == x.compact(mask)
+    })
+}

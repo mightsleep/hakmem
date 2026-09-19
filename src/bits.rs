@@ -7,7 +7,7 @@
 //! `trailing_zeros`, `leading_zeros`, plus `pext` / `pdep` /
 //! `select_lowest` / `xor_scan` for the hardware-backed ones.
 
-use crate::set::Positions;
+use crate::set::{Positions, Subsets};
 use crate::word::Word;
 
 /// Every combinator of the algebra as a method. Blanket-implemented
@@ -23,7 +23,10 @@ use crate::word::Word;
 ///   -x`), Gray code, `find_escaped`, Kogge–Stone fills along a stride through a propagation mask.
 /// - **Compact / expand** (PEXT / PDEP): the bijection between "bits at the positions of `mask`"
 ///   and "the low `count_ones(mask)` bits".
-/// - **Basics** (HD ch. 2, HAKMEM 175): lowest-set-bit family, blend, powers of two, Gosper's hack.
+/// - **Multiply as shift-and-add**: a constant factor is a set of left shifts summed at once; when
+///   the copies never meet it is a broadcast, a scan or a gather (Kindergarten bitboards).
+/// - **Basics** (HD ch. 2, HAKMEM 175): lowest-set-bit family, blend, powers of two, Gosper's hack,
+///   the carry-rippler over the subsets of a mask.
 /// - **SWAR byte lanes** (HD 6-1): exact zero / equal / less-than tests on every byte at once; the
 ///   `strlen` / `memchr` sentences.
 /// - **Permutations**: delta swap, the primitive of every Beneš network (8×8 board permutations
@@ -165,6 +168,12 @@ pub trait Bits: Word {
     #[inline]
     fn positions(self) -> Positions<Self> {
         Positions(self)
+    }
+    /// Every subset of `self` as a mask, ascending, starting at zero.
+    /// See [`Subsets`].
+    #[inline]
+    fn subsets(self) -> Subsets<Self> {
+        Subsets::new(self)
     }
 
     // ===================================================================
@@ -365,6 +374,95 @@ pub trait Bits: Word {
     }
 
     // ===================================================================
+    // Multiply as shift-and-add: broadcast, scan, gather
+    // ===================================================================
+    /// The bits of `self & mask`, in order, as the low `count_ones(mask)`
+    /// bits of the result, by one multiplication.
+    ///
+    /// Computes `(x & mask) * factor`, shifted right by `target` and
+    /// masked. A multiply by a constant is the sum of `x` shifted left
+    /// by each set bit of `factor`; when the shifted copies of the
+    /// selected bits never meet, the sum is an OR and the multiply is a
+    /// gather: PEXT by arithmetic, the Kindergarten bitboard of a file
+    /// or a diagonal as a byte index. The crate's own [`Word::splat_byte`]
+    /// (a broadcast) and the byte prefix sums of the broadword select (a
+    /// scan) are the same instruction read two other ways.
+    ///
+    /// Whether a triple is exact is a property of `mask`, `factor` and
+    /// `target`, not of the input: `laws::gather_is_exact` checks it
+    /// over every subset of the mask, and
+    /// `laws::strided_gather_is_exact` says when it must hold. When it
+    /// is, the result equals [`compact`](Bits::compact); when it is not,
+    /// carries corrupt it.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // The a-file of a bitboard (bits 0, 8, .., 56) as one byte.
+    /// let a_file = 0x0101_0101_0101_0101u64;
+    /// let factor = u64::gather_factor(a_file, 56).unwrap();
+    /// assert_eq!(factor, 0x0102_0408_1020_4080);
+    /// let occupied = 0x0000_0100_0000_0101u64; // a1, a2, a6
+    /// assert_eq!(occupied.gather(a_file, factor, 56), 0b0010_0011);
+    /// assert_eq!(
+    ///     occupied.gather(a_file, factor, 56),
+    ///     occupied.compact(a_file)
+    /// );
+    /// ```
+    #[inline]
+    #[must_use]
+    fn gather(self, mask: Self, factor: Self, target: u32) -> Self {
+        if target >= Self::BITS {
+            return Self::ZERO;
+        }
+        self.and(mask)
+            .wrapping_mul(factor)
+            .shr(target)
+            .and(Self::low_ones(mask.count_ones()))
+    }
+
+    /// The factor that sends the `i`-th set bit of `mask` (ascending)
+    /// to bit `place(i)`: one set bit per selected bit, at the distance
+    /// it has to travel; bits that travel the same distance share it.
+    /// `None` when a bit would have to move right or past the top,
+    /// which a multiply cannot do. Existence is not exactness: the
+    /// copies may still collide, see [`gather`](Bits::gather) and
+    /// `laws::gather_is_exact_by`.
+    ///
+    /// The placement need not preserve order. A bitboard's
+    /// antidiagonal read by column runs against bit order, and its
+    /// Kindergarten factor is this with `place(i) = 56 + c_i`, the
+    /// a-file again.
+    #[must_use]
+    fn gather_factor_by(mask: Self, place: impl Fn(u32) -> u32) -> Option<Self> {
+        let mut factor = Self::ZERO;
+        for (i, q) in (0..).zip(mask.positions()) {
+            let t = place(i);
+            if t < q || t >= Self::BITS {
+                return None;
+            }
+            factor = factor.or(Self::ONE.shl(t - q));
+        }
+        Some(factor)
+    }
+
+    /// The factor that moves the `i`-th set bit of `mask` to bit
+    /// `target + i`, in order: [`gather_factor_by`](Bits::gather_factor_by)
+    /// with `place(i) = target + i`.
+    ///
+    /// For a mask whose bits are `stride` apart with `stride >=
+    /// count_ones(mask)`, the gather is exact: every partial product
+    /// lands on its own bit (`laws::strided_gather_is_exact`). Files
+    /// (stride 8) and diagonals (stride 9) of a bitboard qualify; the
+    /// factor for a diagonal read by column comes out as the a-file,
+    /// `0x0101…01`, which is where the Kindergarten constants come from.
+    #[inline]
+    #[must_use]
+    fn gather_factor(mask: Self, target: u32) -> Option<Self> {
+        Self::gather_factor_by(mask, |i| target + i)
+    }
+
+    // ===================================================================
     // Basics: Hacker's Delight ch. 2, HAKMEM 175, powers of two
     // ===================================================================
     /// Only the lowest set bit (BLSI): `x & -x`; zero stays zero.
@@ -530,6 +628,33 @@ pub trait Bits: Word {
         // the top, and a single shift by `BITS` is out of range.
         let ones = self.xor(r).shr(self.trailing_zeros()).shr(2);
         Some(r.or(ones))
+    }
+
+    /// The carry-rippler: the next subset of `mask` after `self`, in
+    /// increasing order, or `None` after the last (the mask itself).
+    /// `(x − mask) & mask`: subtracting the mask borrows through the
+    /// selected bits exactly as adding one would carry through them if
+    /// they were contiguous, so this is `+ 1` in the compacted domain,
+    /// `expand(compact(x) + 1)`, without the PEXT / PDEP. Bits of
+    /// `self` outside the mask are ignored.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// assert_eq!(0u8.next_subset(0b1010), Some(0b0010));
+    /// assert_eq!(0b0010u8.next_subset(0b1010), Some(0b1000));
+    /// assert_eq!(0b1000u8.next_subset(0b1010), Some(0b1010));
+    /// assert_eq!(0b1010u8.next_subset(0b1010), None);
+    /// ```
+    #[inline]
+    #[must_use]
+    fn next_subset(self, mask: Self) -> Option<Self> {
+        let s = self.and(mask);
+        if s == mask {
+            None
+        } else {
+            Some(s.wrapping_sub(mask).and(mask))
+        }
     }
 
     /// `true` for exactly one set bit.

@@ -553,3 +553,36 @@ fn affine_all_bytes() {
         }
     }
 }
+
+/// The carry-rippler on every `u8` pair and every `u8` mask, and every
+/// `u16` mask with at most 12 bits; the strided gather theorem on every
+/// `u8` parameter set.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8_u16_subsets_and_gathers() {
+    for m in u8::MIN..=u8::MAX {
+        assert!(laws::subsets_enumerate_each_once(m), "m={m}");
+        for x in u8::MIN..=u8::MAX {
+            assert!(laws::next_subset_is_increment_in_mask(x, m), "x={x} m={m}");
+        }
+    }
+    for m in u16::MIN..=u16::MAX {
+        if m.count_ones() <= 12 {
+            assert!(laws::subsets_enumerate_each_once(m), "m={m}");
+        }
+    }
+    for x in u8::MIN..=u8::MAX {
+        for start in 0..8 {
+            for stride in 1..8 {
+                for k in 1..=8 {
+                    for target in 0..8 {
+                        assert!(
+                            laws::strided_gather_is_exact(x, start, stride, k, target),
+                            "x={x} start={start} stride={stride} k={k} target={target}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}

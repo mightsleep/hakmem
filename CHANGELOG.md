@@ -29,6 +29,13 @@ Delight 2-5). `Bits::ternary` and `Lanes::ternary` with
 `signed_sub_overflows` from the sign bits (Hacker's Delight 2-13).
 Cookbook recipes 8 to 10. MSRV 1.89, for the GFNI intrinsics.
 
+The chess programming canon, first two: `Bits::next_subset` and
+`Bits::subsets`, the carry-rippler over the subsets of a mask, and the
+gather family, `Bits::gather` with `gather_factor` / `gather_factor_by`,
+a multiply as PEXT (Kindergarten bitboards), with `gather_is_exact_by`
+as the brute-force check and `strided_gather_is_exact` as the theorem
+that covers files and diagonals. Cookbook recipes 11 and 12.
+
 ## 0.1.0, 2026-09-19
 
 First release, of a learning project far from production; the README's
