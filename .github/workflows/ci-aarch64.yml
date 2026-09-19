@@ -12,7 +12,7 @@ jobs:
       checks: ${{ steps.plan.outputs.checks }}
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/nix-installer-action@v23
       - id: plan
         run: echo "checks=$(nix eval --json .#checks.aarch64-linux --apply builtins.attrNames)" >> "$GITHUB_OUTPUT"
 
@@ -26,7 +26,7 @@ jobs:
         check: ${{ fromJSON(needs.plan.outputs.checks) }}
     steps:
       - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: DeterminateSystems/nix-installer-action@v23
       - uses: cachix/cachix-action@v15
         with:
           name: hakmem
