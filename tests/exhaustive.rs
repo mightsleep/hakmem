@@ -348,3 +348,68 @@ fn u8_composition_and_grid_all_inputs() {
         }
     }
 }
+
+/// The loop the broadword `pext` replaced, kept as its reference.
+fn compress_loop<W: Word>(x: W, mut mask: W) -> W {
+    let mut out = W::ZERO;
+    let mut k = 0;
+    while !mask.is_zero() {
+        if x.bit(mask.trailing_zeros()) {
+            out = out.or(W::ONE.shl(k));
+        }
+        k += 1;
+        mask = mask.clear_lowest_set();
+    }
+    out
+}
+
+/// The loop the broadword `pdep` replaced, kept as its reference.
+fn expand_loop<W: Word>(x: W, mut mask: W) -> W {
+    let mut out = W::ZERO;
+    let mut k = 0;
+    while !mask.is_zero() {
+        if x.bit(k) {
+            out = out.or(W::ONE.shl(mask.trailing_zeros()));
+        }
+        k += 1;
+        mask = mask.clear_lowest_set();
+    }
+    out
+}
+
+/// The broadword definitions themselves, whatever `Word::pext` compiles
+/// to on this target: every `u8` pair, every `u16` against the mask set.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8_u16_broadword_compress_expand_match_loop() {
+    use hakmem::word::{compress_broadword, expand_broadword};
+    for x in u8::MIN..=u8::MAX {
+        for m in u8::MIN..=u8::MAX {
+            assert_eq!(
+                compress_broadword(x, m),
+                compress_loop(x, m),
+                "compress x={x:#b} m={m:#b}"
+            );
+            assert_eq!(
+                expand_broadword(x, m),
+                expand_loop(x, m),
+                "expand x={x:#b} m={m:#b}"
+            );
+        }
+    }
+    let masks = masks16();
+    for x in u16::MIN..=u16::MAX {
+        for &m in &masks {
+            assert_eq!(
+                compress_broadword(x, m),
+                compress_loop(x, m),
+                "compress x={x:#b} m={m:#b}"
+            );
+            assert_eq!(
+                expand_broadword(x, m),
+                expand_loop(x, m),
+                "expand x={x:#b} m={m:#b}"
+            );
+        }
+    }
+}

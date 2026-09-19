@@ -257,3 +257,59 @@ laws_for!(
     any::<[u64; 3]>().prop_map(hakmem::Wide::from_limbs),
     <hakmem::Wide<3> as hakmem::Word>::ONES
 );
+
+// The broadword `pext` / `pdep` definitions against the loop they
+// replaced, on the wide carriers and regardless of which path
+// `Word::pext` takes on this target.
+mod broadword_compress {
+    use hakmem::prelude::*;
+    use hakmem::word::{compress_broadword, expand_broadword};
+    use proptest::prelude::*;
+
+    fn compress_loop<W: Word>(x: W, mut mask: W) -> W {
+        let mut out = W::ZERO;
+        let mut k = 0;
+        while !mask.is_zero() {
+            if x.bit(mask.trailing_zeros()) {
+                out = out.or(W::ONE.shl(k));
+            }
+            k += 1;
+            mask = mask.clear_lowest_set();
+        }
+        out
+    }
+
+    fn expand_loop<W: Word>(x: W, mut mask: W) -> W {
+        let mut out = W::ZERO;
+        let mut k = 0;
+        while !mask.is_zero() {
+            if x.bit(k) {
+                out = out.or(W::ONE.shl(mask.trailing_zeros()));
+            }
+            k += 1;
+            mask = mask.clear_lowest_set();
+        }
+        out
+    }
+
+    proptest! {
+        #[test]
+        fn u64_matches_loop(x in any::<u64>(), m in any::<u64>()) {
+            prop_assert_eq!(compress_broadword(x, m), compress_loop(x, m));
+            prop_assert_eq!(expand_broadword(x, m), expand_loop(x, m));
+        }
+
+        #[test]
+        fn u128_matches_loop(x in any::<u128>(), m in any::<u128>()) {
+            prop_assert_eq!(compress_broadword(x, m), compress_loop(x, m));
+            prop_assert_eq!(expand_broadword(x, m), expand_loop(x, m));
+        }
+
+        #[test]
+        fn wide3_matches_loop(x in any::<[u64; 3]>(), m in any::<[u64; 3]>()) {
+            let (x, m) = (Wide::from_limbs(x), Wide::from_limbs(m));
+            prop_assert_eq!(compress_broadword(x, m), compress_loop(x, m));
+            prop_assert_eq!(expand_broadword(x, m), expand_loop(x, m));
+        }
+    }
+}

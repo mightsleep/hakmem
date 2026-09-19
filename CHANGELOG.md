@@ -12,3 +12,5 @@ slice and 2D-grid operations, Myers edit distance / search. Every
 combinator ships with laws; laws are property-tested on all carriers
 with and without BMI2/PCLMULQDQ and exhaustively for widths up to 16
 bits. `hakmem::cookbook` explains how the shipped kernels were composed.
+Every primitive has a constant-time portable definition; `pext` and `pdep`
+follow Hacker's Delight 7-4 and 7-5.

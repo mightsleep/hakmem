@@ -83,11 +83,13 @@ pub trait Word: Copy + Eq + core::fmt::Debug + sealed::Sealed {
 
     /// Parallel bit extract (PEXT): gathers the bits of `self` at the
     /// set positions of `mask` into the low `count_ones(mask)` bits,
-    /// preserving order.
+    /// preserving order. BMI2: one instruction; portable:
+    /// [`compress_broadword`].
     #[must_use]
     fn pext(self, mask: Self) -> Self;
     /// Parallel bit deposit (PDEP): scatters the low `count_ones(mask)`
     /// bits of `self` to the set positions of `mask`, preserving order.
+    /// BMI2: one instruction; portable: [`expand_broadword`].
     #[must_use]
     fn pdep(self, mask: Self) -> Self;
 
@@ -145,34 +147,71 @@ pub trait Word: Copy + Eq + core::fmt::Debug + sealed::Sealed {
 
 // --- portable definitions ----------------------------------------------
 
-/// Portable PEXT: one iteration per set bit of `mask`.
+/// Portable PEXT: compress by parallel suffix (Hacker's Delight 7-4).
+///
+/// `log₂ BITS` rounds. Round `i` moves every selected bit right by
+/// `2^i` exactly when the number of unselected bits below it has bit
+/// `i` set; that count's parity, for every bit at once, is one
+/// prefix-XOR scan ([`Word::xor_scan`]) of the "zeros to the right"
+/// mask. Constant time, no table, no data-dependent branch: about
+/// `log₂ BITS × (9 + cost of a scan)` operations, where a scan is one
+/// PCLMULQDQ on targets that have it and a log-depth smear otherwise.
+/// `benches/compact.rs` compares it with PEXT and with a loop over the
+/// mask's set bits.
+///
+/// ```
+/// use hakmem::word::compress_broadword;
+/// assert_eq!(compress_broadword(0b1001u32, 0b1010), 0b10);
+/// ```
 #[inline]
-pub(crate) fn pext_portable<W: Word>(x: W, mut mask: W) -> W {
-    let mut out = W::ZERO;
-    let mut k = 0;
-    while !mask.is_zero() {
-        if x.bit(mask.trailing_zeros()) {
-            out = out.or(W::ONE.shl(k));
-        }
-        k += 1;
-        mask = mask.clear_lowest_set();
+#[must_use]
+pub fn compress_broadword<W: Word>(x: W, mut mask: W) -> W {
+    let mut x = x.and(mask);
+    let mut mk = mask.not().shl(1); // zeros to the right of each bit
+    let mut i = 0;
+    while (1u32 << i) < W::BITS {
+        let mp = mk.xor_scan(); // parity of those zeros, per bit
+        let mv = mp.and(mask); // bits that move this round
+        mask = mask.xor(mv).or(mv.shr(1u32 << i));
+        let t = x.and(mv);
+        x = x.xor(t).or(t.shr(1u32 << i));
+        mk = mk.and(mp.not());
+        i += 1;
     }
-    out
+    x
 }
 
-/// Portable PDEP: one iteration per set bit of `mask`.
+/// Portable PDEP: expand by parallel suffix (Hacker's Delight 7-5).
+///
+/// The move masks of [`compress_broadword`], computed forward and
+/// applied in reverse with left shifts. Constant time.
+///
+/// ```
+/// use hakmem::word::expand_broadword;
+/// assert_eq!(expand_broadword(0b10u32, 0b1010), 0b1000);
+/// ```
 #[inline]
-pub(crate) fn pdep_portable<W: Word>(x: W, mut mask: W) -> W {
-    let mut out = W::ZERO;
-    let mut k = 0;
-    while !mask.is_zero() {
-        if x.bit(k) {
-            out = out.or(W::ONE.shl(mask.trailing_zeros()));
-        }
-        k += 1;
-        mask = mask.clear_lowest_set();
+#[must_use]
+pub fn expand_broadword<W: Word>(x: W, mask: W) -> W {
+    // Room for any carrier up to 2^16 bits.
+    let mut moves = [W::ZERO; 16];
+    let mut m = mask;
+    let mut mk = mask.not().shl(1);
+    let mut rounds = 0;
+    while (1u32 << rounds) < W::BITS {
+        let mp = mk.xor_scan();
+        let mv = mp.and(m);
+        moves[rounds] = mv;
+        m = m.xor(mv).or(mv.shr(1u32 << rounds));
+        mk = mk.and(mp.not());
+        rounds += 1;
     }
-    out
+    let mut x = x;
+    for i in (0..rounds).rev() {
+        let mv = moves[i];
+        x = x.and(mv.not()).or(x.shl(1u32 << i).and(mv));
+    }
+    x.and(mask)
 }
 
 /// Log-depth XOR smear: `x ^= x << 1; x ^= x << 2; …`.
@@ -415,7 +454,7 @@ impl Word for u64 {
             not(feature = "portable")
         )))]
         {
-            pext_portable(self, mask)
+            compress_broadword(self, mask)
         }
     }
     #[inline]
@@ -434,7 +473,7 @@ impl Word for u64 {
             not(feature = "portable")
         )))]
         {
-            pdep_portable(self, mask)
+            expand_broadword(self, mask)
         }
     }
     #[inline]
@@ -497,7 +536,7 @@ impl Word for u32 {
             not(feature = "portable")
         )))]
         {
-            pext_portable(self, mask)
+            compress_broadword(self, mask)
         }
     }
     #[inline]
@@ -516,7 +555,7 @@ impl Word for u32 {
             not(feature = "portable")
         )))]
         {
-            pdep_portable(self, mask)
+            expand_broadword(self, mask)
         }
     }
     #[inline]

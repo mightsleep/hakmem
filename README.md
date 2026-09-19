@@ -98,8 +98,8 @@ I am working through the broadword literature by giving each trick a
 type, a law and a test; the crate is what that leaves behind. Expect
 the API to change between minor versions, and do not expect every
 definition to be the best one available: the portable `select` loses
-to a plain loop for small `k`, the portable `pext` is a loop over the
-mask, and definitions were chosen for clarity and lawfulness before
+to a plain loop for small `k`, the portable `compact` to one over sparse
+masks, and definitions were chosen for clarity and lawfulness before
 speed.
 
 What I do take seriously is finding bugs. Every combinator ships
@@ -157,6 +157,17 @@ tracks.
 | `hakmem` `Bits::select` | 5.24 µs | **1.21 µs** |
 | `broadword::select1_raw` | **4.60 µs** | 4.54 µs |
 
+| `compact` in a `u64` (1024 words) | portable | `+bmi2,+pclmulqdq` |
+|---|---|---|
+| `hakmem` `Bits::compact` | 11.2 µs | **1.30 µs** |
+| broadword definition, dense mask (about 32 set bits) | 11.1 µs | 8.00 µs |
+| loop over the set bits, dense mask | 21.3 µs | 19.5 µs |
+| loop over the set bits, sparse mask (about 8 set bits) | **4.36 µs** | 3.75 µs |
+
+The portable `compact` is constant time: a loop over the set bits wins
+below about 17 of them (12 when a PCLMULQDQ scan is available) and loses
+above, the same trade as the portable `select`.
+
 | Levenshtein, pattern m × text n | `hakmem` u64 | `hakmem` u128 | `triple_accel` | `triple_accel_exp` | `strsim` |
 |---|---|---|---|---|---|
 | 16 × 64 | **153 ns** | 224 ns | 852 ns | 590 ns | 711 ns |
@@ -210,9 +221,12 @@ Chosen at compile time, never at run time: build with
 `-C target-feature=+bmi2,+pclmulqdq` (or `-C target-cpu=native`) and
 `pext`/`pdep`/`select`/`prefix_xor` become single instructions; without
 them every combinator has a portable definition with the same
-contract. The `portable` cargo feature turns the hardware paths off even
-when the target feature is present, for the microarchitectures where the
-instruction exists but is microcoded (PDEP/PEXT on AMD Zen 1 and 2).
+contract. `pext` and `pdep` fall back to Hacker's Delight's
+parallel-suffix compress and expand (7-4, 7-5), `log₂ w` rounds of one
+prefix-XOR scan each, constant time. The `portable` cargo feature turns
+the hardware paths off even when the target feature is present, for the
+microarchitectures where the instruction exists but is microcoded
+(PDEP/PEXT on AMD Zen 1 and 2).
 
 ## Laws
 

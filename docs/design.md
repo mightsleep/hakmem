@@ -148,7 +148,7 @@ Exactly four primitives have one:
 
 | primitive | with the target feature | without |
 |---|---|---|
-| `pext`, `pdep` | one BMI2 instruction | a loop over the set bits of the mask, O(popcount(mask)) |
+| `pext`, `pdep` | one BMI2 instruction | Hacker's Delight 7-4 and 7-5: `log₂ w` rounds of one prefix-XOR scan each, constant time |
 | `select_lowest` | `trailing_zeros(pdep(1 << k, x))` (Pandey, Bender and Johnson, 2017) | Vigna's broadword select, about 30 ALU operations, no table, constant time |
 | `xor_scan` (prefix XOR) | PCLMULQDQ by all ones | a log-depth smear, six operations on `u64` |
 
@@ -175,6 +175,14 @@ constant time (the worst case is `k = 63`) and no data-dependent
 latency. A hybrid for small `k`, or a 2 KB table for the last step
 (what the `broadword` crate does, and why it is 14 % faster than
 this crate's portable path), are open choices.
+
+The portable `pext` / `pdep` tell the same story (`benches/compact.rs`,
+1024 word pairs): the parallel-suffix compress costs about 11 ns per
+word with a smear scan and 8 ns with PCLMULQDQ, regardless of the mask;
+a loop over the mask's set bits costs about 0.65 ns per set bit, so it
+wins below roughly 17 set bits (12 with the scan) and loses above.
+PEXT does it in 1.3 ns. Constant time and no data-dependent branch is
+why the broadword version is the definition.
 
 ## 6. Verification
 
