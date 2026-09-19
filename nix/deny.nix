@@ -9,12 +9,12 @@
 }: {
   perSystem = {config, ...}: let
     inherit (config.rust) craneLib;
-    # deny.toml and Cargo.lock must be in the source; cleanCargoSource would drop deny.toml.
+    # Cargo.toml, Cargo.lock and deny.toml are what these read; nothing compiles
+    # here, so no README (cleanCargoSource would drop deny.toml).
     src = lib.cleanSourceWith {
       src = ./..;
       filter = path: type:
         craneLib.filterCargoSources path type
-        || lib.hasSuffix ".md" path
         || baseNameOf path == "deny.toml";
       name = "source";
     };

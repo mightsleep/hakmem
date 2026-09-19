@@ -10,6 +10,30 @@ permissions:
   contents: write
 
 jobs:
+  # What the pushed range needs. rustdoc and the index always; the bench
+  # only when a file that can move a number changed. Schedule and manual
+  # runs have no `before` and bench always.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      bench: ${{ steps.diff.outputs.bench }}
+    steps:
+      - id: diff
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          bench=true
+          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            # A force push can leave `before` unreachable; then bench rather than guess.
+            if files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$GITHUB_SHA" --jq '.files[].filename'); then
+              bench=false
+              echo "$files" | grep -qE '^(src/|benches/|Cargo\.toml$|Cargo\.lock$|\.github/workflows/pages\.yml$)' && bench=true
+            fi
+          fi
+          echo "bench=$bench" >> "$GITHUB_OUTPUT"
+          echo "bench=$bench"
+
   docs:
     name: rustdoc + index
     runs-on: ubuntu-latest
@@ -30,14 +54,15 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./site
-          # Bench data live in dev/bench on the same branch; keep them.
+          # Bench data and the status JSON live on the same branch; keep them.
           keep_files: true
 
   bench:
     name: bench (criterion, tracked on gh-pages)
     runs-on: ubuntu-latest
     # docs pushes to gh-pages too; serialise the two pushes.
-    needs: docs
+    needs: [docs, changes]
+    if: needs.changes.outputs.bench == 'true'
     # Timed outside the Nix sandbox on a shared runner: a trend, never pass/fail.
     steps:
       - uses: actions/checkout@v7

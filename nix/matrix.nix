@@ -15,10 +15,11 @@
     isX86 = lib.hasPrefix "x86_64" system;
 
     # cleanCargoSource keeps only .rs and Cargo.*; README.md enters the crate
-    # through `include_str!`, so markdown must pass too.
+    # through `include_str!`, so it must pass too. Nothing else: an edit in
+    # docs/ or CHANGELOG.md must not change a single derivation.
     src = lib.cleanSourceWith {
       src = ./..;
-      filter = path: type: craneLib.filterCargoSources path type || lib.hasSuffix ".md" path;
+      filter = path: type: craneLib.filterCargoSources path type || baseNameOf path == "README.md";
       name = "source";
     };
     version = (craneLib.crateNameFromCargoToml {cargoToml = ../Cargo.toml;}).version;

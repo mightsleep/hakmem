@@ -10,7 +10,8 @@
     inherit (config.rust) craneLib craneLibMsrv;
     src = lib.cleanSourceWith {
       src = ./..;
-      filter = path: type: craneLib.filterCargoSources path type || lib.hasSuffix ".md" path;
+      # README.md is in the crate through `include_str!`; nothing else from docs.
+      filter = path: type: craneLib.filterCargoSources path type || baseNameOf path == "README.md";
       name = "source";
     };
 
