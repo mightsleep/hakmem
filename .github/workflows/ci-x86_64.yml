@@ -43,3 +43,18 @@ jobs:
           name: hakmem
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
       - run: nix run .#miri-hakmem
+
+  # Result of every cell to gh-pages for the README matrix and the site.
+  # Pushes to main only: a PR run must not overwrite the status of main.
+  status:
+    needs: [plan, check, miri]
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: ./.github/actions/status
+        with:
+          system: x86_64-linux

@@ -1,0 +1,36 @@
+name: status
+description: >-
+  Write the result of every job of this run to gh-pages as shields.io
+  endpoint JSON (status/<system>/<check>.json). The README matrix and the
+  site index read those files.
+inputs:
+  system:
+    description: Nix system of the matrix this run built (x86_64-linux, aarch64-linux).
+    required: true
+runs:
+  using: composite
+  steps:
+    - uses: actions/checkout@v7
+      with:
+        ref: gh-pages
+        path: site
+    - shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+      run: gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
+    - shell: bash
+      run: .github/status.sh "${{ inputs.system }}" jobs.json site/status
+    - shell: bash
+      working-directory: site
+      run: |
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git add status
+        git commit -qm "status: ${{ inputs.system }} ${GITHUB_SHA::8}" || exit 0
+        # gh-pages is shared with the other CI workflow and with pages.yml:
+        # rebase on a lost race and retry.
+        for _ in 1 2 3 4 5; do
+          git push && exit 0
+          git pull --rebase -q
+        done
+        exit 1

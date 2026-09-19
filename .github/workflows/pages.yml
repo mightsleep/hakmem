@@ -36,6 +36,8 @@ jobs:
   bench:
     name: bench (criterion, tracked on gh-pages)
     runs-on: ubuntu-latest
+    # docs pushes to gh-pages too; serialise the two pushes.
+    needs: docs
     # Timed outside the Nix sandbox on a shared runner: a trend, never pass/fail.
     steps:
       - uses: actions/checkout@v7
