@@ -324,8 +324,9 @@ What is and is not a breaking change:
   stable enough to depend on.
 - Hilbert curves and the 32 × 32 transpose when something needs them.
 - A 3 % directory (poppy, Zhou, Andersen and Kaminsky 2013) next to
-  the 25 % rank9, select0, and finer inventory cases for the spans
-  around 64 blocks, where sux's select9 is still 2× faster on select.
+  the 25 % rank9, and select0. On select the crate is within 15 % of
+  sux's select9 on sparse slices, the checked indexing it keeps; that
+  gap closes only with `unsafe`, which the crate does not take.
 - Banded Myers is not planned; recipe 7 of the cookbook is the
   instruction sheet.
 

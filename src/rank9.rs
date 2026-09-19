@@ -91,6 +91,9 @@ pub struct Rank9<'a> {
     /// `2 inventory[i] .. 2 inventory[i + 1]`, and what they hold
     /// depends on that span: see [`Span`].
     pool: &'a [u64],
+    /// Cached from the lengths and the trailing count pair.
+    blocks: usize,
+    ones: usize,
 }
 
 /// What an inventory entry stores about its 512 set bits, chosen by
@@ -319,6 +322,8 @@ impl<'a> Rank9<'a> {
             counts,
             inventory,
             pool,
+            blocks,
+            ones: Self::to_usize(counts[2 * blocks]),
         }
     }
 
@@ -343,7 +348,7 @@ impl<'a> Rank9<'a> {
     /// Number of set bits.
     #[must_use]
     pub const fn count_ones(&self) -> usize {
-        Self::to_usize(self.counts[2 * Self::blocks(self.bits.len())])
+        self.ones
     }
 
     /// `true` when the select inventory was built.
@@ -378,30 +383,28 @@ impl<'a> Rank9<'a> {
     /// Position of set bit number `k` (0-based), if `k < count_ones()`.
     #[must_use]
     pub fn select(&self, k: usize) -> Option<usize> {
-        if k >= self.count_ones() {
+        if k >= self.ones {
             return None;
         }
         if self.inventory.is_empty() {
-            return Some(
-                self.select_in_block(self.search(0, Self::blocks(self.bits.len()) - 1, k), k),
-            );
+            return Some(self.select_in_block(self.search(0, self.blocks - 1, k), k));
         }
         let i = k / ONES_PER_ENTRY;
-        let lo = Self::to_usize(self.inventory[i]);
-        let hi = Self::to_usize(self.inventory[i + 1]);
-        let region = &self.pool[2 * lo..];
+        let entry = &self.inventory[i..i + 2];
+        let (lo, hi) = (Self::to_usize(entry[0]), Self::to_usize(entry[1]));
         let k64 = k as u64;
+        // One bounds check per case: the slice the case reads, whole.
         let block = match Span::of(hi - lo) {
             Span::Tiny => {
-                let mut block = lo;
-                for j in 1..=hi - lo {
-                    block += usize::from(self.counts[2 * (lo + j)] <= k64);
-                }
-                block
+                let next = &self.counts[2 * lo + 2..2 * hi + 2];
+                lo + usize::from(next[0] <= k64)
+                    + usize::from(hi - lo >= 2 && next[2] <= k64)
+                    + usize::from(hi - lo >= 3 && next[4] <= k64)
             }
             Span::Flat => {
                 let rem = (k64 - self.counts[2 * lo]) * ONES_STEP_16;
-                let n: u32 = region
+                let lanes = &self.pool[2 * lo..2 * lo + 4];
+                let n: u32 = lanes
                     .iter()
                     .take((hi - lo).div_ceil(4))
                     .map(|&w| uleq_step16_small(w, rem).count_ones())
@@ -410,22 +413,24 @@ impl<'a> Rank9<'a> {
             }
             Span::Two => {
                 let rem = (k64 - self.counts[2 * lo]) * ONES_STEP_16;
+                let region = &self.pool[2 * lo..2 * lo + 18];
                 let g = (uleq_step16_small(region[0], rem).count_ones()
                     + uleq_step16_small(region[1], rem).count_ones())
                     as usize;
-                let off = (uleq_step16_small(region[2 + 2 * g], rem).count_ones()
-                    + uleq_step16_small(region[3 + 2 * g], rem).count_ones())
+                let group = &region[2 + 2 * g..4 + 2 * g];
+                let off = (uleq_step16_small(group[0], rem).count_ones()
+                    + uleq_step16_small(group[1], rem).count_ones())
                     as usize;
                 lo + 8 * g + off
             }
             Span::Pos16 => {
                 let n = k % ONES_PER_ENTRY;
-                let offset = (region[n / 4] >> (16 * (n % 4))) & 0xFFFF;
+                let offset = (self.pool[2 * lo + n / 4] >> (16 * (n % 4))) & 0xFFFF;
                 return Some(lo * BLOCK_BITS + Self::to_usize(offset));
             }
             Span::Pos32 => {
                 let n = k % ONES_PER_ENTRY;
-                let offset = (region[n / 2] >> (32 * (n % 2))) & 0xFFFF_FFFF;
+                let offset = (self.pool[2 * lo + n / 2] >> (32 * (n % 2))) & 0xFFFF_FFFF;
                 return Some(lo * BLOCK_BITS + Self::to_usize(offset));
             }
             Span::Search => self.search(lo, hi, k),
