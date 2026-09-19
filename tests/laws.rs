@@ -313,3 +313,51 @@ mod broadword_compress {
         }
     }
 }
+
+// The rank9 directory against the linear scans it indexes, on dense and
+// on sparse bit slices, across block and sample boundaries.
+mod rank9 {
+    use hakmem::laws;
+    use hakmem::rank9::Rank9;
+    use proptest::prelude::*;
+
+    fn with_dir(words: &[u64], f: impl FnOnce(&Rank9<'_>)) {
+        let mut counts = vec![0; Rank9::counts_len(words.len())];
+        let mut select = vec![0; Rank9::select_len(words.len())];
+        Rank9::build(words, &mut counts, &mut select);
+        f(&Rank9::new(words, &counts, &select));
+    }
+
+    /// Mostly empty words, some full, some single bits: long empty
+    /// stretches between set bits exercise the block search.
+    fn sparse_words() -> impl Strategy<Value = Vec<u64>> {
+        prop::collection::vec(
+            prop_oneof![
+                7 => Just(0u64),
+                1 => any::<u64>(),
+                1 => (0u32..64).prop_map(|b| 1u64 << b),
+            ],
+            0..=160,
+        )
+    }
+
+    proptest! {
+        #[test]
+        fn dense_matches_slice(words in prop::collection::vec(any::<u64>(), 0..=40), i in 0usize..=40 * 64 + 8, k in 0usize..=40 * 64 + 8) {
+            with_dir(&words, |dir| {
+                assert!(laws::rank9_matches_slice(dir, i, k), "i={i} k={k}");
+                assert!(laws::rank9_select_inverts_rank(dir, k), "k={k}");
+                assert!(laws::rank9_rank_steps_by_bit(dir, i), "i={i}");
+            });
+        }
+
+        #[test]
+        fn sparse_matches_slice(words in sparse_words(), i in 0usize..=160 * 64 + 8, k in 0usize..=160 * 64 + 8) {
+            with_dir(&words, |dir| {
+                assert!(laws::rank9_matches_slice(dir, i, k), "i={i} k={k}");
+                assert!(laws::rank9_select_inverts_rank(dir, k), "k={k}");
+                assert!(laws::rank9_rank_steps_by_bit(dir, i), "i={i}");
+            });
+        }
+    }
+}

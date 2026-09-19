@@ -13,4 +13,7 @@ combinator ships with laws; laws are property-tested on all carriers
 with and without BMI2/PCLMULQDQ and exhaustively for widths up to 16
 bits. `hakmem::cookbook` explains how the shipped kernels were composed.
 Every primitive has a constant-time portable definition; `pext` and `pdep`
-follow Hacker's Delight 7-4 and 7-5.
+follow Hacker's Delight 7-4 and 7-5. `hakmem::rank9::Rank9` is an O(1)
+rank/select directory over a borrowed `&[u64]`, rank9 plus a
+select9-shaped inventory, with storage the caller supplies, no allocator,
+pinned to `slice` by laws.

@@ -8,6 +8,7 @@
 //! backend, never a caveat in the docs.
 
 use crate::prelude::*;
+use crate::rank9::Rank9;
 
 // --- runs -------------------------------------------------------------
 
@@ -779,4 +780,38 @@ pub fn block_starts_laws<W: Word>(rows: &[W], w1: u32, h1: u32, w2: u32, h2: u32
     let direct = &mut direct[..len];
     crate::grid::block_starts(rows, w1 + w2 - 1, h1 + h2 - 1, direct);
     twice == direct
+}
+
+// --- rank9 ------------------------------------------------------------
+
+/// The directory agrees with the linear scans of [`crate::slice`] it
+/// indexes: `rank` and `rank0` at `i`, `select` at `k`, and the total.
+#[must_use]
+pub fn rank9_matches_slice(dir: &Rank9<'_>, i: usize, k: usize) -> bool {
+    let bits = dir.bits();
+    let rank = crate::slice::rank(bits, i);
+    dir.rank(i) == rank
+        && dir.rank0(i) == i.min(dir.len()) - rank
+        && dir.select(k) == crate::slice::select(bits, k)
+        && dir.count_ones() == crate::slice::popcount(bits)
+}
+
+/// `select` inverts `rank` on set bits: for `k < count_ones()`,
+/// `rank(select(k)) == k` and the bit at `select(k)` is set; beyond
+/// that `select` is `None`.
+#[must_use]
+pub fn rank9_select_inverts_rank(dir: &Rank9<'_>, k: usize) -> bool {
+    dir.select(k).map_or_else(
+        || k >= dir.count_ones(),
+        |p| dir.rank(p) == k && dir.rank(p + 1) == k + 1,
+    )
+}
+
+/// `rank` is monotone and steps by exactly the bit at `i`.
+#[must_use]
+pub fn rank9_rank_steps_by_bit(dir: &Rank9<'_>, i: usize) -> bool {
+    // `i % 64 < 64` fits a u32.
+    #[allow(clippy::cast_possible_truncation)]
+    let bit = i < dir.len() && dir.bits()[i / 64].bit((i % 64) as u32);
+    dir.rank(i + 1) == dir.rank(i) + usize::from(bit)
 }

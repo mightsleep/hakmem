@@ -89,6 +89,15 @@ assert_eq!(hakmem::grid::find_block(&rows, 2, 2, &mut scratch), Some((0, 3)));
 
 // Slices of words, no index needed.
 assert_eq!(hakmem::slice::find_run(&[0xFFu64 << 56, u64::MAX], 16), Some(56));
+
+// A rank/select directory over any `&[u64]`, storage you provide.
+use hakmem::rank9::Rank9;
+let bits = [0b1011u64, u64::MAX, 0];
+let mut counts = vec![0; Rank9::counts_len(bits.len())];
+let mut select = vec![0; Rank9::select_len(bits.len())];
+Rank9::build(&bits, &mut counts, &mut select);
+let dir = Rank9::new(&bits, &counts, &select);
+assert_eq!((dir.rank(64), dir.select(3)), (3, Some(64)));
 ```
 
 ## Status
@@ -163,6 +172,25 @@ tracks.
 | broadword definition, dense mask (about 32 set bits) | 11.1 µs | 8.00 µs |
 | loop over the set bits, dense mask | 21.3 µs | 19.5 µs |
 | loop over the set bits, sparse mask (about 8 set bits) | **4.36 µs** | 3.75 µs |
+
+| rank / select over 2^20 bits, 1024 queries | `rank` dense | `rank` sparse | `select` dense | `select` sparse |
+|---|---|---|---|---|
+| `hakmem` `Rank9` | **1.32 µs** | **1.32 µs** | 5.60 µs | 3.01 µs |
+| `sux` rank9 / select9 | 2.02 µs | 2.05 µs | **5.52 µs** | **1.43 µs** |
+| `sucds` `Rank9Sel` | 1.90 µs | 1.89 µs | 8.83 µs | 11.3 µs |
+| `vers-vecs` `RsVec` | 2.83 µs | 2.82 µs | 7.63 µs | 10.5 µs |
+
+Dense is half the bits set, sparse one in 64. Rank is the same rank9
+directory everywhere; the differences are bounds checks and layout.
+Select is where the structures differ. This crate keeps an inventory
+entry per 512 set bits and, by how many blocks those 512 span, stores
+either packed 16-bit block counts (one or two SWAR compares) or the
+positions themselves (no search at all), the shape of Vigna's select9
+with the cases cut at block boundaries. At one bit in 64 the spans sit
+on the edge between the two, and sux's select9, whose cases are cut
+finer, reads a stored position where this crate still compares counts;
+that is its 2×. The price of the inventory is three words per eight
+words of bits on top of rank9's two.
 
 The portable `compact` is constant time: a loop over the set bits wins
 below about 17 of them (12 when a PCLMULQDQ scan is available) and loses

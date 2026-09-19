@@ -9,6 +9,7 @@ pub mod grid;
 pub mod laws;
 pub mod myers;
 pub mod permute;
+pub mod rank9;
 pub mod set;
 pub mod slice;
 pub mod wide;

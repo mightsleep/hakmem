@@ -226,7 +226,10 @@ that derivation was built and passed (`.github/plan.sh`).
   boundary as bitslicing.
 - **Bit storage.** `bitvec` territory. This is an algebra over words,
   not a container of bits. `slice` is the index-free layer between a
-  word and a succinct structure, not the structure.
+  word and a succinct structure; `rank9` is the one structure, and it
+  owns nothing: the caller supplies the directory's words, which is the
+  case none of the maintained crates (`sux`, `sucds`, `vers-vecs`)
+  covers, all three want an allocator.
 - **Promises about autovectorisation.** A combinator compiles to a
   known instruction or to a documented fallback. Nothing in between.
 - **Big-integer arithmetic.** `u128` is the register ceiling.
@@ -271,6 +274,7 @@ every carrier.
 | `fill_up`, `fill_down` | Kogge and Stone, 1973, as used for sliding attacks on bitboards |
 | `Dilated`, `Morton2` | Morton, 1966; Raman and Wise, 2008 |
 | `myers::edit_distance`, `myers::search` | Myers, 1999; Hyyrö's formulation |
+| `rank9::Rank9` | Vigna, 2008: rank9, and a select inventory in the shape of his select9, cases cut at block boundaries |
 
 What is not in the canon, as far as I know:
 
@@ -319,6 +323,9 @@ What is and is not a breaking change:
 - SIMD carriers behind a nightly feature, once `portable_simd` is
   stable enough to depend on.
 - Hilbert curves and the 32 × 32 transpose when something needs them.
+- A 3 % directory (poppy, Zhou, Andersen and Kaminsky 2013) next to
+  the 25 % rank9, select0, and finer inventory cases for the spans
+  around 64 blocks, where sux's select9 is still 2× faster on select.
 - Banded Myers is not planned; recipe 7 of the cookbook is the
   instruction sheet.
 

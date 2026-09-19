@@ -30,6 +30,10 @@ criterion = { version = "0.8", default-features = false, features = ["cargo_benc
 broadword = "0.2"      # Tov: select1/rank in a u64
 strsim = "0.11"        # Levenshtein on &str
 triple_accel = "0.4"   # SIMD-accelerated Myers Levenshtein on bytes
+# Incumbents for benches/rank9.rs: rank/select directories people use today.
+sux = { version = "0.14", default-features = false }   # Vigna: rank9 / select9
+sucds = "0.9"            # Rank9Sel
+vers-vecs = "1"          # RsVec
 
 [[bench]]
 name = "select"
@@ -37,6 +41,10 @@ harness = false
 
 [[bench]]
 name = "compact"
+harness = false
+
+[[bench]]
+name = "rank9"
 harness = false
 
 [[bench]]

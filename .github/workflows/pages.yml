@@ -73,7 +73,7 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       # Two seconds per bench: run-to-run noise on one runner type is a few
       # percent, five seconds bought nothing but fourteen-minute jobs.
-      - run: cargo bench --bench incumbents --bench select --bench compact -- --output-format bencher --warm-up-time 1 --measurement-time 2 | tee bench.txt
+      - run: cargo bench --bench incumbents --bench select --bench compact --bench rank9 -- --output-format bencher --warm-up-time 1 --measurement-time 2 | tee bench.txt
         env:
           RUSTFLAGS: -C target-cpu=native
       - uses: benchmark-action/github-action-benchmark@v1
