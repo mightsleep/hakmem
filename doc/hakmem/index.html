@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Typed combinator algebra over machine words. A register is an 8- to 128-element container; an instruction (POPCNT, TZCNT, the carry chain, PEXT/PDEP, PCLMULQDQ) is a combinator; a kernel is a composition. The crate names the combinators, restricts them to the domains where they are lawful, and exports the laws they obey so downstream code can property-test its own carriers and backends."><title>hakmem - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (330d31712 2026-09-17)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate hakmem</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../hakmem/index.html">hakmem</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#status" title="Status">Status</a></li><li><a href="#checks" title="Checks">Checks</a></li><li><a href="#benchmarks-against-the-crates-people-use" title="Benchmarks against the crates people use">Benchmarks against the crates people use</a></li><li><a href="#cookbook" title="Cookbook">Cookbook</a></li><li><a href="#hardware-paths" title="Hardware paths">Hardware paths</a></li><li><a href="#laws" title="Laws">Laws</a></li></ul><h3><a href="#modules">Crate Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1>Crate <span>hakmem</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/hakmem/lib.rs.html#1-27">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h1 align="center">hakmem</h1>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Typed combinator algebra over machine words. A register is an 8- to 128-element container; an instruction (POPCNT, TZCNT, the carry chain, PEXT/PDEP, PCLMULQDQ) is a combinator; a kernel is a composition. The crate names the combinators, restricts them to the domains where they are lawful, and exports the laws they obey so downstream code can property-test its own carriers and backends."><title>hakmem - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (330d31712 2026-09-17)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate hakmem</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../hakmem/index.html">hakmem</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#status" title="Status">Status</a></li><li><a href="#checks" title="Checks">Checks</a></li><li><a href="#benchmarks-against-the-crates-people-use" title="Benchmarks against the crates people use">Benchmarks against the crates people use</a></li><li><a href="#cookbook" title="Cookbook">Cookbook</a></li><li><a href="#hardware-paths" title="Hardware paths">Hardware paths</a></li><li><a href="#laws" title="Laws">Laws</a></li></ul><h3><a href="#modules">Crate Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1>Crate <span>hakmem</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/hakmem/lib.rs.html#1-32">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h1 align="center">hakmem</h1>
 <p align="center">Bit tricks as a lawful algebra.</p>
 <p align="center">
   <a href="https://mightsleep.github.io/hakmem/doc/hakmem/">docs</a> ·
@@ -32,7 +32,7 @@ sentences.</p>
 <span class="macro">assert_eq!</span>(x.run_starts(<span class="number">3</span>).first_set(), <span class="prelude-val">Some</span>(<span class="number">4</span>));
 
 <span class="comment">// Rank / select / positions: succinct-structure primitives, O(1).
-</span><span class="macro">assert_eq!</span>(x.rank_below(<span class="number">4</span>), <span class="number">2</span>);
+</span><span class="macro">assert_eq!</span>(x.rank(<span class="number">4</span>), <span class="number">2</span>);
 <span class="macro">assert_eq!</span>(x.select(<span class="number">2</span>), <span class="prelude-val">Some</span>(<span class="number">4</span>));
 <span class="macro">assert_eq!</span>(x.positions().collect::&lt;Vec&lt;<span class="kw">_</span>&gt;&gt;(), [<span class="number">1</span>, <span class="number">2</span>, <span class="number">4</span>, <span class="number">5</span>, <span class="number">6</span>]);
 
@@ -55,6 +55,9 @@ sentences.</p>
 <span class="comment">// 8×8 bit matrices: three delta swaps per transpose.
 </span><span class="kw">use </span>hakmem::permute::board8::transpose;
 <span class="macro">assert_eq!</span>(transpose(<span class="number">1 </span>&lt;&lt; (<span class="number">8 </span>* <span class="number">1 </span>+ <span class="number">5</span>)), <span class="number">1 </span>&lt;&lt; (<span class="number">8 </span>* <span class="number">5 </span>+ <span class="number">1</span>));
+<span class="kw">use </span>hakmem::permute::board8::{Dir, slide};
+<span class="kw">let </span>rook = <span class="number">1u64</span>; <span class="comment">// a1, attacking north up to the blocker on a5
+</span><span class="macro">assert_eq!</span>(slide(rook, !(<span class="number">1u64 </span>&lt;&lt; <span class="number">32</span>), Dir::North), <span class="number">0x0000_0001_0101_0100</span>);
 
 <span class="comment">// Hacker's Delight ch. 2 and HAKMEM 175, named and lawful.
 </span><span class="macro">assert_eq!</span>(<span class="number">0b1011_0110u32</span>.clear_lowest_run(), <span class="number">0b1011_0000</span>);
@@ -67,9 +70,10 @@ sentences.</p>
 <span class="macro">assert_eq!</span>(escaped, <span class="number">0b10_0000_0100</span>);
 
 <span class="comment">// The carry chain as a dynamic-programming column (Myers 1999).
-</span><span class="kw">use </span>hakmem::myers::{edit_distance, search};
+</span><span class="kw">use </span>hakmem::myers::{distance, edit_distance, search};
 <span class="macro">assert_eq!</span>(edit_distance::&lt;u64&gt;(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>));
-<span class="kw">let </span>hits: Vec&lt;<span class="kw">_</span>&gt; = search::&lt;u64&gt;(<span class="string">b"lo"</span>, <span class="string">b"hello lo"</span>, <span class="number">0</span>).unwrap().collect();
+<span class="macro">assert_eq!</span>(distance(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>)); <span class="comment">// carrier by length
+</span><span class="kw">let </span>hits: Vec&lt;<span class="kw">_</span>&gt; = search::&lt;u64&gt;(<span class="string">b"lo"</span>, <span class="string">b"hello lo"</span>, <span class="number">0</span>).unwrap().collect();
 <span class="macro">assert_eq!</span>(hits, [(<span class="number">5</span>, <span class="number">0</span>), (<span class="number">8</span>, <span class="number">0</span>)]);
 
 <span class="comment">// Patterns wider than a register: `Wide&lt;N&gt;` is `[u64; N]` as one word,
@@ -85,14 +89,23 @@ sentences.</p>
 <span class="macro">assert_eq!</span>(hakmem::grid::find_block(<span class="kw-2">&amp;</span>rows, <span class="number">2</span>, <span class="number">2</span>, <span class="kw-2">&amp;mut </span>scratch), <span class="prelude-val">Some</span>((<span class="number">0</span>, <span class="number">3</span>)));
 
 <span class="comment">// Slices of words, no index needed.
-</span><span class="macro">assert_eq!</span>(hakmem::slice::find_run(<span class="kw-2">&amp;</span>[<span class="number">0xFFu64 </span>&lt;&lt; <span class="number">56</span>, u64::MAX], <span class="number">16</span>), <span class="prelude-val">Some</span>(<span class="number">56</span>));</code></pre></div><h3 id="status"><a class="doc-anchor" href="#status">§</a>Status</h3>
+</span><span class="macro">assert_eq!</span>(hakmem::slice::find_run(<span class="kw-2">&amp;</span>[<span class="number">0xFFu64 </span>&lt;&lt; <span class="number">56</span>, u64::MAX], <span class="number">16</span>), <span class="prelude-val">Some</span>(<span class="number">56</span>));
+
+<span class="comment">// A rank/select directory over any `&amp;[u64]`, storage you provide.
+</span><span class="kw">use </span>hakmem::rank9::Rank9;
+<span class="kw">let </span>bits = [<span class="number">0b1011u64</span>, u64::MAX, <span class="number">0</span>];
+<span class="kw">let </span><span class="kw-2">mut </span>counts = <span class="macro">vec!</span>[<span class="number">0</span>; Rank9::counts_len(bits.len())];
+<span class="kw">let </span><span class="kw-2">mut </span>select = <span class="macro">vec!</span>[<span class="number">0</span>; Rank9::select_len(bits.len())];
+Rank9::build(<span class="kw-2">&amp;</span>bits, <span class="kw-2">&amp;mut </span>counts, <span class="kw-2">&amp;mut </span>select);
+<span class="kw">let </span>dir = Rank9::new(<span class="kw-2">&amp;</span>bits, <span class="kw-2">&amp;</span>counts, <span class="kw-2">&amp;</span>select);
+<span class="macro">assert_eq!</span>((dir.rank(<span class="number">64</span>), dir.select(<span class="number">3</span>)), (<span class="number">3</span>, <span class="prelude-val">Some</span>(<span class="number">64</span>)));</code></pre></div><h3 id="status"><a class="doc-anchor" href="#status">§</a>Status</h3>
 <p>This is a learning project, one person’s, and far from production.
 I am working through the broadword literature by giving each trick a
 type, a law and a test; the crate is what that leaves behind. Expect
 the API to change between minor versions, and do not expect every
 definition to be the best one available: the portable <code>select</code> loses
-to a plain loop for small <code>k</code>, the portable <code>pext</code> is a loop over the
-mask, and definitions were chosen for clarity and lawfulness before
+to a plain loop for small <code>k</code>, the portable <code>compact</code> to one over sparse
+masks, and definitions were chosen for clarity and lawfulness before
 speed.</p>
 <p>What I do take seriously is finding bugs. Every combinator ships
 with laws; the laws run on every carrier, with and without the
@@ -139,7 +152,33 @@ tracks.</p>
 <tr><td><code>hakmem</code> <code>Bits::select</code></td><td>5.24 µs</td><td><strong>1.21 µs</strong></td></tr>
 <tr><td><code>broadword::select1_raw</code></td><td><strong>4.60 µs</strong></td><td>4.54 µs</td></tr>
 </tbody></table>
-</div><div class="table"><table><thead><tr><th>Levenshtein, pattern m × text n</th><th><code>hakmem</code> u64</th><th><code>hakmem</code> u128</th><th><code>triple_accel</code></th><th><code>triple_accel_exp</code></th><th><code>strsim</code></th></tr></thead><tbody>
+</div><div class="table"><table><thead><tr><th><code>compact</code> in a <code>u64</code> (1024 words)</th><th>portable</th><th><code>+bmi2,+pclmulqdq</code></th></tr></thead><tbody>
+<tr><td><code>hakmem</code> <code>Bits::compact</code></td><td>11.2 µs</td><td><strong>1.30 µs</strong></td></tr>
+<tr><td>broadword definition, dense mask (about 32 set bits)</td><td>11.1 µs</td><td>8.00 µs</td></tr>
+<tr><td>loop over the set bits, dense mask</td><td>21.3 µs</td><td>19.5 µs</td></tr>
+<tr><td>loop over the set bits, sparse mask (about 8 set bits)</td><td><strong>4.36 µs</strong></td><td>3.75 µs</td></tr>
+</tbody></table>
+</div><div class="table"><table><thead><tr><th>rank / select over 2^20 bits, 1024 queries</th><th><code>rank</code> dense</th><th><code>rank</code> sparse</th><th><code>select</code> dense</th><th><code>select</code> sparse</th></tr></thead><tbody>
+<tr><td><code>hakmem</code> <code>Rank9</code></td><td><strong>1.33 µs</strong></td><td><strong>1.33 µs</strong></td><td><strong>5.26 µs</strong></td><td>1.7 µs</td></tr>
+<tr><td><code>sux</code> rank9 / select9</td><td>2.02 µs</td><td>2.03 µs</td><td>5.52 µs</td><td><strong>1.44 µs</strong></td></tr>
+<tr><td><code>sucds</code> <code>Rank9Sel</code></td><td>1.90 µs</td><td>1.89 µs</td><td>8.83 µs</td><td>11.3 µs</td></tr>
+<tr><td><code>vers-vecs</code> <code>RsVec</code></td><td>2.83 µs</td><td>2.82 µs</td><td>7.63 µs</td><td>10.5 µs</td></tr>
+</tbody></table>
+</div>
+<p>Dense is half the bits set, sparse one in 64. Rank is the same rank9
+directory everywhere; the differences are bounds checks and layout.
+Select keeps an inventory entry per 512 set bits and, by how many
+blocks those 512 span, stores either packed 16-bit block counts (one or
+two SWAR compares) or the positions themselves (no search at all), the
+shape of Vigna’s select9 with the cases cut at block boundaries. The
+remaining gap to sux on the sparse slice is within run-to-run noise of
+the bounds checks this crate keeps: it has no <code>unsafe</code> outside the
+intrinsics, sux indexes unchecked. The price of the inventory is three
+words per eight words of bits on top of rank9’s two.</p>
+<p>The portable <code>compact</code> is constant time: a loop over the set bits wins
+below about 17 of them (12 when a PCLMULQDQ scan is available) and loses
+above, the same trade as the portable <code>select</code>.</p>
+<div class="table"><table><thead><tr><th>Levenshtein, pattern m × text n</th><th><code>hakmem</code> u64</th><th><code>hakmem</code> u128</th><th><code>triple_accel</code></th><th><code>triple_accel_exp</code></th><th><code>strsim</code></th></tr></thead><tbody>
 <tr><td>16 × 64</td><td><strong>153 ns</strong></td><td>224 ns</td><td>852 ns</td><td>590 ns</td><td>711 ns</td></tr>
 <tr><td>32 × 256</td><td><strong>602 ns</strong></td><td>829 ns</td><td>19.6 µs</td><td>6.10 µs</td><td>5.74 µs</td></tr>
 <tr><td>64 × 256</td><td><strong>614 ns</strong></td><td>860 ns</td><td>21.4 µs</td><td>6.80 µs</td><td>11.4 µs</td></tr>
@@ -185,18 +224,33 @@ unbuilt (banded Myers over <code>Wide&lt;N&gt;</code>), sketched so you can.</p>
 <code>-C target-feature=+bmi2,+pclmulqdq</code> (or <code>-C target-cpu=native</code>) and
 <code>pext</code>/<code>pdep</code>/<code>select</code>/<code>prefix_xor</code> become single instructions; without
 them every combinator has a portable definition with the same
-contract. The <code>portable</code> cargo feature turns the hardware paths off even
-when the target feature is present, for the microarchitectures where the
-instruction exists but is microcoded (PDEP/PEXT on AMD Zen 1 and 2).</p>
+contract. <code>pext</code> and <code>pdep</code> fall back to Hacker’s Delight’s
+parallel-suffix compress and expand (7-4, 7-5), <code>log₂ w</code> rounds of one
+prefix-XOR scan each, constant time. The <code>portable</code> cargo feature turns
+the hardware paths off even when the target feature is present, for the
+microarchitectures where the instruction exists but is microcoded
+(PDEP/PEXT on AMD Zen 1 and 2).</p>
 <h3 id="laws"><a class="doc-anchor" href="#laws">§</a>Laws</h3>
 <p>Every combinator ships with the laws it obeys (<code>hakmem::laws</code>), checked
 by property tests on all carriers with and without the hardware paths,
 and exhaustively for widths up to 16 bits. A backend that fails a law
 is a bug, never a documented caveat.</p>
+<p>Every combinator is total over its carrier where a total definition
+exists: <code>rank(i)</code> past the width counts every bit, <code>run_starts(0)</code>
+starts everywhere and <code>run_starts(k)</code> above the width nowhere, a fill
+with a stride of zero or past the width is the identity, <code>low_ones</code> at
+the width is all ones. Where an argument has a domain the definition
+cannot absorb (shift amounts, run lengths above the width in
+<code>slice::find_run</code>, overlapping <code>delta_swap</code> masks, <code>bytes_ge</code> above
+128, grid sizes), the domain is in the method’s docs, checked with
+<code>debug_assert!</code> in debug builds, and unspecified in release. Run your
+tests in debug once.</p>
 <p><code>no_std</code>, zero dependencies, stable Rust.</p>
 <p>Design: <a href="https://github.com/mightsleep/hakmem/blob/main/docs/design.md"><code>docs/design.md</code></a>,
 the decisions behind the API, the hardware policy, how the laws are
 verified, and where every combinator comes from.</p>
 </div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><dl class="item-table reexports"><dt><code>pub use <a class="mod" href="prelude/index.html" title="mod hakmem::prelude">prelude</a>::*;</code></dt></dl><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="bits/index.html" title="mod hakmem::bits">bits</a></dt><dd>The one trait to import: every combinator, on every carrier.</dd><dt><a class="mod" href="cookbook/index.html" title="mod hakmem::cookbook">cookbook</a></dt><dd>How the shipped kernels were composed, so you can compose your own.</dd><dt><a class="mod" href="dilated/index.html" title="mod hakmem::dilated">dilated</a></dt><dd>Dilated integers and Morton (Z-order) codes.</dd><dt><a class="mod" href="grid/index.html" title="mod hakmem::grid">grid</a></dt><dd>Two-dimensional runs: rectangular blocks in a bitmap of rows.</dd><dt><a class="mod" href="laws/index.html" title="mod hakmem::laws">laws</a></dt><dd>The algebra’s laws as exported property functions.</dd><dt><a class="mod" href="myers/index.html" title="mod hakmem::myers">myers</a></dt><dd>Bit-parallel edit distance (Myers 1999, Hyyrö’s formulation).</dd><dt><a class="mod" href="permute/index.html" title="mod hakmem::permute">permute</a></dt><dd>Permutations built from delta swaps.</dd><dt><a class="mod" href="prelude/index.html" title="mod hakmem::prelude">prelude</a></dt><dd>Everything most code needs: the <a href="bits/trait.Bits.html" title="trait hakmem::bits::Bits"><code>Bits</code></a> trait, the <a href="word/trait.Word.html" title="trait hakmem::word::Word"><code>Word</code></a>
-carrier trait, and the dilated / Morton / positions types.</dd><dt><a class="mod" href="set/index.html" title="mod hakmem::set">set</a></dt><dd>Set view: a word as a set of positions <code>0..BITS</code>.</dd><dt><a class="mod" href="slice/index.html" title="mod hakmem::slice">slice</a></dt><dd>Bit-set operations over a slice of words: the index-free layer
+carrier trait, and the dilated / Morton / positions types.</dd><dt><a class="mod" href="rank9/index.html" title="mod hakmem::rank9">rank9</a></dt><dd>Rank and select in O(1) over a slice of words: Vigna’s rank9
+directory (2008) for rank, and a select inventory in the shape of
+his select9 over the same block counts.</dd><dt><a class="mod" href="set/index.html" title="mod hakmem::set">set</a></dt><dd>Set view: a word as a set of positions <code>0..BITS</code>.</dd><dt><a class="mod" href="slice/index.html" title="mod hakmem::slice">slice</a></dt><dd>Bit-set operations over a slice of words: the index-free layer
 between single-word combinators and a real succinct structure.</dd><dt><a class="mod" href="wide/index.html" title="mod hakmem::wide">wide</a></dt><dd>A multi-limb carrier: <code>N × 64</code> bits that behave as one word.</dd><dt><a class="mod" href="word/index.html" title="mod hakmem::word">word</a></dt><dd>The carrier: a fixed-width word viewed as a container of bits.</dd></dl></section></div></main></body></html>

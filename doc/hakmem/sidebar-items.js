@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"mod":["bits","cookbook","dilated","grid","laws","myers","permute","prelude","set","slice","wide","word"]};
+window.SIDEBAR_ITEMS = {"mod":["bits","cookbook","dilated","grid","laws","myers","permute","prelude","rank9","set","slice","wide","word"]};

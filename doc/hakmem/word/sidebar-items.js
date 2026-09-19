@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["select_broadword64"],"trait":["Word"]};
+window.SIDEBAR_ITEMS = {"fn":["compress_broadword","expand_broadword","select_broadword64"],"trait":["Word"]};
