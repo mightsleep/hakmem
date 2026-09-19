@@ -27,7 +27,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v16
-      - uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v17
         with:
           name: hakmem
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
@@ -38,7 +38,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: DeterminateSystems/nix-installer-action@v16
-      - uses: cachix/cachix-action@v15
+      - uses: cachix/cachix-action@v17
         with:
           name: hakmem
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
