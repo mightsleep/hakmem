@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.1.0, unreleased
+## 0.1.0, 2026-09-19
 
 First release, of a learning project far from production; the README's
 Status section says what to expect. One trait (`Bits`) over

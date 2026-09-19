@@ -282,3 +282,4 @@ tests in debug once.
 Design: [`docs/design.md`](https://github.com/mightsleep/hakmem/blob/main/docs/design.md),
 the decisions behind the API, the hardware policy, how the laws are
 verified, and where every combinator comes from.
+Changes: [`CHANGELOG.md`](https://github.com/mightsleep/hakmem/blob/main/CHANGELOG.md).
