@@ -11,8 +11,8 @@ jobs:
     outputs:
       checks: ${{ steps.plan.outputs.checks }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@v16
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
       - id: plan
         run: echo "checks=$(nix eval --json .#checks.aarch64-linux --apply builtins.attrNames)" >> "$GITHUB_OUTPUT"
 
@@ -25,9 +25,9 @@ jobs:
       matrix:
         check: ${{ fromJSON(needs.plan.outputs.checks) }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: DeterminateSystems/nix-installer-action@v16
-      - uses: cachix/cachix-action@v15
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: cachix/cachix-action@v17
         with:
           name: hakmem
           authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}

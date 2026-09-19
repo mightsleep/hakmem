@@ -8,7 +8,9 @@
 // criterion_group! expands to an undocumented pub fn.
 #![allow(missing_docs)]
 
-use criterion::{BenchmarkId, Criterion, black_box, criterion_group, criterion_main};
+use std::hint::black_box;
+
+use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
 use hakmem::prelude::*;
 use hakmem::word::select_broadword64;
 

@@ -99,7 +99,7 @@ What I do take seriously is finding bugs. Every combinator ships
 with laws; the laws run on every carrier, with and without the
 hardware paths, exhaustively at 8 and 16 bits, and under Miri for
 the intrinsics; CI builds all of it as sandboxed Nix derivations on
-x86_64 and aarch64. A wrong result is a bug and I want to hear about
+`x86_64` and `aarch64`. A wrong result is a bug and I want to hear about
 it. A slow one may be known; the design notes linked at the end list
 what is.
 
