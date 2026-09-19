@@ -1,281 +1,338 @@
-<!DOCTYPE html>
-<html>
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, minimum-scale=1.0, initial-scale=1, user-scalable=yes" />
-    <style>
-      html {
-        font-family: BlinkMacSystemFont,-apple-system,"Segoe UI",Roboto,Oxygen,Ubuntu,Cantarell,"Fira Sans","Droid Sans","Helvetica Neue",Helvetica,Arial,sans-serif;
-        -webkit-font-smoothing: antialiased;
-        background-color: #fff;
-        font-size: 16px;
-      }
-      body {
-        color: #4a4a4a;
-        margin: 8px;
-        font-size: 1em;
-        font-weight: 400;
-      }
-      header {
-        margin-bottom: 8px;
-        display: flex;
-        flex-direction: column;
-      }
-      main {
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-      }
-      a {
-        color: #3273dc;
-        cursor: pointer;
-        text-decoration: none;
-      }
-      a:hover {
-        color: #000;
-      }
-      button {
-        color: #fff;
-        background-color: #3298dc;
-        border-color: transparent;
-        cursor: pointer;
-        text-align: center;
-      }
-      button:hover {
-        background-color: #2793da;
-        flex: none;
-      }
-      .spacer {
-        flex: auto;
-      }
-      .small {
-        font-size: 0.75rem;
-      }
-      footer {
-        margin-top: 16px;
-        display: flex;
-        align-items: center;
-      }
-      .header-label {
-        margin-right: 4px;
-      }
-      .benchmark-set {
-        margin: 8px 0;
-        width: 100%;
-        display: flex;
-        flex-direction: column;
-      }
-      .benchmark-title {
-        font-size: 3rem;
-        font-weight: 600;
-        word-break: break-word;
-        text-align: center;
-      }
-      .benchmark-graphs {
-        display: flex;
-        flex-direction: row;
-        justify-content: space-around;
-        align-items: center;
-        flex-wrap: wrap;
-        width: 100%;
-      }
-      .benchmark-chart {
-        max-width: 1000px;
-      }
-    </style>
-    <title>Benchmarks</title>
-  </head>
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>hakmem benchmarks</title>
+<style>
+:root {
+  --base: #eff1f5; --mantle: #e6e9ef; --crust: #dce0e8;
+  --surface0: #ccd0da; --surface1: #bcc0cc; --surface2: #acb0be;
+  --overlay0: #9ca0b0; --overlay1: #8c8fa1; --overlay2: #7c7f93;
+  --subtext0: #6c6f85; --subtext1: #5c5f77; --text: #4c4f69;
+  --blue: #1e66f5; --lavender: #7287fd; --sapphire: #209fb5; --sky: #04a5e5;
+  --teal: #179299; --green: #40a02b; --yellow: #df8e1d; --peach: #fe640b;
+  --maroon: #e64553; --red: #d20f39; --mauve: #8839ef; --pink: #ea76cb;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --base: #1e1e2e; --mantle: #181825; --crust: #11111b;
+    --surface0: #313244; --surface1: #45475a; --surface2: #585b70;
+    --overlay0: #6c7086; --overlay1: #7f849c; --overlay2: #9399b2;
+    --subtext0: #a6adc8; --subtext1: #bac2de; --text: #cdd6f4;
+    --blue: #89b4fa; --lavender: #b4befe; --sapphire: #74c7ec; --sky: #89dceb;
+    --teal: #94e2d5; --green: #a6e3a1; --yellow: #f9e2af; --peach: #fab387;
+    --maroon: #eba0ac; --red: #f38ba8; --mauve: #cba6f7; --pink: #f5c2e7;
+  }
+}
+html { background: var(--base); color: var(--text); }
+body { font: 16px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1rem; }
+h1 { font-size: 2rem; margin: 0; }
+h1 + p { color: var(--subtext0); margin-top: 0.25rem; }
+h2 { font-size: 1.25rem; margin-top: 2.5rem; }
+h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: var(--subtext1); }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+nav a + a::before { content: "·"; color: var(--overlay0); margin: 0 0.6rem; }
+code { font-family: ui-monospace, monospace; font-size: 0.85em; color: var(--mauve); }
+table { border-collapse: collapse; width: 100%; background: var(--mantle); border-radius: 0.5rem; overflow: hidden; }
+th, td { padding: 0.5rem 0.9rem; text-align: left; border-top: 1px solid var(--surface0); }
+thead th { background: var(--surface0); border-top: 0; font-weight: 600; }
+th[scope=row] { font-weight: 400; }
+th[scope=row] code { color: var(--subtext0); }
+footer { margin-top: 3rem; color: var(--subtext0); font-size: 0.9rem; border-top: 1px solid var(--surface0); padding-top: 1rem; }
 
-  <body>
-    <header id="header">
-      <div class="header-item">
-        <strong class="header-label">Last Update:</strong>
-        <span id="last-update"></span>
-      </div>
-      <div class="header-item">
-        <strong class="header-label">Repository:</strong>
-        <a id="repository-link" rel="noopener"></a>
-      </div>
-    </header>
-    <main id="main"></main>
-    <footer>
-      <button id="dl-button">Download data as JSON</button>
-      <div class="spacer"></div>
-      <div class="small">Powered by <a rel="noopener" href="https://github.com/marketplace/actions/continuous-benchmark">github-action-benchmark</a></div>
-    </footer>
+  .chart { background: var(--mantle); border-radius: 0.5rem; padding: 0.75rem 1rem 1rem; margin: 0.75rem 0; }
+  .chart h3 { margin: 0 0 0.5rem; }
+  .chart .canvas { position: relative; height: 20rem; }
+  .note { color: var(--subtext0); }
+  td.msg { color: var(--subtext0); }
+</style>
+<h1>hakmem benchmarks</h1>
+<p>Criterion on a shared GitHub runner, after every push to <code>main</code>
+   that touches <code>src/</code>, <code>benches/</code> or the Cargo files.
+   Lower is better everywhere.</p>
+<nav>
+  <a href="../../">checks</a>
+  <a href="../../doc/hakmem/">docs</a>
+  <a href="https://github.com/mightsleep/hakmem/blob/main/benches/incumbents.rs">bench source</a>
+  <a href="data.js">data.js</a>
+</nav>
 
-    <script src="https://cdn.jsdelivr.net/npm/chart.js@2.9.2/dist/Chart.min.js"></script>
-    <script src="data.js"></script>
-    <script id="main-script">
-      'use strict';
-      (function() {
-        // Colors from https://github.com/github/linguist/blob/master/lib/linguist/languages.yml
-        const toolColors = {
-          cargo: '#dea584',
-          go: '#00add8',
-          benchmarkjs: '#f1e05a',
-          benchmarkluau: '#000080',
-          pytest: '#3572a5',
-          googlecpp: '#f34b7d',
-          catch2: '#f34b7d',
-          julia: '#a270ba',
-          jmh: '#b07219',
-          benchmarkdotnet: '#178600',
-          customBiggerIsBetter: '#38ff38',
-          customSmallerIsBetter: '#ff3838',
-          _: '#333333'
+<h2>Newest run</h2>
+<p id="newest" class="note">Loading data.js</p>
+<div id="latest"></div>
+
+<h2>hakmem over the best incumbent</h2>
+<p>Best hakmem variant divided by the best incumbent in the same run, per
+   size. Both sides share the machine and the minute, so a slower runner
+   cancels out. 0.1 means ten times faster; above 1 the incumbent wins.</p>
+<div id="ratio"></div>
+
+<h2>hakmem alone</h2>
+<p>Best hakmem variant per size, in time. This view moves with the
+   runner's CPU: read it for trends across runs on the same hardware,
+   not across hardware.</p>
+<div id="ours"></div>
+
+<h2>Runs</h2>
+<table id="runs">
+  <thead><tr><th>commit</th><th>date</th><th>benches</th><th>message</th></tr></thead>
+  <tbody></tbody>
+</table>
+
+<footer>Collected by github-action-benchmark into <code>data.js</code>; a 2×
+  regression of any single bench comments on the commit. Numbers on a
+  known machine are in the README.</footer>
+
+<script src="chart.umd.js"></script>
+<script src="data.js"></script>
+<script>
+// Data model of the bench page: github-action-benchmark's data.js
+// (window.BENCHMARK_DATA) turned into the three views. No DOM here, so
+// `deno run` can exercise it against a real data.js; nix/bench.nix embeds
+// it into the page. Bench names are "group/impl/param" (criterion group,
+// BenchmarkId function, BenchmarkId parameter); an impl whose name starts
+// with "hakmem" is ours, everything else is an incumbent.
+
+function parseName(name) {
+  const parts = name.split("/");
+  return { group: parts[0], impl: parts[1] ?? "", param: parts.slice(2).join("/") };
+}
+
+function isOurs(impl) {
+  return impl.startsWith("hakmem");
+}
+
+function pushUnique(list, x) {
+  if (!list.includes(x)) list.push(x);
+}
+
+// One run: { group: { params, impls, value: { impl: { param: ns } } } },
+// params and impls in first-seen order, which is the order in the bench.
+function tabulate(run) {
+  const groups = {};
+  for (const b of run.benches) {
+    const { group, impl, param } = parseName(b.name);
+    const g = (groups[group] ??= { params: [], impls: [], value: {} });
+    pushUnique(g.params, param);
+    pushUnique(g.impls, impl);
+    (g.value[impl] ??= {})[param] = b.value;
+  }
+  return groups;
+}
+
+// All runs of all suites, oldest first.
+function runs(data) {
+  return Object.values(data.entries)
+    .flat()
+    .sort((a, b) => a.date - b.date)
+    .map((r) => ({
+      sha: r.commit.id.slice(0, 7),
+      url: r.commit.url,
+      date: new Date(r.date),
+      message: r.commit.message.split("\n")[0],
+      benches: r.benches.length,
+      groups: tabulate(r),
+    }));
+}
+
+function minOver(value, impls, param) {
+  let m = Infinity;
+  for (const i of impls) {
+    const v = value[i]?.[param];
+    if (v !== undefined && v < m) m = v;
+  }
+  return m === Infinity ? undefined : m;
+}
+
+// The implementations a group compares are whatever the newest run has.
+// Older runs may carry cells the bench has since dropped, and those must
+// not shape the history. { group: { ours, theirs } }
+function currentImpls(rs) {
+  const out = {};
+  const last = rs.at(-1);
+  if (!last) return out;
+  for (const [name, g] of Object.entries(last.groups)) {
+    out[name] = { ours: g.impls.filter(isOurs), theirs: g.impls.filter((i) => !isOurs(i)) };
+  }
+  return out;
+}
+
+// Per group that has both sides: hakmem's best variant over the best
+// incumbent, per param, per run. Dimensionless, so a change of runner
+// leaves it alone. { group: { params, points: [{ sha, ratio: { param } }] } }
+function ratioSeries(rs) {
+  const out = {};
+  const current = currentImpls(rs);
+  for (const r of rs) {
+    for (const [name, g] of Object.entries(r.groups)) {
+      if (!current[name]) continue;
+      const { ours, theirs } = current[name];
+      if (!ours.length || !theirs.length) continue;
+      const o = (out[name] ??= { params: [], points: [] });
+      const ratio = {};
+      for (const p of g.params) {
+        pushUnique(o.params, p);
+        const a = minOver(g.value, ours, p);
+        const b = minOver(g.value, theirs, p);
+        if (a !== undefined && b !== undefined) ratio[p] = a / b;
+      }
+      o.points.push({ sha: r.sha, ratio });
+    }
+  }
+  return out;
+}
+
+// Per group with a hakmem side: its best variant in ns, per param, per run.
+// This one moves with the runner's CPU. { group: { params, points: [{ sha, ns: { param } }] } }
+function oursSeries(rs) {
+  const out = {};
+  const current = currentImpls(rs);
+  for (const r of rs) {
+    for (const [name, g] of Object.entries(r.groups)) {
+      if (!current[name] || !current[name].ours.length) continue;
+      const { ours } = current[name];
+      const o = (out[name] ??= { params: [], points: [] });
+      const ns = {};
+      for (const p of g.params) {
+        pushUnique(o.params, p);
+        const v = minOver(g.value, ours, p);
+        if (v !== undefined) ns[p] = v;
+      }
+      o.points.push({ sha: r.sha, ns });
+    }
+  }
+  return out;
+}
+
+function formatNs(ns) {
+  if (ns >= 1e6) return (ns / 1e6).toFixed(2) + " ms";
+  if (ns >= 1e3) return (ns / 1e3).toFixed(2) + " µs";
+  return Math.round(ns) + " ns";
+}
+
+</script>
+<script>
+  (function () {
+    var css = getComputedStyle(document.documentElement);
+    var tok = function (n) { return css.getPropertyValue("--" + n).trim(); };
+    var accents = ["blue", "mauve", "lavender", "sapphire", "teal", "pink", "sky", "peach"].map(tok);
+    var greys = ["overlay2", "overlay1", "overlay0", "surface2", "subtext0"].map(tok);
+    var pick = function (list, i) { return list[i % list.length]; };
+    Chart.defaults.color = tok("subtext1");
+    Chart.defaults.borderColor = tok("surface0");
+    Chart.defaults.font.family = "system-ui, sans-serif";
+
+    var chart = function (parent, title, config) {
+      var box = document.createElement("div");
+      box.className = "chart";
+      var h = document.createElement("h3");
+      h.textContent = title;
+      var wrap = document.createElement("div");
+      wrap.className = "canvas";
+      var canvas = document.createElement("canvas");
+      wrap.appendChild(canvas);
+      box.appendChild(h);
+      box.appendChild(wrap);
+      parent.appendChild(box);
+      config.options = Object.assign({ responsive: true, maintainAspectRatio: false }, config.options);
+      new Chart(canvas, config);
+    };
+    var logNs = function (title) {
+      return { type: "logarithmic", title: { display: true, text: title },
+               ticks: { callback: function (v) { return formatNs(v); } } };
+    };
+    var nsTooltip = { callbacks: { label: function (c) { return c.dataset.label + ": " + formatNs(c.parsed.y); } } };
+    var lines = function (parent, series, key, yAxis, tooltip) {
+      Object.keys(series).forEach(function (name) {
+        var s = series[name];
+        chart(parent, name, {
+          type: "line",
+          data: {
+            labels: s.points.map(function (p) { return p.sha; }),
+            datasets: s.params.map(function (p, k) {
+              var colour = pick(accents, k);
+              return { label: p || name, data: s.points.map(function (pt) { return pt[key][p] === undefined ? null : pt[key][p]; }),
+                       borderColor: colour, backgroundColor: colour, tension: 0, spanGaps: true };
+            }),
+          },
+          options: { scales: { y: yAxis }, plugins: { tooltip: tooltip } },
+        });
+      });
+    };
+
+    var data = window.BENCHMARK_DATA;
+    var newest = document.getElementById("newest");
+    if (!data) {
+      newest.textContent = "No data.js yet: the first bench run after this page was published creates it.";
+      return;
+    }
+    var rs = runs(data);
+    var last = rs[rs.length - 1];
+    newest.innerHTML = "";
+    var link = document.createElement("a");
+    link.href = last.url;
+    link.textContent = last.sha;
+    newest.appendChild(link);
+    newest.appendChild(document.createTextNode(", " + last.date.toISOString().slice(0, 10) + ", " + last.benches + " benches. " + last.message));
+
+    var latest = document.getElementById("latest");
+    Object.keys(last.groups).forEach(function (name) {
+      var g = last.groups[name];
+      var byParam = g.params.length > 1 || g.params[0] !== "";
+      var anyOurs = g.impls.some(isOurs);
+      var oi = 0, ti = 0;
+      var colourFor = function (impl) {
+        return (isOurs(impl) || !anyOurs) ? pick(accents, oi++) : pick(greys, ti++);
+      };
+      var config;
+      if (byParam) {
+        config = {
+          type: "bar",
+          data: {
+            labels: g.params,
+            datasets: g.impls.map(function (impl) {
+              return { label: impl, backgroundColor: colourFor(impl),
+                       data: g.params.map(function (p) { var v = g.value[impl][p]; return v === undefined ? null : v; }) };
+            }),
+          },
+          options: { scales: { y: logNs("ns/iter, log") }, plugins: { tooltip: nsTooltip } },
         };
+      } else {
+        config = {
+          type: "bar",
+          data: {
+            labels: g.impls,
+            datasets: [{ label: "ns/iter", data: g.impls.map(function (impl) { return g.value[impl][""]; }),
+                         backgroundColor: g.impls.map(colourFor) }],
+          },
+          options: { scales: { y: logNs("ns/iter, log") }, plugins: { legend: { display: false }, tooltip: nsTooltip } },
+        };
+      }
+      chart(latest, name, config);
+    });
 
-        function init() {
-          function collectBenchesPerTestCase(entries) {
-            const map = new Map();
-            for (const entry of entries) {
-              const {commit, date, tool, benches} = entry;
-              for (const bench of benches) {
-                const result = { commit, date, tool, bench };
-                const arr = map.get(bench.name);
-                if (arr === undefined) {
-                  map.set(bench.name, [result]);
-                } else {
-                  arr.push(result);
-                }
-              }
-            }
-            return map;
-          }
+    lines(document.getElementById("ratio"), ratioSeries(rs), "ratio",
+          { type: "logarithmic", title: { display: true, text: "hakmem / best incumbent, log" } },
+          { callbacks: { label: function (c) { return c.dataset.label + ": " + c.parsed.y.toFixed(3); } } });
+    lines(document.getElementById("ours"), oursSeries(rs), "ns", logNs("ns/iter, log"), nsTooltip);
 
-          const data = window.BENCHMARK_DATA;
-
-          // Render header
-          document.getElementById('last-update').textContent = new Date(data.lastUpdate).toString();
-          const repoLink = document.getElementById('repository-link');
-          repoLink.href = data.repoUrl;
-          repoLink.textContent = data.repoUrl;
-
-          // Render footer
-          document.getElementById('dl-button').onclick = () => {
-            const dataUrl = 'data:,' + JSON.stringify(data, null, 2);
-            const a = document.createElement('a');
-            a.href = dataUrl;
-            a.download = 'benchmark_data.json';
-            a.click();
-          };
-
-          // Prepare data points for charts
-          return Object.keys(data.entries).map(name => ({
-            name,
-            dataSet: collectBenchesPerTestCase(data.entries[name]),
-          }));
-        }
-
-        function renderAllChars(dataSets) {
-
-          function renderGraph(parent, name, dataset) {
-            const canvas = document.createElement('canvas');
-            canvas.className = 'benchmark-chart';
-            parent.appendChild(canvas);
-
-            const color = toolColors[dataset.length > 0 ? dataset[0].tool : '_'];
-            const data = {
-              labels: dataset.map(d => d.commit.id.slice(0, 7)),
-              datasets: [
-                {
-                  label: name,
-                  data: dataset.map(d => d.bench.value),
-                  borderColor: color,
-                  backgroundColor: color + '60', // Add alpha for #rrggbbaa
-                }
-              ],
-            };
-            const options = {
-              scales: {
-                xAxes: [
-                  {
-                    scaleLabel: {
-                      display: true,
-                      labelString: 'commit',
-                    },
-                  }
-                ],
-                yAxes: [
-                  {
-                    scaleLabel: {
-                      display: true,
-                      labelString: dataset.length > 0 ? dataset[0].bench.unit : '',
-                    },
-                    ticks: {
-                      beginAtZero: true,
-                    }
-                  }
-                ],
-              },
-              tooltips: {
-                callbacks: {
-                  afterTitle: items => {
-                    const {index} = items[0];
-                    const data = dataset[index];
-                    return '\n' + data.commit.message + '\n\n' + data.commit.timestamp + ' committed by @' + data.commit.committer.username + '\n';
-                  },
-                  label: item => {
-                    let label = item.value;
-                    const { range, unit } = dataset[item.index].bench;
-                    label += ' ' + unit;
-                    if (range) {
-                      label += ' (' + range + ')';
-                    }
-                    return label;
-                  },
-                  afterLabel: item => {
-                    const { extra } = dataset[item.index].bench;
-                    return extra ? '\n' + extra : '';
-                  }
-                }
-              },
-              onClick: (_mouseEvent, activeElems) => {
-                if (activeElems.length === 0) {
-                  return;
-                }
-                // XXX: Undocumented. How can we know the index?
-                const index = activeElems[0]._index;
-                const url = dataset[index].commit.url;
-                window.open(url, '_blank');
-              },
-            };
-
-            new Chart(canvas, {
-              type: 'line',
-              data,
-              options,
-            });
-          }
-
-          function renderBenchSet(name, benchSet, main) {
-            const setElem = document.createElement('div');
-            setElem.className = 'benchmark-set';
-            main.appendChild(setElem);
-
-            const nameElem = document.createElement('h1');
-            nameElem.className = 'benchmark-title';
-            nameElem.textContent = name;
-            setElem.appendChild(nameElem);
-
-            const graphsElem = document.createElement('div');
-            graphsElem.className = 'benchmark-graphs';
-            setElem.appendChild(graphsElem);
-
-            for (const [benchName, benches] of benchSet.entries()) {
-              renderGraph(graphsElem, benchName, benches)
-            }
-          }
-
-          const main = document.getElementById('main');
-          for (const {name, dataSet} of dataSets) {
-            renderBenchSet(name, dataSet, main);
-          }
-        }
-
-        renderAllChars(init()); // Start
-      })();
-    </script>
-  </body>
-</html>
+    var tbody = document.querySelector("#runs tbody");
+    rs.slice().reverse().forEach(function (r) {
+      var tr = document.createElement("tr");
+      var td = document.createElement("td");
+      var a = document.createElement("a");
+      a.href = r.url;
+      a.textContent = r.sha;
+      td.appendChild(a);
+      tr.appendChild(td);
+      [r.date.toISOString().slice(0, 10), String(r.benches), r.message].forEach(function (text, i) {
+        var cell = document.createElement("td");
+        if (i === 2) cell.className = "msg";
+        cell.textContent = text;
+        tr.appendChild(cell);
+      });
+      tbody.appendChild(tr);
+    });
+  })();
+</script>

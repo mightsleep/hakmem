@@ -1,35 +1,101 @@
 <!doctype html>
+<html lang="en">
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>hakmem</title>
 <style>
-  body { font: 16px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1rem; color: #222; }
-  table { border-collapse: collapse; }
-  td, th { border-bottom: 1px solid #ddd; padding: 0.3rem 0.8rem; text-align: left; }
-  .badges img { vertical-align: middle; margin-right: 0.4rem; }
+:root {
+  --base: #eff1f5; --mantle: #e6e9ef; --crust: #dce0e8;
+  --surface0: #ccd0da; --surface1: #bcc0cc; --surface2: #acb0be;
+  --overlay0: #9ca0b0; --overlay1: #8c8fa1; --overlay2: #7c7f93;
+  --subtext0: #6c6f85; --subtext1: #5c5f77; --text: #4c4f69;
+  --blue: #1e66f5; --lavender: #7287fd; --sapphire: #209fb5; --sky: #04a5e5;
+  --teal: #179299; --green: #40a02b; --yellow: #df8e1d; --peach: #fe640b;
+  --maroon: #e64553; --red: #d20f39; --mauve: #8839ef; --pink: #ea76cb;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --base: #1e1e2e; --mantle: #181825; --crust: #11111b;
+    --surface0: #313244; --surface1: #45475a; --surface2: #585b70;
+    --overlay0: #6c7086; --overlay1: #7f849c; --overlay2: #9399b2;
+    --subtext0: #a6adc8; --subtext1: #bac2de; --text: #cdd6f4;
+    --blue: #89b4fa; --lavender: #b4befe; --sapphire: #74c7ec; --sky: #89dceb;
+    --teal: #94e2d5; --green: #a6e3a1; --yellow: #f9e2af; --peach: #fab387;
+    --maroon: #eba0ac; --red: #f38ba8; --mauve: #cba6f7; --pink: #f5c2e7;
+  }
+}
+html { background: var(--base); color: var(--text); }
+body { font: 16px/1.5 system-ui, sans-serif; max-width: 52rem; margin: 3rem auto; padding: 0 1rem; }
+h1 { font-size: 2rem; margin: 0; }
+h1 + p { color: var(--subtext0); margin-top: 0.25rem; }
+h2 { font-size: 1.25rem; margin-top: 2.5rem; }
+h3 { font-size: 1rem; margin: 1.5rem 0 0.5rem; color: var(--subtext1); }
+a { color: var(--blue); text-decoration: none; }
+a:hover { text-decoration: underline; }
+nav a + a::before { content: "·"; color: var(--overlay0); margin: 0 0.6rem; }
+code { font-family: ui-monospace, monospace; font-size: 0.85em; color: var(--mauve); }
+table { border-collapse: collapse; width: 100%; background: var(--mantle); border-radius: 0.5rem; overflow: hidden; }
+th, td { padding: 0.5rem 0.9rem; text-align: left; border-top: 1px solid var(--surface0); }
+thead th { background: var(--surface0); border-top: 0; font-weight: 600; }
+th[scope=row] { font-weight: 400; }
+th[scope=row] code { color: var(--subtext0); }
+footer { margin-top: 3rem; color: var(--subtext0); font-size: 0.9rem; border-top: 1px solid var(--surface0); padding-top: 1rem; }
+
+  td[data-check] { white-space: nowrap; font-family: ui-monospace, monospace; font-size: 0.85em; }
+  .dot { display: inline-block; width: 0.7em; height: 0.7em; border-radius: 50%; background: var(--surface1); margin-right: 0.5em; vertical-align: -0.05em; }
+  .pass .dot { background: var(--green); }
+  .fail .dot { background: var(--red); }
+  .other .dot { background: var(--yellow); }
+  .na { color: var(--overlay0); }
+  .na .dot { background: transparent; border: 1px solid var(--surface1); }
 </style>
 <h1>hakmem</h1>
-<p>Bit tricks as a lawful algebra; a learning project, see the README's Status section.
-   <a href="doc/hakmem/">API docs (main)</a> ·
-   <a href="dev/bench/">benchmarks over time</a> ·
-   <a href="https://github.com/mightsleep/hakmem">source</a></p>
-<p class="badges"><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml"><img src="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml/badge.svg" alt="ci-x86_64"></a> <a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml"><img src="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml/badge.svg" alt="ci-aarch64"></a> <a href="https://github.com/mightsleep/hakmem/actions/workflows/pages.yml"><img src="https://github.com/mightsleep/hakmem/actions/workflows/pages.yml/badge.svg" alt="pages"></a></p>
-<h2>What CI checks on x86_64-linux</h2>
-<p>Every row is one Nix derivation built in a sandbox without network;
+<p>Bit tricks as a lawful algebra. A learning project; the README's Status section says what to expect.</p>
+<nav>
+  <a href="doc/hakmem/">docs</a>
+  <a href="https://github.com/mightsleep/hakmem/blob/main/docs/design.md">design</a>
+  <a href="doc/hakmem/cookbook/index.html">cookbook</a>
+  <a href="dev/bench/">benchmarks</a>
+  <a href="https://github.com/mightsleep/hakmem">source</a>
+</nav>
+<h2>Checks on <code>main</code></h2>
+<p>Every cell is one Nix derivation built in a sandbox without network;
    the matrix lives in <code>nix/matrix.nix</code> and the workflow reads
-   it at run time. Miri runs as a separate job; benchmarks are tracked
-   over time, never pass/fail.</p>
-<table><tr><th>check</th></tr>
-<tr><td><code>hakmem-audit</code></td></tr>
-<tr><td><code>hakmem-clippy-bmi2-default</code></td></tr>
-<tr><td><code>hakmem-clippy-bmi2-portable-feature</code></td></tr>
-<tr><td><code>hakmem-clippy-portable-default</code></td></tr>
-<tr><td><code>hakmem-deny</code></td></tr>
-<tr><td><code>hakmem-doc</code></td></tr>
-<tr><td><code>hakmem-doctest-bmi2</code></td></tr>
-<tr><td><code>hakmem-doctest-portable</code></td></tr>
-<tr><td><code>hakmem-msrv</code></td></tr>
-<tr><td><code>hakmem-test-bmi2-default</code></td></tr>
-<tr><td><code>hakmem-test-bmi2-portable-feature</code></td></tr>
-<tr><td><code>hakmem-test-portable-default</code></td></tr>
-<tr><td><code>treefmt</code></td></tr>
+   it at run time. Only cells whose output is not yet in the binary
+   cache are built; a cell in the cache passed by construction. CI
+   writes each result here after every push
+   (<code>.github/status.sh</code>). Benchmarks are tracked over time,
+   never pass/fail.</p>
+<table>
+  <thead><tr><th>check</th><th>x86_64-linux</th><th>aarch64-linux</th></tr></thead>
+  <tbody>
+<tr><th scope="row">cargo-audit<br><code>hakmem-audit</code></th><td data-system="x86_64-linux" data-check="hakmem-audit"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-audit"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">clippy, +bmi2<br><code>hakmem-clippy-bmi2-default</code></th><td data-system="x86_64-linux" data-check="hakmem-clippy-bmi2-default"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-clippy-bmi2-default"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">clippy, +bmi2 with feature portable<br><code>hakmem-clippy-bmi2-portable-feature</code></th><td data-system="x86_64-linux" data-check="hakmem-clippy-bmi2-portable-feature"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-clippy-bmi2-portable-feature"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">clippy, portable<br><code>hakmem-clippy-portable-default</code></th><td data-system="x86_64-linux" data-check="hakmem-clippy-portable-default"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-clippy-portable-default"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">cargo-deny<br><code>hakmem-deny</code></th><td data-system="x86_64-linux" data-check="hakmem-deny"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-deny"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">rustdoc, warnings as errors<br><code>hakmem-doc</code></th><td data-system="x86_64-linux" data-check="hakmem-doc"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-doc"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">doctests, +bmi2<br><code>hakmem-doctest-bmi2</code></th><td data-system="x86_64-linux" data-check="hakmem-doctest-bmi2"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-doctest-bmi2"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">doctests, portable<br><code>hakmem-doctest-portable</code></th><td data-system="x86_64-linux" data-check="hakmem-doctest-portable"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-doctest-portable"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">MSRV build of the packaged tarball<br><code>hakmem-msrv</code></th><td data-system="x86_64-linux" data-check="hakmem-msrv"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-msrv"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">tests, +bmi2,+pclmulqdq<br><code>hakmem-test-bmi2-default</code></th><td data-system="x86_64-linux" data-check="hakmem-test-bmi2-default"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-test-bmi2-default"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">tests, +bmi2 with feature portable<br><code>hakmem-test-bmi2-portable-feature</code></th><td data-system="x86_64-linux" data-check="hakmem-test-bmi2-portable-feature"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-test-bmi2-portable-feature"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">tests, portable<br><code>hakmem-test-portable-default</code></th><td data-system="x86_64-linux" data-check="hakmem-test-portable-default"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="hakmem-test-portable-default"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">Miri over the intrinsics, both paths<br><code>miri</code></th><td data-system="x86_64-linux" data-check="miri"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="miri"><span class="dot"></span>pending</td></tr>
+<tr><th scope="row">treefmt<br><code>treefmt</code></th><td data-system="x86_64-linux" data-check="treefmt"><span class="dot"></span>pending</td><td data-system="aarch64-linux" data-check="treefmt"><span class="dot"></span>pending</td></tr>
+
+  </tbody>
 </table>
+<footer>Bit tricks as a lawful algebra, MIT OR Apache-2.0. Named after HAKMEM, MIT AI Memo 239 (1972).</footer>
+<script>
+  for (const td of document.querySelectorAll("td[data-check]")) {
+    const url = "status/" + td.dataset.system + "/" + td.dataset.check + ".json";
+    fetch(url, {cache: "no-cache"}).then(function (r) {
+      if (!r.ok) { td.className = "na"; td.lastChild.textContent = "n/a"; return; }
+      return r.json().then(function (s) {
+        td.className = s.message === "pass" ? "pass" : s.message === "fail" ? "fail" : "other";
+        td.lastChild.textContent = s.message;
+      });
+    }).catch(function () { td.className = "other"; td.lastChild.textContent = "unknown"; });
+  }
+</script>
