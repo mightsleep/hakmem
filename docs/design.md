@@ -114,9 +114,9 @@ Primitives keep the names `std` uses: `count_ones`, `trailing_zeros`,
 documentation, not in the API; a Rust programmer searches for the
 `std` name.
 
-`Word` is sealed. It exposes exactly the primitive circuits the
+`Word` is open. It exposes exactly the primitive circuits the
 combinators are built from, so a carrier is one `impl` block and no
-more: bitwise operations, shifts, wrapping `add` / `sub` / `mul`,
+more, with portable defaults for everything that can be derived: bitwise operations, shifts, wrapping `add` / `sub` / `mul`,
 byte splat, `count_ones`, `trailing_zeros`, `leading_zeros`,
 `clear_lowest_set`, `pext`, `pdep`, `select_lowest`, `xor_scan`,
 `low_ones`. Everything else is derived.
@@ -307,8 +307,9 @@ packaged tarball, not the repository.
 
 What is and is not a breaking change:
 
-- Adding a method to `Bits` or a primitive to `Word` is not: `Word`
-  is sealed, and `Bits` is only implemented through the blanket impl.
+- Adding a method to `Bits`, or a primitive with a default to `Word`,
+  is not; `Bits` is only implemented through the blanket impl. Adding
+  a required primitive to `Word` is: carriers outside the crate exist.
 - Adding a carrier is not.
 - Changing what a law states is. A law is API; a kernel downstream
   may depend on either side of it.

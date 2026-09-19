@@ -56,6 +56,10 @@
           name = "portable-feature";
           args = "--features portable";
         }
+        {
+          name = "alloc";
+          args = "--features alloc";
+        }
       ];
     };
 

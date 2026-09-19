@@ -29,9 +29,7 @@ pub fn rank<W: Word>(words: &[W], i: usize) -> usize {
         .sum();
     // `rest < BITS` always fits a u32.
     #[allow(clippy::cast_possible_truncation)]
-    let tail = words
-        .get(full)
-        .map_or(0, |w| w.rank_below(rest as u32) as usize);
+    let tail = words.get(full).map_or(0, |w| w.rank(rest as u32) as usize);
     head + tail
 }
 
@@ -113,4 +111,21 @@ pub fn find_run<W: Word>(words: &[W], k: u32) -> Option<usize> {
         }
     }
     None
+}
+
+/// Positions of every set bit, ascending, across the words: the
+/// selection vector of a bitmap.
+///
+/// ```
+/// use hakmem::slice::positions;
+///
+/// let v: Vec<usize> = positions(&[0b101u64, 1]).collect();
+/// assert_eq!(v, [0, 2, 64]);
+/// ```
+pub fn positions<W: Word>(words: &[W]) -> impl Iterator<Item = usize> + '_ {
+    let bits = W::BITS as usize;
+    words
+        .iter()
+        .enumerate()
+        .flat_map(move |(wi, w)| w.positions().map(move |p| wi * bits + p as usize))
 }

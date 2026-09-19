@@ -49,12 +49,12 @@ macro_rules! laws_for {
                 }
                 // set view
                 #[test]
-                fn rank_below_is_monotone(x in $strategy, i in 0..BITS) {
-                    prop_assert!(laws::rank_below_is_monotone(x, i));
+                fn rank_is_monotone(x in $strategy, i in 0..BITS) {
+                    prop_assert!(laws::rank_is_monotone(x, i));
                 }
                 #[test]
-                fn rank_below_full_is_popcount(x in $strategy) {
-                    prop_assert!(laws::rank_below_full_is_popcount(x));
+                fn rank_full_is_popcount(x in $strategy) {
+                    prop_assert!(laws::rank_full_is_popcount(x));
                 }
                 #[test]
                 fn first_last_bracket_set_bits(x in $strategy) {
@@ -358,6 +358,25 @@ mod rank9 {
                 assert!(laws::rank9_select_inverts_rank(dir, k), "k={k}");
                 assert!(laws::rank9_rank_steps_by_bit(dir, i), "i={i}");
             });
+        }
+    }
+}
+
+// Sliding attacks on the 8×8 board against a square-by-square walk.
+mod board8 {
+    use hakmem::laws;
+    use hakmem::permute::board8::Dir;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn slides_match_reference(pieces in any::<u64>(), empty in any::<u64>(), d in 0usize..8) {
+            prop_assert!(laws::board8_slides_match_reference(pieces, empty, Dir::ALL[d]));
+        }
+
+        #[test]
+        fn single_piece_slides_match_reference(sq in 0u32..64, empty in any::<u64>(), d in 0usize..8) {
+            prop_assert!(laws::board8_slides_match_reference(1 << sq, empty, Dir::ALL[d]));
         }
     }
 }

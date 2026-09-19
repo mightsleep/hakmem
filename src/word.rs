@@ -1,6 +1,6 @@
 //! The carrier: a fixed-width word viewed as a container of bits.
 //!
-//! [`Word`] is sealed. It exposes exactly the primitive circuits every
+//! [`Word`] is open. It exposes exactly the primitive circuits every
 //! combinator module is built from, so a new carrier (a SIMD lane, a
 //! GPU warp mask) is one `impl` block, and every combinator and every
 //! law in the crate lights up for it at once.
@@ -13,16 +13,21 @@
 //! broadword definition with the same contract. The laws in
 //! [`crate::laws`] are what make the two interchangeable.
 
-pub(crate) mod sealed {
-    pub trait Sealed {}
-}
-
-/// A fixed-width word of `BITS` bits, bit 0 least significant.
+/// A fixed-width word of `BITS` bits, bit 0 least significant: the
+/// carrier every combinator and every law is written against.
+///
+/// Open to implementors. A carrier supplies the constants and the
+/// required primitives; the provided ones have portable definitions
+/// and are overridden only for speed (`u64` routes `pext` to BMI2 and
+/// `xor_scan` to PCLMULQDQ). What an implementation must uphold is
+/// what the laws in [`crate::laws`] check: run them over the new
+/// carrier as its acceptance test, the way `tests/laws.rs` does for
+/// [`Wide<N>`](crate::Wide).
 ///
 /// Shift amounts passed to [`shl`](Word::shl) / [`shr`](Word::shr)
 /// must be `< BITS`; combinators in this crate uphold that by
-/// construction and debug-assert it.
-pub trait Word: Copy + Eq + core::fmt::Debug + sealed::Sealed {
+/// construction and debug-assert it, and a carrier may assume it.
+pub trait Word: Copy + Eq + core::fmt::Debug {
     /// Width in bits.
     const BITS: u32;
     /// All bits clear.
@@ -79,35 +84,56 @@ pub trait Word: Copy + Eq + core::fmt::Debug + sealed::Sealed {
     fn leading_zeros(self) -> u32;
     /// Clears the lowest set bit (BLSR); identity on zero.
     #[must_use]
-    fn clear_lowest_set(self) -> Self;
+    fn clear_lowest_set(self) -> Self {
+        self.and(self.wrapping_sub(Self::ONE))
+    }
 
     /// Parallel bit extract (PEXT): gathers the bits of `self` at the
     /// set positions of `mask` into the low `count_ones(mask)` bits,
     /// preserving order. BMI2: one instruction; portable:
     /// [`compress_broadword`].
     #[must_use]
-    fn pext(self, mask: Self) -> Self;
+    fn pext(self, mask: Self) -> Self {
+        compress_broadword(self, mask)
+    }
     /// Parallel bit deposit (PDEP): scatters the low `count_ones(mask)`
     /// bits of `self` to the set positions of `mask`, preserving order.
     /// BMI2: one instruction; portable: [`expand_broadword`].
     #[must_use]
-    fn pdep(self, mask: Self) -> Self;
+    fn pdep(self, mask: Self) -> Self {
+        expand_broadword(self, mask)
+    }
 
     /// Position of the `k`-th set bit. Precondition `k < popcount`;
+    /// provided as a loop of `k` steps, so override it;
     /// the result is unspecified otherwise. BMI2: `trailing_zeros(pdep(1 << k,
     /// self))`; portable: Vigna's broadword select.
     #[must_use]
-    fn select_lowest(self, k: u32) -> u32;
+    fn select_lowest(self, k: u32) -> u32 {
+        let mut x = self;
+        for _ in 0..k {
+            x = x.clear_lowest_set();
+        }
+        x.trailing_zeros()
+    }
 
     /// Prefix XOR: bit `i` of the result is the parity of bits `0..=i`.
     /// PCLMULQDQ: carry-less multiply by all-ones; portable: log-depth
     /// smear.
     #[must_use]
-    fn xor_scan(self) -> Self;
+    fn xor_scan(self) -> Self {
+        xor_smear(self)
+    }
 
     /// Mask with the `n` lowest bits set, `n <= BITS`.
     #[must_use]
-    fn low_ones(n: u32) -> Self;
+    fn low_ones(n: u32) -> Self {
+        if n >= Self::BITS {
+            Self::ONES
+        } else {
+            Self::ONE.shl(n).wrapping_sub(Self::ONE)
+        }
+    }
 
     /// `true` when no bit is set.
     #[inline]
@@ -215,11 +241,6 @@ pub fn expand_broadword<W: Word>(x: W, mask: W) -> W {
 }
 
 /// Log-depth XOR smear: `x ^= x << 1; x ^= x << 2; …`.
-#[cfg(not(all(
-    target_arch = "x86_64",
-    target_feature = "pclmulqdq",
-    not(feature = "portable")
-)))]
 #[inline]
 fn xor_smear<W: Word>(mut x: W) -> W {
     let mut s = 1;
@@ -434,7 +455,6 @@ macro_rules! impl_word_core {
     };
 }
 
-impl sealed::Sealed for u64 {}
 impl Word for u64 {
     impl_word_core!(u64);
 
@@ -516,7 +536,6 @@ impl Word for u64 {
     }
 }
 
-impl sealed::Sealed for u32 {}
 impl Word for u32 {
     impl_word_core!(u32);
 
@@ -570,7 +589,6 @@ impl Word for u32 {
     }
 }
 
-impl sealed::Sealed for u128 {}
 impl Word for u128 {
     impl_word_core!(u128);
 
@@ -623,7 +641,6 @@ impl Word for u128 {
 /// can be checked exhaustively (`tests/exhaustive.rs`).
 macro_rules! impl_word_narrow {
     ($($t:ty),*) => {$(
-        impl sealed::Sealed for $t {}
         impl Word for $t {
             impl_word_core!($t);
 

@@ -3,7 +3,7 @@
 //! `use hakmem::Bits;` and the whole algebra is available on `u8`,
 //! `u16`, `u32`, `u64` and `u128` (the Itertools shape: one trait,
 //! many methods, organised below by the circuit each method is).
-//! Primitives (the sealed [`Word`]) keep `std` names, `count_ones`,
+//! Primitives (the [`Word`] trait) keep `std` names, `count_ones`,
 //! `trailing_zeros`, `leading_zeros`, plus `pext` / `pdep` /
 //! `select_lowest` / `xor_scan` for the hardware-backed ones.
 
@@ -33,7 +33,8 @@ pub trait Bits: Word {
     // Runs: Hacker's Delight 6-2 / 6-3
     // ===================================================================
     /// Bit `p` of the result is set iff bits `p..p + k` of `self` are
-    /// all set. `k` must be in `1..=BITS`.
+    /// all set. Total: `k = 0` starts everywhere (every bit), `k` above
+    /// the width nowhere (zero).
     ///
     /// ```
     /// use hakmem::prelude::*;
@@ -46,11 +47,12 @@ pub trait Bits: Word {
     /// ```
     #[must_use]
     fn run_starts(self, k: u32) -> Self {
-        debug_assert!(
-            (1..=Self::BITS).contains(&k),
-            "run length {k} outside 1..={}",
-            Self::BITS
-        );
+        if k == 0 {
+            return Self::ONES;
+        }
+        if k > Self::BITS {
+            return Self::ZERO;
+        }
         let mut x = self;
         let mut n = k;
         while n > 1 {
@@ -103,13 +105,13 @@ pub trait Bits: Word {
     /// use hakmem::prelude::*;
     ///
     /// let x: u64 = 0b1011;
-    /// assert_eq!(x.rank_below(0), 0);
-    /// assert_eq!(x.rank_below(2), 2);
-    /// assert_eq!(x.rank_below(64), 3);
+    /// assert_eq!(x.rank(0), 0);
+    /// assert_eq!(x.rank(2), 2);
+    /// assert_eq!(x.rank(64), 3);
     /// ```
     #[inline]
     #[must_use]
-    fn rank_below(self, i: u32) -> u32 {
+    fn rank(self, i: u32) -> u32 {
         self.and(Self::low_ones(i)).count_ones()
     }
 
@@ -277,7 +279,11 @@ pub trait Bits: Word {
     }
     /// Cells reachable from the set bits of `self` by repeatedly
     /// stepping `stride` positions upward into cells where `propagate`
-    /// is set. `log₂(BITS / stride)` rounds of three operations.
+    /// is set. `log₂(BITS / stride)` rounds of three operations. On a
+    /// board, an east, west or diagonal stride wraps across the edge
+    /// unless the wrap file is masked out of `propagate`;
+    /// [`crate::permute::board8::slide`] does that for the eight
+    /// directions.
     ///
     /// ```
     /// use hakmem::prelude::*;
@@ -292,10 +298,9 @@ pub trait Bits: Word {
     #[inline]
     #[must_use]
     fn fill_up(self, propagate: Self, stride: u32) -> Self {
-        debug_assert!(
-            stride >= 1 && stride < Self::BITS,
-            "fill stride {stride} out of range"
-        );
+        if stride == 0 || stride >= Self::BITS {
+            return self;
+        }
         let mut reach = self;
         let mut prop = propagate;
         let mut s = stride;
@@ -311,10 +316,9 @@ pub trait Bits: Word {
     #[inline]
     #[must_use]
     fn fill_down(self, propagate: Self, stride: u32) -> Self {
-        debug_assert!(
-            stride >= 1 && stride < Self::BITS,
-            "fill stride {stride} out of range"
-        );
+        if stride == 0 || stride >= Self::BITS {
+            return self;
+        }
         let mut reach = self;
         let mut prop = propagate;
         let mut s = stride;

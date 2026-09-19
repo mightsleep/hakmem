@@ -17,3 +17,11 @@ follow Hacker's Delight 7-4 and 7-5. `hakmem::rank9::Rank9` is an O(1)
 rank/select directory over a borrowed `&[u64]`, rank9 plus a
 select9-shaped inventory, with storage the caller supplies, no allocator,
 pinned to `slice` by laws.
+
+API decisions before the first release: `Word` is open, with portable
+defaults for the derivable primitives, so a carrier outside the crate
+is one `impl` block and the laws are its acceptance test. `rank_below`
+is `rank` everywhere. Run lengths and fill strides are total. Added
+`slice::positions`, `myers::distance` (carrier chosen by pattern
+length), `permute::board8::{Dir, slide}` for sliding attacks in all
+eight directions, and, behind the `alloc` feature, `rank9::Rank9Buf`.

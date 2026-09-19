@@ -68,4 +68,97 @@ pub mod board8 {
     pub const fn rotate_180(x: u64) -> u64 {
         x.reverse_bits()
     }
+
+    const FILE_A: u64 = 0x0101_0101_0101_0101;
+    const FILE_H: u64 = FILE_A << 7;
+
+    /// A sliding direction on the board.
+    #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+    pub enum Dir {
+        /// Up a file: `+8`.
+        North,
+        /// Down a file: `-8`.
+        South,
+        /// Along a rank towards h: `+1`.
+        East,
+        /// Along a rank towards a: `-1`.
+        West,
+        /// `+9`.
+        NorthEast,
+        /// `+7`.
+        NorthWest,
+        /// `-7`.
+        SouthEast,
+        /// `-9`.
+        SouthWest,
+    }
+
+    impl Dir {
+        /// The eight directions, the queen's set.
+        pub const ALL: [Self; 8] = [
+            Self::North,
+            Self::South,
+            Self::East,
+            Self::West,
+            Self::NorthEast,
+            Self::NorthWest,
+            Self::SouthEast,
+            Self::SouthWest,
+        ];
+
+        /// Stride, whether it shifts up, and the squares a step may land
+        /// on (everything but the file a step off the board wraps into).
+        const fn step(self) -> (u32, bool, u64) {
+            match self {
+                Self::North => (8, true, u64::MAX),
+                Self::South => (8, false, u64::MAX),
+                Self::East => (1, true, !FILE_A),
+                Self::West => (1, false, !FILE_H),
+                Self::NorthEast => (9, true, !FILE_A),
+                Self::NorthWest => (7, true, !FILE_H),
+                Self::SouthEast => (7, false, !FILE_A),
+                Self::SouthWest => (9, false, !FILE_H),
+            }
+        }
+
+        /// One step of every bit of `x` in this direction; bits that would
+        /// leave the board vanish.
+        #[inline]
+        #[must_use]
+        pub const fn shift(self, x: u64) -> u64 {
+            let (s, up, keep) = self.step();
+            (if up { x << s } else { x >> s }) & keep
+        }
+    }
+
+    /// Squares attacked by the sliding pieces `pieces` in direction `dir`.
+    ///
+    /// With `empty` the empty squares: every square reached up to and
+    /// including the first occupied one. Kogge–Stone through
+    /// [`Bits::fill_up`] / [`Bits::fill_down`] with the wrap file masked
+    /// out of the propagation, then one more step. Eight calls make a
+    /// queen; no table.
+    ///
+    /// ```
+    /// use hakmem::permute::board8::{Dir, slide};
+    ///
+    /// // A rook on a1, a blocker on a5 and one on e1.
+    /// let rook = 1u64;
+    /// let occupied = 1u64 << 32 | 1 << 4;
+    /// assert_eq!(slide(rook, !occupied, Dir::North), 0x0000_0001_0101_0100);
+    /// assert_eq!(slide(rook, !occupied, Dir::East), 0b1_1110);
+    /// assert_eq!(slide(rook, !occupied, Dir::West), 0);
+    /// ```
+    #[inline]
+    #[must_use]
+    pub fn slide(pieces: u64, empty: u64, dir: Dir) -> u64 {
+        let (s, up, keep) = dir.step();
+        let propagate = empty & keep;
+        let filled = if up {
+            pieces.fill_up(propagate, s)
+        } else {
+            pieces.fill_down(propagate, s)
+        };
+        dir.shift(filled)
+    }
 }

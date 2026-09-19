@@ -55,7 +55,7 @@ fn u8_unary_laws() {
     for_all!(u8, x => laws::delta_after_prefix_xor_is_identity(x));
     for_all!(u8, x => laws::prefix_or_is_smear_from_first_set(x));
     for_all!(u8, x => laws::prefix_xor_matches_reference(x));
-    for_all!(u8, x => laws::rank_below_full_is_popcount(x));
+    for_all!(u8, x => laws::rank_full_is_popcount(x));
     for_all!(u8, x => laws::first_last_bracket_set_bits(x));
     for_all!(u8, x => laws::dilated_roundtrip::<u8, 2>(x));
     for_all!(u8, x => laws::dilated_roundtrip::<u8, 3>(x));
@@ -76,7 +76,7 @@ fn u8_indexed_laws() {
             assert!(laws::run_starts_matches_reference(x, k), "x={x} k={k}");
         }
         for i in 0..8 {
-            assert!(laws::rank_below_is_monotone(x, i), "x={x} i={i}");
+            assert!(laws::rank_is_monotone(x, i), "x={x} i={i}");
             assert!(laws::select_is_rank_inverse(x, i), "x={x} k={i}");
             assert!(laws::select_matches_reference(x, i), "x={x} k={i}");
         }
@@ -125,7 +125,7 @@ fn u16_unary_laws() {
     for_all!(u16, x => laws::delta_after_prefix_xor_is_identity(x));
     for_all!(u16, x => laws::prefix_or_is_smear_from_first_set(x));
     for_all!(u16, x => laws::prefix_xor_matches_reference(x));
-    for_all!(u16, x => laws::rank_below_full_is_popcount(x));
+    for_all!(u16, x => laws::rank_full_is_popcount(x));
     for_all!(u16, x => laws::first_last_bracket_set_bits(x));
     for_all!(u16, x => laws::dilated_roundtrip::<u16, 2>(x));
     for_all!(u16, x => laws::dilated_roundtrip::<u16, 3>(x));
@@ -146,7 +146,7 @@ fn u16_indexed_laws() {
             assert!(laws::run_starts_matches_reference(x, k), "x={x} k={k}");
         }
         for i in 0..16 {
-            assert!(laws::rank_below_is_monotone(x, i), "x={x} i={i}");
+            assert!(laws::rank_is_monotone(x, i), "x={x} i={i}");
             assert!(laws::select_is_rank_inverse(x, i), "x={x} k={i}");
             assert!(laws::select_matches_reference(x, i), "x={x} k={i}");
         }

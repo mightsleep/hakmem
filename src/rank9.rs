@@ -11,7 +11,7 @@
 //! The select part is optional: pass an empty slice and `select` falls
 //! back to a binary search over the block counts.
 //!
-//! Rank is one directory pair and one [`Bits::rank_below`]: the count
+//! Rank is one directory pair and one [`Bits::rank`]: the count
 //! before the block, the packed count before the word, a masked
 //! popcount. Select reads one inventory pair per 512 set bits and, by
 //! how many blocks those 512 span, either compares packed 16-bit
@@ -369,7 +369,7 @@ impl<'a> Rank9<'a> {
         let before_word = Self::field(self.counts[2 * block + 1], word);
         // `i % 64 < 64` fits a u32.
         #[allow(clippy::cast_possible_truncation)]
-        let in_word = self.bits[i / 64].rank_below((i % 64) as u32);
+        let in_word = self.bits[i / 64].rank((i % 64) as u32);
         Self::to_usize(before_block + before_word + u64::from(in_word))
     }
 
@@ -539,5 +539,92 @@ mod tests {
         assert_eq!(Span::of(128), Span::Pos32);
         assert_eq!(Span::of(0x7F_FFFF), Span::Pos32);
         assert_eq!(Span::of(0x80_0000), Span::Search);
+    }
+}
+
+/// [`Rank9`] with the directory allocated for you: one call from a bit
+/// slice to rank and select. Needs the `alloc` feature; the view type
+/// stays the whole API, this only owns its two buffers.
+///
+/// ```
+/// # #[cfg(feature = "alloc")] {
+/// use hakmem::rank9::Rank9Buf;
+///
+/// let bits = [0b1011u64, u64::MAX, 0];
+/// let dir = Rank9Buf::new(&bits);
+/// assert_eq!(dir.rank(64), 3);
+/// assert_eq!(dir.select(3), Some(64));
+/// assert_eq!(dir.view().count_ones(), 67);
+/// # }
+/// ```
+#[cfg(feature = "alloc")]
+#[cfg_attr(docsrs, doc(cfg(feature = "alloc")))]
+#[derive(Clone, Debug)]
+pub struct Rank9Buf<'a> {
+    bits: &'a [u64],
+    counts: alloc::boxed::Box<[u64]>,
+    select: alloc::boxed::Box<[u64]>,
+}
+
+#[cfg(feature = "alloc")]
+impl<'a> Rank9Buf<'a> {
+    /// Rank and select over `bits`.
+    #[must_use]
+    pub fn new(bits: &'a [u64]) -> Self {
+        Self::build(bits, Rank9::select_len(bits.len()))
+    }
+
+    /// Rank only, at 25 % instead of 62.5 % of the bits; `select` falls
+    /// back to a binary search.
+    #[must_use]
+    pub fn rank_only(bits: &'a [u64]) -> Self {
+        Self::build(bits, 0)
+    }
+
+    fn build(bits: &'a [u64], select_words: usize) -> Self {
+        let mut counts = alloc::vec![0; Rank9::counts_len(bits.len())].into_boxed_slice();
+        let mut select = alloc::vec![0; select_words].into_boxed_slice();
+        Rank9::build(bits, &mut counts, &mut select);
+        Self {
+            bits,
+            counts,
+            select,
+        }
+    }
+
+    /// The borrowed view, for anything not forwarded here.
+    #[must_use]
+    pub fn view(&self) -> Rank9<'_> {
+        Rank9::new(self.bits, &self.counts, &self.select)
+    }
+
+    /// See [`Rank9::rank`].
+    #[must_use]
+    pub fn rank(&self, i: usize) -> usize {
+        self.view().rank(i)
+    }
+
+    /// See [`Rank9::rank0`].
+    #[must_use]
+    pub fn rank0(&self, i: usize) -> usize {
+        self.view().rank0(i)
+    }
+
+    /// See [`Rank9::select`].
+    #[must_use]
+    pub fn select(&self, k: usize) -> Option<usize> {
+        self.view().select(k)
+    }
+
+    /// See [`Rank9::count_ones`].
+    #[must_use]
+    pub fn count_ones(&self) -> usize {
+        self.view().count_ones()
+    }
+
+    /// The directory's two buffers, to keep next to the bits.
+    #[must_use]
+    pub fn into_parts(self) -> (alloc::boxed::Box<[u64]>, alloc::boxed::Box<[u64]>) {
+        (self.counts, self.select)
     }
 }

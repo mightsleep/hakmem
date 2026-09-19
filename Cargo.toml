@@ -20,6 +20,9 @@ default = []
 # instruction exists but is microcoded (PDEP/PEXT on AMD Zen 1 and Zen 2:
 # ~18 cycles, hundreds of uops) the broadword definitions are faster.
 portable = []
+# Owning conveniences over the caller-owned structures: `rank9::Rank9Buf`.
+# Off by default; the crate itself never allocates.
+alloc = []
 
 [dependencies]
 
@@ -62,3 +65,6 @@ nursery = { level = "warn", priority = -1 }
 missing_errors_doc = "allow"
 missing_panics_doc = "allow"
 module_name_repetitions = "allow"
+
+[package.metadata.docs.rs]
+all-features = true

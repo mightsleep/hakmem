@@ -189,3 +189,28 @@ impl<W: Word> Iterator for Search<'_, W> {
         None
     }
 }
+
+/// [`edit_distance`] with the carrier chosen by the pattern's length.
+///
+/// `u64` up to 64 bytes, `u128` to 128, [`Wide<4>`](crate::Wide) to
+/// 256, `Wide<8>` to 512, `None` beyond. The generic functions are for
+/// callers who know their lengths; this is for the rest.
+///
+/// ```
+/// use hakmem::myers::distance;
+///
+/// assert_eq!(distance(b"kitten", b"sitting"), Some(3));
+/// let long = [b'a'; 300];
+/// assert_eq!(distance(&long, &long[..290]), Some(10));
+/// assert_eq!(distance(&[0; 513], b""), None);
+/// ```
+#[must_use]
+pub fn distance(pattern: &[u8], text: &[u8]) -> Option<u32> {
+    match pattern.len() {
+        0..=64 => edit_distance::<u64>(pattern, text),
+        65..=128 => edit_distance::<u128>(pattern, text),
+        129..=256 => edit_distance::<crate::Wide<4>>(pattern, text),
+        257..=512 => edit_distance::<crate::Wide<8>>(pattern, text),
+        _ => None,
+    }
+}

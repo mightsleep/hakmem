@@ -13,7 +13,7 @@
 //! smallest instance of the carrier-over-carrier idea from the design
 //! doc: a "word" need not be one register.
 
-use crate::word::{Word, compress_broadword, expand_broadword, sealed};
+use crate::word::Word;
 
 /// `N` little-endian limbs of 64 bits: limb 0 holds bits `0..64`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
@@ -52,8 +52,6 @@ impl<const N: usize> Wide<N> {
         Self(out)
     }
 }
-
-impl<const N: usize> sealed::Sealed for Wide<N> {}
 
 impl<const N: usize> Word for Wide<N> {
     // `N` limbs of 64 bits fit a u32 for any N a caller can afford.
@@ -201,16 +199,6 @@ impl<const N: usize> Word for Wide<N> {
             }
         }
         Self(out)
-    }
-
-    #[inline]
-    fn pext(self, mask: Self) -> Self {
-        compress_broadword(self, mask)
-    }
-
-    #[inline]
-    fn pdep(self, mask: Self) -> Self {
-        expand_broadword(self, mask)
     }
 
     #[inline]

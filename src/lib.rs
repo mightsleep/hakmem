@@ -1,6 +1,10 @@
 #![doc = include_str!("../README.md")]
 #![no_std]
+#![cfg_attr(docsrs, feature(doc_cfg))]
 #![deny(unsafe_code)]
+
+#[cfg(feature = "alloc")]
+extern crate alloc;
 
 pub mod bits;
 pub mod cookbook;

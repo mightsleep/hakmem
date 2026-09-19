@@ -7,6 +7,7 @@
 //! functions over their own types. A law that fails is a bug in the
 //! backend, never a caveat in the docs.
 
+use crate::permute::board8::{self, Dir};
 use crate::prelude::*;
 use crate::rank9::Rank9;
 
@@ -61,16 +62,16 @@ pub fn prefix_xor_matches_reference<W: Word>(x: W) -> bool {
 
 // --- set view ---------------------------------------------------------
 
-/// `rank_below` is monotone in its bound. `i` in `0..BITS`.
+/// `rank` is monotone in its bound. `i` in `0..BITS`.
 #[must_use]
-pub fn rank_below_is_monotone<W: Word>(x: W, i: u32) -> bool {
-    x.rank_below(i) <= x.rank_below(i + 1)
+pub fn rank_is_monotone<W: Word>(x: W, i: u32) -> bool {
+    x.rank(i) <= x.rank(i + 1)
 }
 
-/// `rank_below(BITS)` is the popcount.
+/// `rank(BITS)` is the popcount.
 #[must_use]
-pub fn rank_below_full_is_popcount<W: Word>(x: W) -> bool {
-    x.rank_below(W::BITS) == x.count_ones()
+pub fn rank_full_is_popcount<W: Word>(x: W) -> bool {
+    x.rank(W::BITS) == x.count_ones()
 }
 
 /// `first_set` and `last_set` bracket every set bit.
@@ -78,9 +79,7 @@ pub fn rank_below_full_is_popcount<W: Word>(x: W) -> bool {
 pub fn first_last_bracket_set_bits<W: Word>(x: W) -> bool {
     match (x.first_set(), x.last_set()) {
         (None, None) => x.is_zero(),
-        (Some(lo), Some(hi)) => {
-            lo <= hi && x.rank_below(lo) == 0 && x.rank_below(hi + 1) == x.count_ones()
-        }
+        (Some(lo), Some(hi)) => lo <= hi && x.rank(lo) == 0 && x.rank(hi + 1) == x.count_ones(),
         _ => false,
     }
 }
@@ -91,7 +90,7 @@ pub fn first_last_bracket_set_bits<W: Word>(x: W) -> bool {
 pub fn select_is_rank_inverse<W: Word>(x: W, k: u32) -> bool {
     x.select(k).map_or_else(
         || k >= x.count_ones(),
-        |p| k < x.count_ones() && x.bit(p) && x.rank_below(p) == k,
+        |p| k < x.count_ones() && x.bit(p) && x.rank(p) == k,
     )
 }
 
@@ -439,7 +438,13 @@ pub fn slice_ops_match_reference<W: Word>(words: &[W], i: usize, k: u32) -> bool
     let next_ok = crate::slice::next_set_after(words, i) == set.iter().copied().find(|&p| p >= i);
     let run_ref = (0..total).find(|&s| s + k as usize <= total && (s..s + k as usize).all(bit));
     let run_ok = crate::slice::find_run(words, k) == run_ref;
-    rank_ok && select_ok && next_ok && run_ok && crate::slice::popcount(words) == set.len()
+    let positions_ok = crate::slice::positions(words).eq(set.iter().copied());
+    rank_ok
+        && select_ok
+        && next_ok
+        && run_ok
+        && positions_ok
+        && crate::slice::popcount(words) == set.len()
 }
 
 /// Tiny fixed-capacity position list so the slice reference stays
@@ -734,11 +739,11 @@ pub fn gray_successor_flips_lowest_set<W: Word>(x: W) -> bool {
     x.gray_encode().xor(next.gray_encode()) == next.lowest_set_mask()
 }
 
-/// Rank and select are inverse on set bits: `select(rank_below(i)) = i`
+/// Rank and select are inverse on set bits: `select(rank(i)) = i`
 /// whenever bit `i` is set. `i < BITS`.
 #[must_use]
 pub fn select_inverts_rank_on_set_bits<W: Word>(x: W, i: u32) -> bool {
-    !x.bit(i) || x.select(x.rank_below(i)) == Some(i)
+    !x.bit(i) || x.select(x.rank(i)) == Some(i)
 }
 
 // --- grid -----------------------------------------------------------------
@@ -814,4 +819,45 @@ pub fn rank9_rank_steps_by_bit(dir: &Rank9<'_>, i: usize) -> bool {
     #[allow(clippy::cast_possible_truncation)]
     let bit = i < dir.len() && dir.bits()[i / 64].bit((i % 64) as u32);
     dir.rank(i + 1) == dir.rank(i) + usize::from(bit)
+}
+
+// --- board8 -----------------------------------------------------------
+
+/// [`board8::slide`] equals a walk from
+/// every piece, one square at a time in `dir`, stopping on the first
+/// occupied square (included) or at the edge.
+#[must_use]
+pub fn board8_slides_match_reference(pieces: u64, empty: u64, dir: Dir) -> bool {
+    let (dr, dc): (i32, i32) = match dir {
+        Dir::North => (1, 0),
+        Dir::South => (-1, 0),
+        Dir::East => (0, 1),
+        Dir::West => (0, -1),
+        Dir::NorthEast => (1, 1),
+        Dir::NorthWest => (1, -1),
+        Dir::SouthEast => (-1, 1),
+        Dir::SouthWest => (-1, -1),
+    };
+    let mut expect = 0u64;
+    for sq in 0..64u32 {
+        if pieces >> sq & 1 == 0 {
+            continue;
+        }
+        let (mut r, mut c) = ((sq / 8).cast_signed(), (sq % 8).cast_signed());
+        loop {
+            r += dr;
+            c += dc;
+            if !(0..8).contains(&r) || !(0..8).contains(&c) {
+                break;
+            }
+            // `r` and `c` are in `0..8`.
+            #[allow(clippy::cast_sign_loss)]
+            let bit = 1u64 << (8 * r + c) as u32;
+            expect |= bit;
+            if empty & bit == 0 {
+                break;
+            }
+        }
+    }
+    board8::slide(pieces, empty, dir) == expect
 }

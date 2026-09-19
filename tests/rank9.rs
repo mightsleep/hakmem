@@ -175,3 +175,29 @@ fn without_select_storage() {
         assert!(laws::rank9_matches_slice(&dir, i, i));
     }
 }
+
+/// The owning convenience agrees with the view it wraps.
+#[cfg(feature = "alloc")]
+#[test]
+fn rank9buf_matches_view() {
+    use hakmem::rank9::Rank9Buf;
+    let mut next = xorshift(0x1234_5678_9ABC_DEF0);
+    let words: Vec<u64> = (0..777).map(|_| next()).collect();
+    let buf = Rank9Buf::new(&words);
+    let rank_only = Rank9Buf::rank_only(&words);
+    assert_eq!(buf.count_ones(), slice::popcount(&words));
+    for i in (0..=words.len() * 64).step_by(37) {
+        assert_eq!(buf.rank(i), slice::rank(&words, i));
+        assert_eq!(
+            rank_only.rank0(i),
+            i.min(words.len() * 64) - slice::rank(&words, i)
+        );
+    }
+    for k in (0..=buf.count_ones()).step_by(41) {
+        assert_eq!(buf.select(k), slice::select(&words, k));
+        assert_eq!(rank_only.select(k), slice::select(&words, k));
+    }
+    let (counts, select) = buf.into_parts();
+    let view = hakmem::rank9::Rank9::new(&words, &counts, &select);
+    assert_eq!(view.select(100), slice::select(&words, 100));
+}

@@ -35,7 +35,7 @@ let x: u64 = 0b0111_0110;
 assert_eq!(x.run_starts(3).first_set(), Some(4));
 
 // Rank / select / positions: succinct-structure primitives, O(1).
-assert_eq!(x.rank_below(4), 2);
+assert_eq!(x.rank(4), 2);
 assert_eq!(x.select(2), Some(4));
 assert_eq!(x.positions().collect::<Vec<_>>(), [1, 2, 4, 5, 6]);
 
@@ -58,6 +58,9 @@ assert_eq!(m.step_x().decode(), (4, 5));
 // 8×8 bit matrices: three delta swaps per transpose.
 use hakmem::permute::board8::transpose;
 assert_eq!(transpose(1 << (8 * 1 + 5)), 1 << (8 * 5 + 1));
+use hakmem::permute::board8::{Dir, slide};
+let rook = 1u64; // a1, attacking north up to the blocker on a5
+assert_eq!(slide(rook, !(1u64 << 32), Dir::North), 0x0000_0001_0101_0100);
 
 // Hacker's Delight ch. 2 and HAKMEM 175, named and lawful.
 assert_eq!(0b1011_0110u32.clear_lowest_run(), 0b1011_0000);
@@ -70,8 +73,9 @@ let (escaped, _carry) = 0b01_1101_1010u16.find_escaped(false);
 assert_eq!(escaped, 0b10_0000_0100);
 
 // The carry chain as a dynamic-programming column (Myers 1999).
-use hakmem::myers::{edit_distance, search};
+use hakmem::myers::{distance, edit_distance, search};
 assert_eq!(edit_distance::<u64>(b"kitten", b"sitting"), Some(3));
+assert_eq!(distance(b"kitten", b"sitting"), Some(3)); // carrier by length
 let hits: Vec<_> = search::<u64>(b"lo", b"hello lo", 0).unwrap().collect();
 assert_eq!(hits, [(5, 0), (8, 0)]);
 
@@ -261,6 +265,17 @@ Every combinator ships with the laws it obeys (`hakmem::laws`), checked
 by property tests on all carriers with and without the hardware paths,
 and exhaustively for widths up to 16 bits. A backend that fails a law
 is a bug, never a documented caveat.
+
+Every combinator is total over its carrier where a total definition
+exists: `rank(i)` past the width counts every bit, `run_starts(0)`
+starts everywhere and `run_starts(k)` above the width nowhere, a fill
+with a stride of zero or past the width is the identity, `low_ones` at
+the width is all ones. Where an argument has a domain the definition
+cannot absorb (shift amounts, run lengths above the width in
+`slice::find_run`, overlapping `delta_swap` masks, `bytes_ge` above
+128, grid sizes), the domain is in the method's docs, checked with
+`debug_assert!` in debug builds, and unspecified in release. Run your
+tests in debug once.
 
 `no_std`, zero dependencies, stable Rust.
 
