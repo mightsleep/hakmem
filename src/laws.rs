@@ -865,10 +865,14 @@ pub fn board8_slides_match_reference(pieces: u64, empty: u64, dir: Dir) -> bool 
 
 // --- lanes ------------------------------------------------------------
 
-/// Every [`Lanes`] operation against its per-lane scalar definition, on
-/// `a` and `b` with shift `n` and lookup `table`, and the fold to bits.
+/// Every [`Lanes`] operation against its per-lane scalar definition.
+///
+/// On `lhs` and `rhs` with shift `n` and lookup `table`; `rhs` doubles as
+/// the index vector of `shuffle` and the weights of `mul_add_pairs`, and
+/// `concat_shift` is checked for every offset.
 #[must_use]
 pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) -> bool {
+    let lanes = L::LANES;
     let mask = |c: bool| if c { 0xFF } else { 0 };
     let lut = |v: u8| {
         if v & 0x80 == 0 {
@@ -878,7 +882,7 @@ pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) 
         }
     };
     let bits = lhs.to_bits();
-    (0..L::LANES).all(|i| {
+    let lanewise = (0..lanes).all(|i| {
         let (x, y) = (lhs.lane(i), rhs.lane(i));
         let lane_bit = u32::try_from(i).is_ok_and(|i| bits.bit(i));
         lhs.and(rhs).lane(i) == x & y
@@ -899,7 +903,55 @@ pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) 
             && lhs.blend(rhs, lhs.cmp_le(rhs)).lane(i) == if x <= y { y } else { x }
             && lhs.lut16(table).lane(i) == lut(x)
             && lane_bit == (x & 0x80 != 0)
-    }) && L::splat(0x5A).lane(L::LANES - 1) == 0x5A
+            && lhs.add_sat(rhs).lane(i) == x.saturating_add(y)
+            && lhs.sub_sat(rhs).lane(i) == x.saturating_sub(y)
+            && lhs.shuffle(rhs).lane(i)
+                == if y & 0x80 == 0 {
+                    lhs.lane(usize::from(y) % lanes)
+                } else {
+                    0
+                }
+    });
+    let concat = (0..=2 * lanes + 1).all(|k| {
+        let r = lhs.concat_shift(rhs, k);
+        (0..lanes).all(|i| {
+            let j = i + k;
+            r.lane(i)
+                == if j < lanes {
+                    lhs.lane(j)
+                } else if j < 2 * lanes {
+                    rhs.lane(j - lanes)
+                } else {
+                    0
+                }
+        })
+    });
+    let (lo, hi) = (lhs.unpack_lo(rhs), lhs.unpack_hi(rhs));
+    let unpack = (0..lanes / 2).all(|k| {
+        lo.lane(2 * k) == lhs.lane(k)
+            && lo.lane(2 * k + 1) == rhs.lane(k)
+            && hi.lane(2 * k) == lhs.lane(lanes / 2 + k)
+            && hi.lane(2 * k + 1) == rhs.lane(lanes / 2 + k)
+    });
+    let sad = lhs.sum_abs_diff(rhs)
+        == (0..lanes)
+            .map(|i| u32::from(lhs.lane(i).abs_diff(rhs.lane(i))))
+            .sum::<u32>();
+    let products = lhs.mul_add_pairs(rhs);
+    let madd = (0..lanes / 2).all(|k| {
+        let term = |j: usize| i32::from(lhs.lane(j)) * i32::from(rhs.lane(j).cast_signed());
+        let sum = (term(2 * k) + term(2 * k + 1)).clamp(i32::from(i16::MIN), i32::from(i16::MAX));
+        // Clamped into range, so the narrowing is exact.
+        #[allow(clippy::cast_possible_truncation)]
+        let bytes = (sum as i16).to_le_bytes();
+        products.lane(2 * k) == bytes[0] && products.lane(2 * k + 1) == bytes[1]
+    });
+    lanewise
+        && concat
+        && unpack
+        && sad
+        && madd
+        && L::splat(0x5A).lane(lanes - 1) == 0x5A
         && L::zero() == L::splat(0)
 }
 
@@ -953,6 +1005,10 @@ pub fn u8x16_agrees_with_halves(lhs: (u64, u64), rhs: (u64, u64), n: u32, table:
         && x.cmp_le(y).halves() == pair(xl.cmp_le(yl), xh.cmp_le(yh))
         && x.lut16(table).halves() == pair(xl.lut16(table), xh.lut16(table))
         && x.to_bits() == u16::from(xl.to_bits()) | u16::from(xh.to_bits()) << 8
+        && x.add_sat(y).halves() == pair(xl.add_sat(yl), xh.add_sat(yh))
+        && x.sub_sat(y).halves() == pair(xl.sub_sat(yl), xh.sub_sat(yh))
+        && x.mul_add_pairs(y).halves() == pair(xl.mul_add_pairs(yl), xh.mul_add_pairs(yh))
+        && x.sum_abs_diff(y) == xl.sum_abs_diff(yl) + xh.sum_abs_diff(yh)
         && x.lane(3) == xl.lane(3)
         && x.lane(11) == xh.lane(3)
 }

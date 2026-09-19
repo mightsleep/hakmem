@@ -296,6 +296,7 @@ every carrier.
 | `lanes::Lanes::cmp_le` on SWAR | Hacker's Delight 6-1, the lane compare with full lanes |
 | `lanes::Lanes::to_bits` on SWAR | the multiply that gathers the top bits of eight bytes; on NEON the `shrn` narrowing of a compare mask |
 | `lanes::Lanes::lut16`, the nibble classifier | simdjson (Langdale and Lemire, 2019), after Muła's PSHUFB lookups |
+| `lanes::Lanes::shuffle`, `concat_shift`, `unpack_*`, `add_sat`, `sum_abs_diff`, `mul_add_pairs` | the SSE2 / SSSE3 instruction set as an algebra: PSHUFB, PALIGNR, PUNPCK, PADDUSB, PSADBW, PMADDUBSW; NEON `tbl`, `tbl2`, `zip`, `uqadd`, `uabd` + `addlv` |
 
 What is not in the canon, as far as I know:
 

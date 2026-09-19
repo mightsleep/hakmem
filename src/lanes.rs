@@ -178,6 +178,127 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
             .lut16(lo)
             .and(self.shr(4).lut16(hi))
     }
+
+    // --- the five lane-only primitives, portable definitions ----------
+
+    /// Byte permute by data, PSHUFB's contract with `self` as the table:
+    /// lane `i` becomes `self[idx_i mod LANES]`, or zero where `idx_i` has
+    /// its top bit set. [`lut16`](Self::lut16) is this with a constant
+    /// table; this is the same instruction with the table in a register.
+    #[inline]
+    #[must_use]
+    fn shuffle(self, idx: Self) -> Self {
+        let mut out = [0u8; 64];
+        for (i, o) in out.iter_mut().enumerate().take(Self::LANES) {
+            let j = idx.lane(i);
+            *o = if j & 0x80 == 0 {
+                self.lane(usize::from(j) % Self::LANES)
+            } else {
+                0
+            };
+        }
+        Self::load(&out[..Self::LANES])
+    }
+
+    /// Lanes `n..n + LANES` of the concatenation `self ++ other`, zeros
+    /// past its end: PALIGNR. `n = 0` is `self`, `n = LANES` is `other`,
+    /// `n >= 2 LANES` is zero. A window sliding across two registers.
+    #[inline]
+    #[must_use]
+    fn concat_shift(self, other: Self, n: usize) -> Self {
+        let mut out = [0u8; 64];
+        for (i, o) in out.iter_mut().enumerate().take(Self::LANES) {
+            let j = i + n;
+            *o = if j < Self::LANES {
+                self.lane(j)
+            } else if j < 2 * Self::LANES {
+                other.lane(j - Self::LANES)
+            } else {
+                0
+            };
+        }
+        Self::load(&out[..Self::LANES])
+    }
+
+    /// Saturating add per lane: `min(x + y, 255)`.
+    #[inline]
+    #[must_use]
+    fn add_sat(self, other: Self) -> Self {
+        self.add(other.min(self.not()))
+    }
+
+    /// Saturating subtract per lane: `max(x - y, 0)`.
+    #[inline]
+    #[must_use]
+    fn sub_sat(self, other: Self) -> Self {
+        self.sub(self.min(other))
+    }
+
+    /// Interleave the low halves: `self[0], other[0], self[1], other[1], ...`
+    /// (PUNPCKLBW, `zip1`). With [`unpack_hi`](Self::unpack_hi) a
+    /// transpose in `log₂ LANES` rounds, and the widening of bytes to
+    /// 16-bit lanes when `other` is zero.
+    #[inline]
+    #[must_use]
+    fn unpack_lo(self, other: Self) -> Self {
+        let mut out = [0u8; 64];
+        for k in 0..Self::LANES / 2 {
+            out[2 * k] = self.lane(k);
+            out[2 * k + 1] = other.lane(k);
+        }
+        Self::load(&out[..Self::LANES])
+    }
+
+    /// Interleave the high halves: `self[LANES/2], other[LANES/2], ...`
+    /// (PUNPCKHBW, `zip2`).
+    #[inline]
+    #[must_use]
+    fn unpack_hi(self, other: Self) -> Self {
+        let mut out = [0u8; 64];
+        let half = Self::LANES / 2;
+        for k in 0..half {
+            out[2 * k] = self.lane(half + k);
+            out[2 * k + 1] = other.lane(half + k);
+        }
+        Self::load(&out[..Self::LANES])
+    }
+
+    /// Sum over all lanes of `|self - other|` (PSADBW, `uabd` + `addv`):
+    /// the horizontal reduce. Against zero it sums the lanes, which is
+    /// how a nibble-table popcount is finished.
+    #[inline]
+    #[must_use]
+    fn sum_abs_diff(self, other: Self) -> u32 {
+        let d = self.max(other).sub(self.min(other));
+        (0..Self::LANES).map(|i| u32::from(d.lane(i))).sum()
+    }
+
+    /// PMADDUBSW: for every pair of lanes `k`, the dot product
+    /// `self[2k] * w[2k] + self[2k + 1] * w[2k + 1]` with `self` unsigned
+    /// and `w` signed, saturated to `i16` and stored little-endian in the
+    /// two lanes of the pair. The result is `LANES / 2` sixteen-bit lanes
+    /// in the same register, as the instruction leaves them; the parser of
+    /// eight decimal digits in three multiplies starts here.
+    #[inline]
+    #[must_use]
+    fn mul_add_pairs(self, weights: Self) -> Self {
+        let mut out = [0u8; 64];
+        for k in 0..Self::LANES / 2 {
+            let (a0, a1) = (i32::from(self.lane(2 * k)), i32::from(self.lane(2 * k + 1)));
+            let (w0, w1) = (
+                i32::from(weights.lane(2 * k).cast_signed()),
+                i32::from(weights.lane(2 * k + 1).cast_signed()),
+            );
+            // Saturation is the instruction's, and `i16::try_from` is exact.
+            let s = i16::try_from(a0 * w0 + a1 * w1).unwrap_or(if a0 * w0 + a1 * w1 < 0 {
+                i16::MIN
+            } else {
+                i16::MAX
+            });
+            out[2 * k..2 * k + 2].copy_from_slice(&s.to_le_bytes());
+        }
+        Self::load(&out[..Self::LANES])
+    }
 }
 
 /// Eight lanes in a `u64` by SWAR: portable, and the carrier the
@@ -338,10 +459,11 @@ impl Lanes for U8x8 {
 #[allow(unsafe_code)]
 mod x16 {
     use core::arch::x86_64::{
-        __m128i, _mm_add_epi8, _mm_and_si128, _mm_cmpeq_epi8, _mm_cvtsi32_si128, _mm_cvtsi128_si64,
-        _mm_min_epu8, _mm_movemask_epi8, _mm_or_si128, _mm_set_epi64x, _mm_set1_epi8,
-        _mm_shuffle_epi8, _mm_sll_epi16, _mm_srl_epi16, _mm_srli_si128, _mm_sub_epi8,
-        _mm_xor_si128,
+        __m128i, _mm_add_epi8, _mm_adds_epu8, _mm_alignr_epi8, _mm_and_si128, _mm_cmpeq_epi8,
+        _mm_cvtsi32_si128, _mm_cvtsi128_si64, _mm_maddubs_epi16, _mm_min_epu8, _mm_movemask_epi8,
+        _mm_or_si128, _mm_sad_epu8, _mm_set_epi64x, _mm_set1_epi8, _mm_shuffle_epi8, _mm_sll_epi16,
+        _mm_srl_epi16, _mm_srli_si128, _mm_sub_epi8, _mm_subs_epu8, _mm_unpackhi_epi8,
+        _mm_unpacklo_epi8, _mm_xor_si128,
     };
 
     use super::{Lanes, U8x8};
@@ -490,6 +612,70 @@ mod x16 {
             let bits = unsafe { _mm_movemask_epi8(self.0) } as u16;
             bits
         }
+
+        #[inline]
+        fn shuffle(self, idx: Self) -> Self {
+            // SAFETY: SSSE3 is enabled by cfg.
+            Self(unsafe { _mm_shuffle_epi8(self.0, idx.0) })
+        }
+
+        /// PALIGNR takes an immediate; the match folds to one instruction
+        /// wherever `n` is a constant after inlining.
+        #[inline]
+        fn concat_shift(self, other: Self, n: usize) -> Self {
+            macro_rules! alignr {
+                ($($k:literal),*) => {
+                    match n {
+                        // SAFETY: SSSE3 is enabled by cfg.
+                        $($k => Self(unsafe { _mm_alignr_epi8::<$k>(other.0, self.0) }),)*
+                        17..=31 => other.concat_shift(Self::zero(), n - 16),
+                        _ => Self::zero(),
+                    }
+                };
+            }
+            alignr!(0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16)
+        }
+
+        #[inline]
+        fn add_sat(self, other: Self) -> Self {
+            // SAFETY: SSE2 is enabled by cfg.
+            Self(unsafe { _mm_adds_epu8(self.0, other.0) })
+        }
+
+        #[inline]
+        fn sub_sat(self, other: Self) -> Self {
+            // SAFETY: SSE2 is enabled by cfg.
+            Self(unsafe { _mm_subs_epu8(self.0, other.0) })
+        }
+
+        #[inline]
+        fn unpack_lo(self, other: Self) -> Self {
+            // SAFETY: SSE2 is enabled by cfg.
+            Self(unsafe { _mm_unpacklo_epi8(self.0, other.0) })
+        }
+
+        #[inline]
+        fn unpack_hi(self, other: Self) -> Self {
+            // SAFETY: SSE2 is enabled by cfg.
+            Self(unsafe { _mm_unpackhi_epi8(self.0, other.0) })
+        }
+
+        /// PSADBW leaves a sum in each 64-bit half.
+        #[inline]
+        fn sum_abs_diff(self, other: Self) -> u32 {
+            // SAFETY: SSE2 is enabled by cfg.
+            let (lo, hi) = Self(unsafe { _mm_sad_epu8(self.0, other.0) }).halves();
+            // Each half is at most 8 × 255.
+            #[allow(clippy::cast_possible_truncation)]
+            let sum = (lo + hi) as u32;
+            sum
+        }
+
+        #[inline]
+        fn mul_add_pairs(self, weights: Self) -> Self {
+            // SAFETY: SSSE3 is enabled by cfg.
+            Self(unsafe { _mm_maddubs_epi16(self.0, weights.0) })
+        }
     }
 
     impl PartialEq for U8x16 {
@@ -523,10 +709,14 @@ mod x16 {
 #[allow(unsafe_code)]
 mod x16 {
     use core::arch::aarch64::{
-        uint8x16_t, vaddq_u8, vandq_u8, vceqq_u8, vcleq_u8, vcltzq_s8, vcombine_u8, vcreate_u8,
-        vdupq_n_s8, vdupq_n_u8, veorq_u8, vget_lane_u64, vgetq_lane_u64, vmvnq_u8, vorrq_u8,
-        vqtbl1q_u8, vreinterpret_u64_u8, vreinterpretq_s8_u8, vreinterpretq_u8_s8,
-        vreinterpretq_u16_u8, vreinterpretq_u64_u8, vshlq_u8, vshrn_n_u16, vsubq_u8,
+        uint8x16_t, uint8x16x2_t, vabdq_u8, vaddlvq_u8, vaddq_u8, vandq_u8, vceqq_u8, vcleq_u8,
+        vcltzq_s8, vcombine_s16, vcombine_u8, vcreate_u8, vdupq_n_s8, vdupq_n_u8, veorq_u8,
+        vget_high_s8, vget_high_u8, vget_lane_u64, vget_low_s8, vget_low_s16, vget_low_u8,
+        vgetq_lane_u64, vmovl_s8, vmovl_u8, vmull_high_s16, vmull_s16, vmvnq_u8, vorrq_u8,
+        vpaddq_s32, vqaddq_u8, vqmovn_s32, vqsubq_u8, vqtbl1q_u8, vqtbl2q_u8, vreinterpret_u64_u8,
+        vreinterpretq_s8_u8, vreinterpretq_s16_u16, vreinterpretq_u8_s8, vreinterpretq_u8_s16,
+        vreinterpretq_u16_u8, vreinterpretq_u64_u8, vshlq_u8, vshrn_n_u16, vsubq_u8, vzip1q_u8,
+        vzip2q_u8,
     };
 
     use super::{Lanes, U8x8};
@@ -687,6 +877,85 @@ mod x16 {
             #[allow(clippy::cast_possible_truncation)]
             let bits = x as u16;
             bits
+        }
+
+        #[inline]
+        fn shuffle(self, idx: Self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe { vqtbl1q_u8(self.0, vandq_u8(idx.0, vdupq_n_u8(0x8F))) })
+        }
+
+        /// A two-table lookup over `self ++ other`: `tbl` returns zero for
+        /// any index past the 32 bytes, which is the contract's zero fill.
+        #[inline]
+        fn concat_shift(self, other: Self, n: usize) -> Self {
+            if n >= 32 {
+                return Self::zero();
+            }
+            // `n < 32` fits a u8.
+            #[allow(clippy::cast_possible_truncation)]
+            let start = n as u8;
+            let iota = Self::load(&[0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]);
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe {
+                vqtbl2q_u8(
+                    uint8x16x2_t(self.0, other.0),
+                    vaddq_u8(iota.0, vdupq_n_u8(start)),
+                )
+            })
+        }
+
+        #[inline]
+        fn add_sat(self, other: Self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe { vqaddq_u8(self.0, other.0) })
+        }
+
+        #[inline]
+        fn sub_sat(self, other: Self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe { vqsubq_u8(self.0, other.0) })
+        }
+
+        #[inline]
+        fn unpack_lo(self, other: Self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe { vzip1q_u8(self.0, other.0) })
+        }
+
+        #[inline]
+        fn unpack_hi(self, other: Self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe { vzip2q_u8(self.0, other.0) })
+        }
+
+        #[inline]
+        fn sum_abs_diff(self, other: Self) -> u32 {
+            // SAFETY: NEON is enabled by cfg.
+            u32::from(unsafe { vaddlvq_u8(vabdq_u8(self.0, other.0)) })
+        }
+
+        /// No PMADDUBSW on NEON: widen both sides to 16 bits, multiply to
+        /// 32, add the pairs, narrow with saturation.
+        #[inline]
+        fn mul_add_pairs(self, weights: Self) -> Self {
+            // SAFETY: NEON is enabled by cfg.
+            Self(unsafe {
+                let a_lo = vreinterpretq_s16_u16(vmovl_u8(vget_low_u8(self.0)));
+                let a_hi = vreinterpretq_s16_u16(vmovl_u8(vget_high_u8(self.0)));
+                let w = vreinterpretq_s8_u8(weights.0);
+                let w_lo = vmovl_s8(vget_low_s8(w));
+                let w_hi = vmovl_s8(vget_high_s8(w));
+                let p0 = vmull_s16(vget_low_s16(a_lo), vget_low_s16(w_lo));
+                let p1 = vmull_high_s16(a_lo, w_lo);
+                let p2 = vmull_s16(vget_low_s16(a_hi), vget_low_s16(w_hi));
+                let p3 = vmull_high_s16(a_hi, w_hi);
+                let sums = vcombine_s16(
+                    vqmovn_s32(vpaddq_s32(p0, p1)),
+                    vqmovn_s32(vpaddq_s32(p2, p3)),
+                );
+                vreinterpretq_u8_s16(sums)
+            })
         }
     }
 

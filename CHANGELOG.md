@@ -10,7 +10,11 @@ into a `Word` where the carry algebra takes over). Carriers: `U8x8`,
 eight lanes in a `u64` by SWAR, and `U8x16`, sixteen lanes on SSSE3 or
 NEON, two SWAR halves otherwise. Laws: per-lane definitions, table
 composition, agreement with `Bits`' byte tests, and the wide carrier
-against its halves; the SWAR carrier is swept over every byte pair.
+against its halves; the SWAR carrier is swept over every byte pair. The
+five lane-only primitives the SIMD corpus is written in: `shuffle` (byte
+permute by data), `concat_shift` (a window across two registers),
+`add_sat` / `sub_sat`, `unpack_lo` / `unpack_hi` (interleave), and the
+two horizontal ones, `sum_abs_diff` and `mul_add_pairs`.
 
 ## 0.1.0, 2026-09-19
 
