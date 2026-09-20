@@ -532,7 +532,9 @@
 //! recipe is `Aff(1, GF(4))`, a permutation of sixteen states is
 //! [`Lanes::shuffle`](crate::lanes::Lanes::shuffle) composing tables.
 //! The four-state loop this replaces is kept as
-//! `laws::reference::hilbert_index_machine`.
+//! `laws::reference::hilbert_index_machine`. The rule is a theorem for
+//! the aperiodic and modular cases (Serre 2004; Paperman, Salvati and
+//! Soyez-Martin 2023) and open for groups.
 //!
 //! **Laws.** `hilbert_matches_reference` (both directions against the
 //! textbook `xy2d` / `d2xy` loops, every cell of every order up to 8

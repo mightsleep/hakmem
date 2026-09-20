@@ -353,11 +353,14 @@ What is not in the canon, as far as I know:
   linear parts into GF(4) multiplication. What this crate adds is the
   statement, the adder's `(g, p)` composition is `Aff(1, GF(2))` and
   this is `Aff(1, GF(4))`, so the same Kogge–Stone shape with a
-  four-element field; the rule that a finite-state machine over a
-  word is a broadword kernel exactly when its transition monoid has a
-  low-dimensional representation with a cheap composition; the laws;
-  and the carrier generality. The exclusive scan landing in the other
-  lane of a stride-2 suffix XOR is a small trick in the same recipe.
+  four-element field; the laws; and the carrier generality. The rule
+  behind it, that a state machine over a word is a broadword kernel
+  exactly when its transition monoid has a cheap representation, is a
+  theorem for the aperiodic and modular cases (Bergeron and Hamel
+  2001, Serre 2004, Paperman, Salvati and Soyez-Martin 2023) and open
+  for the group case, which is where the Hilbert encode sits. The
+  exclusive scan landing in the other lane of a stride-2 suffix XOR is
+  a small trick in the same recipe.
 
 ## 9. Compatibility
 
@@ -385,6 +388,11 @@ What is and is not a breaking change:
 - SIMD carriers behind a nightly feature, once `portable_simd` is
   stable enough to depend on.
 - The 32 × 32 transpose when something needs it.
+- In the same vein, in this order: a transition-monoid analyser in
+  `laws`; 3D Hilbert without tables (`A₄ ≅ AGL(1, 4)`, so the GF(4)
+  composition of the 2D encode should carry over); balanced
+  parentheses next to `rank9` (Vigna 2013); bit-parallel LCS;
+  shift-and.
 - A batched Hilbert encode: the scan is throughput-bound, so on many
   points at once the four-state loop interleaved eight ways may match
   it; not measured.
@@ -417,6 +425,9 @@ What is and is not a breaking change:
   Hilbert curves in O(log n) optimised*. threadlocalmutex.com, posts
   126 and 149; code at <https://github.com/rawrunprotected/hilbert_curves>,
   public domain.
+- Serre. *Vectorial Languages and Linear Temporal Logic*. TCS, 2004.
+  Paperman, Salvati, Soyez-Martin. *An Algebraic Approach to Vectorial
+  Programs*. STACS, 2023.
 - Wunkolo. *Wunk*, blog, 2020 to 2025: *gf2p8affineqb: Bit reversal*,
   *gf2p8affineqb: int8 shifting*, *pavgb: most-significant-bit
   constant*, *vpternlog: Signed Saturation*.
