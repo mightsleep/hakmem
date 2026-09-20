@@ -2,6 +2,23 @@
 
 ## 0.2.0, unreleased
 
+`hakmem::hilbert::Hilbert2`: 2D Hilbert indices over any `Word`,
+full width or by order. The decode is two suffix XORs over the Morton
+code (Hacker's Delight 16-2) and a Morton decode. The encode's
+per-level maps generate `AGL(2, 2) ≅ S₄`, so no parity and no adder
+computes them; a bit-sliced Kogge–Stone over the affine maps does,
+rawrunprotected's 2016 construction with the linear parts folded
+into GF(4), the adder's carry chain over a four-element field, here
+on any carrier; four rounds for a `u64` after a pairing round, four
+to seven times the speed of the four-state loop (cookbook recipe 13,
+design notes section 8). Benched against `fast_hilbert` and `lindel`
+in `benches/hilbert.rs` and the README. Laws against the
+textbook `xy2d` / `d2xy` loops, the path property and the order
+recursion, exhaustive on `u16` up to order 8. `Bits::suffix_xor` and
+the `Word::xor_scan_down` primitive behind it, with a PCLMULQDQ path
+(the high half of the product by all-ones); `gray_decode` is now that
+scan by another name.
+
 `hakmem::lanes`: the SIMD half of the algebra on stable Rust. `Lanes` is
 the trait for independent 8-bit lanes (bitwise, wrapping add and
 subtract, per-lane shifts, unsigned compares to masks, the 16-entry

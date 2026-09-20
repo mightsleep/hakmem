@@ -19,6 +19,7 @@ fn check<W: Word>(x: W, m: W) {
     assert_eq!(x.pext(m), reference::pext(x, m));
     assert_eq!(x.pdep(m), reference::pdep(x, m));
     assert_eq!(x.xor_scan(), reference::prefix_xor(x));
+    assert_eq!(x.xor_scan_down(), reference::prefix_xor_from_top(x));
     for k in 0..x.count_ones() {
         assert_eq!(x.select(k), reference::select(x, k));
     }

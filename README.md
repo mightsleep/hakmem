@@ -28,7 +28,7 @@ Named after [HAKMEM](https://en.wikipedia.org/wiki/HAKMEM) (MIT AI Memo
 sentences.
 
 ```rust
-use hakmem::{Bits, Morton2};
+use hakmem::{Bits, Hilbert2, Morton2};
 
 // Runs: bit p set iff bits p..p+3 are all set (Hacker's Delight 6-5).
 let x: u64 = 0b0111_0110;
@@ -54,6 +54,10 @@ assert_eq!(0b1001u32.compact(0b1010), 0b10);
 // Dilated integers and Morton codes for 2D addressing.
 let m = Morton2::<u32>::encode(3, 5);
 assert_eq!(m.step_x().decode(), (4, 5));
+
+// Hilbert indices: the decode is two suffix XORs over the Morton code.
+assert_eq!(Hilbert2::<u8>::encode_order(3, 1, 2).index(), 12);
+assert_eq!(Hilbert2::from_index(13u8).decode_order(2), (2, 1));
 
 // 8×8 bit matrices: three delta swaps per transpose.
 use hakmem::permute::board8::transpose;
@@ -245,6 +249,26 @@ of words, wins:
 cut-off over the active blocks) is the obvious next step for long
 similar strings and is not implemented.
 
+| Hilbert curve, 32 levels, `u32` coordinates (1024 points) | decode, portable | decode, `+pclmulqdq` | encode, portable | encode, `+bmi2,+pclmulqdq` |
+|---|---|---|---|---|
+| `hakmem` `Hilbert2` | **3.0 µs** | **1.7 µs** | **10.9 µs** | **5.4 µs** |
+| `fast_hilbert` (512-byte transition table) | 12.8 µs | 12.7 µs | 11.5 µs | 11.4 µs |
+| `lindel` (Skilling) | 66 µs | 71 µs | 70 µs | 76 µs |
+| `Morton2`, for the price of the frames | 1.6 µs | 0.56 µs | 1.6 µs | 0.46 µs |
+
+The decode is two suffix XORs over the Morton code and a Morton
+decode, straight-line. The encode is a Kogge–Stone scan over the
+per-level frame maps, affine maps over GF(4) once levels are paired,
+four rounds of about 24 word operations after the pairing: the
+adder's carry chain with GF(4) in place of GF(2), and no instruction
+for it. The construction is rawrunprotected's (threadlocalmutex.com,
+2016); this is it on any carrier, with laws. `fast_hilbert` walks a state table three levels a
+step, eleven dependent loads for 32 levels; the scan has no loads and
+no carried chain, which is why it gains from `+bmi2` (the BMI
+instructions) where the table walk cannot. Recipe 13 of the cookbook
+has the derivation and the group that makes the encode the heavier
+direction.
+
 ## Cookbook
 
 `hakmem::cookbook` explains how the shipped kernels were composed:
@@ -258,7 +282,8 @@ unbuilt (banded Myers over `Wide<N>`), sketched so you can.
 
 Chosen at compile time, never at run time: build with
 `-C target-feature=+bmi2,+pclmulqdq` (or `-C target-cpu=native`) and
-`pext`/`pdep`/`select`/`prefix_xor` become single instructions; without
+`pext`/`pdep`/`select`/`prefix_xor`/`suffix_xor` become single
+instructions; without
 them every combinator has a portable definition with the same
 contract. `pext` and `pdep` fall back to Hacker's Delight's
 parallel-suffix compress and expand (7-4, 7-5), `log₂ w` rounds of one

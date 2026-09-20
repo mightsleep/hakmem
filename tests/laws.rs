@@ -47,6 +47,10 @@ macro_rules! laws_for {
                 fn prefix_xor_matches_reference(x in $strategy) {
                     prop_assert!(laws::prefix_xor_matches_reference(x));
                 }
+                #[test]
+                fn suffix_xor_laws(x in $strategy) {
+                    prop_assert!(laws::suffix_xor_laws(x));
+                }
                 // set view
                 #[test]
                 fn rank_is_monotone(x in $strategy, i in 0..BITS) {
@@ -225,6 +229,23 @@ macro_rules! laws_for {
                 #[test]
                 fn morton_aligned_block_is_contiguous(x in $strategy, y in $strategy) {
                     prop_assert!(laws::morton_aligned_block_is_contiguous(x, y));
+                }
+                // Hilbert
+                #[test]
+                fn hilbert_matches_reference(x in $strategy, y in $strategy, order in 0..=BITS / 2) {
+                    prop_assert!(laws::hilbert_matches_reference(x, y, order));
+                }
+                #[test]
+                fn hilbert_roundtrip(x in $strategy, y in $strategy) {
+                    prop_assert!(laws::hilbert_roundtrip(x, y));
+                }
+                #[test]
+                fn hilbert_consecutive_are_adjacent(h in $strategy) {
+                    prop_assert!(laws::hilbert_consecutive_are_adjacent(h));
+                }
+                #[test]
+                fn hilbert_order_laws(x in $strategy, y in $strategy, order in 0..BITS / 2) {
+                    prop_assert!(laws::hilbert_order_laws(x, y, order));
                 }
                 // ternary and sign bits
                 #[test]

@@ -119,7 +119,7 @@ combinators are built from, so a carrier is one `impl` block and no
 more, with portable defaults for everything that can be derived: bitwise operations, shifts, wrapping `add` / `sub` / `mul`,
 byte splat, `count_ones`, `trailing_zeros`, `leading_zeros`,
 `clear_lowest_set`, `pext`, `pdep`, `select_lowest`, `xor_scan`,
-`low_ones`. Everything else is derived.
+`xor_scan_down`, `low_ones`. Everything else is derived.
 
 Free functions and types stay in their modules: `slice`, `grid`,
 `myers`, `permute::board8`, `dilated::{Dilated, Morton2}`,
@@ -165,7 +165,7 @@ of tricks.
 
 ## 5. Hardware paths
 
-Exactly four `Word` primitives have one, plus `Lanes::affine` with the
+Exactly five `Word` primitives have one, plus `Lanes::affine` with the
 byte maps built on it, and every `Lanes` method of
 `U8x16`, which is a different register:
 
@@ -174,6 +174,7 @@ byte maps built on it, and every `Lanes` method of
 | `pext`, `pdep` | one BMI2 instruction | Hacker's Delight 7-4 and 7-5: `log₂ w` rounds of one prefix-XOR scan each, constant time |
 | `select_lowest` | `trailing_zeros(pdep(1 << k, x))` (Pandey, Bender and Johnson, 2017) | Vigna's broadword select, about 30 ALU operations, no table, constant time |
 | `xor_scan` (prefix XOR) | PCLMULQDQ by all ones | a log-depth smear, six operations on `u64` |
+| `xor_scan_down` (suffix XOR, the Gray decode) | the high half of the same PCLMULQDQ product is the exclusive suffix parity; one XOR more | the smear run downward, six operations |
 | `Lanes::affine`, and `reverse_bits`, `sra`, `rotl`, `rotr` (and `shl`, `shr` on x86) through it | one GFNI `gf2p8affineqb`; NEON has `rbit` and native byte shifts | two nibble lookups (`lut16`) and an XOR, by linearity; eight parity folds on the SWAR carrier |
 
 The choice lives in `word.rs` and, for the lanes, `lanes.rs`, and
@@ -263,8 +264,7 @@ that derivation was built and passed (`.github/plan.sh`).
   `Wide<N>` has what `Word` needs and nothing else.
 - **Division by constants, square roots, CRC, floating point**
   (Hacker's Delight chapters 8 to 11, 14, 17). A different algebra.
-  Hilbert curves (chapter 16) and the 32 × 32 transpose (section 7-3)
-  wait for a consumer.
+  The 32 × 32 transpose (section 7-3) waits for a consumer.
 - **Banded Myers.** For two long strings a few edits apart,
   `triple_accel` beats this crate's full-column Myers on `Wide<8>` by
   about 2×, because it computes only a diagonal band. The variant is
@@ -302,6 +302,9 @@ every carrier.
 | `prefix_xor` by carry-less multiply; `find_escaped` | Langdale and Lemire, simdjson, 2019 |
 | `fill_up`, `fill_down` | Kogge and Stone, 1973, as used for sliding attacks on bitboards |
 | `Dilated`, `Morton2` | Morton, 1966; Raman and Wise, 2008 |
+| `suffix_xor` | Hacker's Delight chapter 13 (the Gray decode as a downward prefix); the CLMUL high half is the same product read the other way |
+| `Hilbert2::into_morton` | Hacker's Delight 16-2, the parallel-prefix form of Lam and Shapiro's state machine (1994); the quadrant order of figure 16-1 |
+| `Hilbert2::from_morton` | rawrunprotected, *2D Hilbert curves in O(log n)*, 2016: the frame maps of Lam and Shapiro composed by parallel prefix, linear parts in GF(4)*; here in the dilated layout on any carrier |
 | `myers::edit_distance`, `myers::search` | Myers, 1999; Hyyrö's formulation |
 | `rank9::Rank9` | Vigna, 2008: rank9, and a select inventory in the shape of his select9, cases cut at block boundaries |
 | `lanes::U8x8` add and subtract | Hacker's Delight 2-18 (SWAR without inter-lane carry) |
@@ -338,6 +341,23 @@ What is not in the canon, as far as I know:
   8 and 16 bits and by proptest at 128, they are a rule base nobody
   had written down.
 - **`Wide<N>` as a carrier for the whole algebra**, section 4.
+- **The Hilbert encode as the carry chain over GF(4), stated so.**
+  Read with the coordinates as input, the per-level frame maps are
+  affine on `GF(2)²` with linear parts `[[1,1],[0,1]]` and
+  `[[0,1],[1,0]]`, which generate `GL(2, 2) ≅ S₃`; the decode's
+  transitions depend only on the output pairs, so they collapse to two
+  parities. Hacker's Delight gives the parallel-prefix decode and the
+  state-machine encode without saying why the asymmetry. The log-depth
+  encode is not in the books but it is on the web: rawrunprotected's
+  2016 post composes the frame maps by parallel prefix and folds the
+  linear parts into GF(4) multiplication. What this crate adds is the
+  statement, the adder's `(g, p)` composition is `Aff(1, GF(2))` and
+  this is `Aff(1, GF(4))`, so the same Kogge–Stone shape with a
+  four-element field; the rule that a finite-state machine over a
+  word is a broadword kernel exactly when its transition monoid has a
+  low-dimensional representation with a cheap composition; the laws;
+  and the carrier generality. The exclusive scan landing in the other
+  lane of a stride-2 suffix XOR is a small trick in the same recipe.
 
 ## 9. Compatibility
 
@@ -364,7 +384,10 @@ What is and is not a breaking change:
   the last step; section 5 has the numbers to decide by.
 - SIMD carriers behind a nightly feature, once `portable_simd` is
   stable enough to depend on.
-- Hilbert curves and the 32 × 32 transpose when something needs them.
+- The 32 × 32 transpose when something needs it.
+- A batched Hilbert encode: the scan is throughput-bound, so on many
+  points at once the four-state loop interleaved eight ways may match
+  it; not measured.
 - A 3 % directory (poppy, Zhou, Andersen and Kaminsky 2013) next to
   the 25 % rank9, and select0. On select the crate is within 15 % of
   sux's select9 on sparse slices, the checked indexing it keeps; that
@@ -388,6 +411,12 @@ What is and is not a breaking change:
   Matching Algorithm of Myers*. Technical report, 2001.
 - Raman, Wise. *Converting to and from Dilated Integers*. IEEE
   Transactions on Computers, 2008.
+- Lam, Shapiro. *A Class of Fast Algorithms for the Peano-Hilbert
+  Space-Filling Curve*. ICIP 1994.
+- rawrunprotected. *2D Hilbert curves in O(log n)*, 2016, and *3D
+  Hilbert curves in O(log n) optimised*. threadlocalmutex.com, posts
+  126 and 149; code at <https://github.com/rawrunprotected/hilbert_curves>,
+  public domain.
 - Wunkolo. *Wunk*, blog, 2020 to 2025: *gf2p8affineqb: Bit reversal*,
   *gf2p8affineqb: int8 shifting*, *pavgb: most-significant-bit
   constant*, *vpternlog: Signed Saturation*.

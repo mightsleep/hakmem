@@ -63,6 +63,18 @@ pub fn prefix_xor_matches_reference<W: Word>(x: W) -> bool {
     x.prefix_xor() == reference::prefix_xor(x)
 }
 
+/// `suffix_xor` is the per-bit parity from the top, the inverse of
+/// `gray_encode` both ways, and `prefix_xor` seen in a mirror:
+/// reverse, scan, reverse back.
+#[must_use]
+pub fn suffix_xor_laws<W: Word>(x: W) -> bool {
+    let s = x.suffix_xor();
+    s == reference::prefix_xor_from_top(x)
+        && s.gray_encode() == x
+        && x.gray_encode().suffix_xor() == x
+        && s == reference::reverse_bits(reference::reverse_bits(x).prefix_xor())
+}
+
 // --- set view ---------------------------------------------------------
 
 /// `rank` is monotone in its bound. `i` in `0..BITS`.
@@ -209,6 +221,65 @@ pub fn morton_aligned_block_is_contiguous<W: Word>(x: W, y: W) -> bool {
         && cell(W::ONE, W::ONE) == base.or(W::low_ones(2))
 }
 
+// --- Hilbert ------------------------------------------------------------
+
+/// The state-machine encode and the two-scan decode agree with the
+/// textbook loops (`xy2d` / `d2xy`) and undo each other.
+///
+/// On the curve of `order` levels, `order` in `0..=BITS / 2`;
+/// coordinates are masked to it.
+#[must_use]
+pub fn hilbert_matches_reference<W: Word>(x: W, y: W, order: u32) -> bool {
+    let side = W::low_ones(order);
+    let (x, y) = (x.and(side), y.and(side));
+    let h = Hilbert2::encode_order(x, y, order);
+    h.index() == reference::hilbert_index(x, y, order)
+        && Hilbert2::encode(x, y).index() == reference::hilbert_index_machine(x, y)
+        && h.decode_order(order) == (x, y)
+        && reference::hilbert_coords(h.index(), order) == (x, y)
+}
+
+/// On the full-width curve: encode undoes decode and decode encode, on
+/// coordinates and on Morton codes alike.
+#[must_use]
+pub fn hilbert_roundtrip<W: Word>(x: W, y: W) -> bool {
+    let half = W::low_ones(W::BITS / 2);
+    let (x, y) = (x.and(half), y.and(half));
+    let h = Hilbert2::encode(x, y);
+    let m = Morton2::encode(x, y);
+    h.decode() == (x, y)
+        && Hilbert2::from_morton(m).into_morton() == m
+        && Hilbert2::from_morton(Hilbert2::from_index(m.code()).into_morton()).index() == m.code()
+}
+
+/// The curve is a path: indices `h` and `h + 1` are cells one step
+/// apart, along exactly one axis.
+#[must_use]
+pub fn hilbert_consecutive_are_adjacent<W: Word>(h: W) -> bool {
+    if h == W::ONES {
+        return true;
+    }
+    let (x0, y0) = Hilbert2::from_index(h).decode();
+    let (x1, y1) = Hilbert2::from_index(h.wrapping_add(W::ONE)).decode();
+    let unit = |a: W, b: W| a.wrapping_sub(b) == W::ONE || b.wrapping_sub(a) == W::ONE;
+    (x0 == x1 && unit(y0, y1)) || (y0 == y1 && unit(x0, x1))
+}
+
+/// The curve of `order + 1` restricted to its first quadrant is the
+/// curve of `order` transposed, and every curve runs from `(0, 0)` to
+/// `(2^order − 1, 0)`.
+///
+/// A zero top pair transposes the frame below it. `order` in
+/// `0..BITS / 2`.
+#[must_use]
+pub fn hilbert_order_laws<W: Word>(x: W, y: W, order: u32) -> bool {
+    let side = W::low_ones(order);
+    let (x, y) = (x.and(side), y.and(side));
+    Hilbert2::encode_order(x, y, order + 1) == Hilbert2::encode_order(y, x, order)
+        && Hilbert2::encode_order(W::ZERO, W::ZERO, order).index() == W::ZERO
+        && Hilbert2::encode_order(side, W::ZERO, order).index() == W::low_ones(2 * order)
+}
+
 /// Bit-loop reference semantics. Slow, obviously correct, the thing
 /// every combinator is measured against.
 pub mod reference {
@@ -307,6 +378,104 @@ pub mod reference {
             }
         }
         out
+    }
+
+    /// Bit `i` of the result is bit `BITS - 1 - i` of `x`.
+    #[must_use]
+    pub fn reverse_bits<W: Word>(x: W) -> W {
+        let mut out = W::ZERO;
+        for i in 0..W::BITS {
+            if x.bit(i) {
+                out = out.or(W::ONE.shl(W::BITS - 1 - i));
+            }
+        }
+        out
+    }
+
+    /// The Hilbert index of `(x, y)` on the curve of `order` levels:
+    /// the `xy2d` loop, top level first.
+    ///
+    /// Rotates the frame after each quadrant. Quadrants in the order
+    /// lower-left, upper-left, upper-right, lower-right.
+    #[must_use]
+    pub fn hilbert_index<W: Word>(mut x: W, mut y: W, order: u32) -> W {
+        let mut d = W::ZERO;
+        for level in (0..order).rev() {
+            let (rx, ry) = (x.bit(level), y.bit(level));
+            let q: u32 = match (rx, ry) {
+                (false, false) => 0,
+                (false, true) => 1,
+                (true, true) => 2,
+                (true, false) => 3,
+            };
+            d = d.or(quad::<W>(q).shl(2 * level));
+            // Only the bits below `level` still matter.
+            let below = W::low_ones(level);
+            (x, y) = (x.and(below), y.and(below));
+            if !ry {
+                if rx {
+                    (x, y) = (x.xor(below), y.xor(below));
+                }
+                (x, y) = (y, x);
+            }
+        }
+        d
+    }
+
+    /// The `(x, y)` of Hilbert index `d` on the curve of `order` levels:
+    /// the `d2xy` loop, bottom level first, rotating what is built so
+    /// far into each quadrant's frame.
+    #[must_use]
+    pub fn hilbert_coords<W: Word>(d: W, order: u32) -> (W, W) {
+        let (mut x, mut y) = (W::ZERO, W::ZERO);
+        for level in 0..order {
+            let rx = d.bit(2 * level + 1);
+            let ry = d.bit(2 * level) ^ rx;
+            let below = W::low_ones(level);
+            if !ry {
+                if rx {
+                    (x, y) = (x.xor(below), y.xor(below));
+                }
+                (x, y) = (y, x);
+            }
+            if rx {
+                x = x.or(W::ONE.shl(level));
+            }
+            if ry {
+                y = y.or(W::ONE.shl(level));
+            }
+        }
+        (x, y)
+    }
+
+    /// The Hilbert index of `(x, y)` on the full-width curve by the
+    /// four-state machine written in the frame flags: the loop
+    /// `Hilbert2::from_morton` replaces, kept as the second reference
+    /// and the bench baseline.
+    #[must_use]
+    pub fn hilbert_index_machine<W: Word>(x: W, y: W) -> W {
+        let levels = W::BITS / 2;
+        let (mut swap, mut flip) = (false, false);
+        let mut index = W::ZERO;
+        for level in (0..levels).rev() {
+            let (xb, yb) = (x.bit(level), y.bit(level));
+            let lo = xb ^ yb;
+            let hi = xb ^ flip ^ (swap && lo);
+            swap ^= !(hi ^ lo);
+            flip ^= hi && lo;
+            index = index.or(quad::<W>(u32::from(hi) << 1 | u32::from(lo)).shl(2 * level));
+        }
+        index
+    }
+
+    /// A quadrant number as a word.
+    fn quad<W: Word>(q: u32) -> W {
+        match q {
+            0 => W::ZERO,
+            1 => W::ONE,
+            2 => W::ONE.shl(1),
+            _ => W::low_ones(2),
+        }
     }
 
     /// Position of the `k`-th set bit, by counting.

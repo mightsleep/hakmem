@@ -7,7 +7,8 @@
 //!
 //! This module is the **only** place hardware selection happens. Each
 //! primitive with a fast path ([`pext`](Word::pext), [`pdep`](Word::pdep),
-//! [`select_lowest`](Word::select_lowest), [`xor_scan`](Word::xor_scan))
+//! [`select_lowest`](Word::select_lowest), [`xor_scan`](Word::xor_scan),
+//! [`xor_scan_down`](Word::xor_scan_down))
 //! picks the instruction when the matching `target_feature` is enabled
 //! at compile time and the `portable` cargo feature is off; otherwise a
 //! broadword definition with the same contract. The laws in
@@ -123,6 +124,15 @@ pub trait Word: Copy + Eq + core::fmt::Debug {
     #[must_use]
     fn xor_scan(self) -> Self {
         xor_smear(self)
+    }
+
+    /// Suffix XOR: bit `i` of the result is the parity of bits
+    /// `i..BITS`. The Gray decode. PCLMULQDQ: the high half of the
+    /// carry-less multiply by all-ones is the exclusive suffix parity,
+    /// one XOR from the inclusive; portable: log-depth smear downward.
+    #[must_use]
+    fn xor_scan_down(self) -> Self {
+        xor_smear_down(self)
     }
 
     /// Mask with the `n` lowest bits set, `n <= BITS`.
@@ -251,6 +261,17 @@ fn xor_smear<W: Word>(mut x: W) -> W {
     x
 }
 
+/// Log-depth XOR smear downward: `x ^= x >> 1; x ^= x >> 2; …`.
+#[inline]
+fn xor_smear_down<W: Word>(mut x: W) -> W {
+    let mut s = 1;
+    while s < W::BITS {
+        x = x.xor(x.shr(s));
+        s <<= 1;
+    }
+    x
+}
+
 const ONES_STEP_4: u64 = 0x1111_1111_1111_1111;
 const ONES_STEP_8: u64 = 0x0101_0101_0101_0101;
 const MSBS_STEP_8: u64 = 0x8080_8080_8080_8080;
@@ -349,8 +370,13 @@ mod bmi2 {
 mod clmul {
     //! PCLMULQDQ fast path for prefix XOR: a carry-less multiply by
     //! all-ones XORs every left shift of the operand together, which is
-    //! exactly the prefix parity. Same soundness argument as `bmi2`.
-    use core::arch::x86_64::{__m128i, _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x};
+    //! exactly the prefix parity. The high half of the same 128-bit
+    //! product holds every right shift combined by XOR, bit `i` the
+    //! parity of bits `i + 1..64`: the exclusive suffix parity, one
+    //! XOR from the suffix scan. Same soundness argument as `bmi2`.
+    use core::arch::x86_64::{
+        __m128i, _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x, _mm_unpackhi_epi64,
+    };
 
     #[inline]
     pub(super) fn prefix_xor64(x: u64) -> u64 {
@@ -361,6 +387,19 @@ mod clmul {
             let a: __m128i = _mm_set_epi64x(0, x.cast_signed());
             let ones: __m128i = _mm_set_epi64x(0, -1);
             _mm_cvtsi128_si64(_mm_clmulepi64_si128(a, ones, 0)).cast_unsigned()
+        }
+    }
+
+    #[inline]
+    pub(super) fn suffix_xor64(x: u64) -> u64 {
+        // SAFETY: as above; `unpackhi` moves the high lane down, a
+        // register shuffle.
+        unsafe {
+            let a: __m128i = _mm_set_epi64x(0, x.cast_signed());
+            let ones: __m128i = _mm_set_epi64x(0, -1);
+            let p = _mm_clmulepi64_si128(a, ones, 0);
+            let exclusive = _mm_cvtsi128_si64(_mm_unpackhi_epi64(p, p)).cast_unsigned();
+            exclusive ^ x
         }
     }
 }
@@ -534,6 +573,25 @@ impl Word for u64 {
             xor_smear(self)
         }
     }
+    #[inline]
+    fn xor_scan_down(self) -> Self {
+        #[cfg(all(
+            target_arch = "x86_64",
+            target_feature = "pclmulqdq",
+            not(feature = "portable")
+        ))]
+        {
+            clmul::suffix_xor64(self)
+        }
+        #[cfg(not(all(
+            target_arch = "x86_64",
+            target_feature = "pclmulqdq",
+            not(feature = "portable")
+        )))]
+        {
+            xor_smear_down(self)
+        }
+    }
 }
 
 impl Word for u32 {
@@ -587,6 +645,13 @@ impl Word for u32 {
     fn xor_scan(self) -> Self {
         u64::from(self).xor_scan() as Self
     }
+    // The zero extension contributes no parity: the suffix of the
+    // extended word, truncated, is the suffix of the word.
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    fn xor_scan_down(self) -> Self {
+        u64::from(self).xor_scan_down() as Self
+    }
 }
 
 impl Word for u128 {
@@ -633,6 +698,15 @@ impl Word for u128 {
         let carry = 0u64.wrapping_sub(u64::from(lo.count_ones() & 1));
         Self::from(lo.xor_scan()) | (Self::from(hi.xor_scan() ^ carry) << 64)
     }
+    /// Suffix of each half, with the high half's parity carried into
+    /// every bit of the low half.
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    fn xor_scan_down(self) -> Self {
+        let (lo, hi) = (self as u64, (self >> 64) as u64);
+        let carry = 0u64.wrapping_sub(u64::from(hi.count_ones() & 1));
+        Self::from(lo.xor_scan_down() ^ carry) | (Self::from(hi.xor_scan_down()) << 64)
+    }
 }
 
 /// Narrow carriers delegate the hardware-backed primitives to `u32` /
@@ -664,6 +738,11 @@ macro_rules! impl_word_narrow {
             #[inline]
             fn xor_scan(self) -> Self {
                 u64::from(self).xor_scan() as $t
+            }
+            #[allow(clippy::cast_possible_truncation)]
+            #[inline]
+            fn xor_scan_down(self) -> Self {
+                u64::from(self).xor_scan_down() as $t
             }
         }
     )*};

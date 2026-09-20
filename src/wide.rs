@@ -229,6 +229,17 @@ impl<const N: usize> Word for Wide<N> {
     }
 
     #[inline]
+    fn xor_scan_down(self) -> Self {
+        let mut out = [0; N];
+        let mut parity = 0u64;
+        for (o, limb) in out.iter_mut().zip(self.0).rev() {
+            *o = limb.xor_scan_down() ^ parity;
+            parity ^= 0u64.wrapping_sub(u64::from(limb.count_ones() & 1));
+        }
+        Self(out)
+    }
+
+    #[inline]
     fn low_ones(n: u32) -> Self {
         debug_assert!(n <= Self::BITS, "mask width {n} > {}", Self::BITS);
         let mut out = [0; N];

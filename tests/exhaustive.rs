@@ -189,6 +189,44 @@ fn u16_morton_all_coordinates() {
     }
 }
 
+/// Every cell of every curve up to order 8 on `u16`, and every index of
+/// the full 256 × 256 curve: the scan-and-fill kernels against the
+/// textbook loops, and the path property at every step.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u16_hilbert_all_orders_all_cells() {
+    for order in 0..=8u32 {
+        let side = 1u32 << order;
+        for x in 0..side {
+            for y in 0..side {
+                // Fits: side <= 256.
+                #[allow(clippy::cast_possible_truncation)]
+                let (x, y) = (x as u16, y as u16);
+                assert!(
+                    laws::hilbert_matches_reference(x, y, order),
+                    "order={order} x={x} y={y}"
+                );
+                if order < 8 {
+                    assert!(
+                        laws::hilbert_order_laws(x, y, order),
+                        "order={order} x={x} y={y}"
+                    );
+                }
+            }
+        }
+    }
+    for h in u16::MIN..=u16::MAX {
+        assert!(laws::hilbert_consecutive_are_adjacent(h), "h={h}");
+        assert!(laws::hilbert_roundtrip(h, h.rotate_left(7)), "h={h}");
+    }
+    for x in u8::MIN..=u8::MAX {
+        for y in u8::MIN..=u8::MAX {
+            assert!(laws::hilbert_matches_reference(x, y, 4), "x={x} y={y}");
+            assert!(laws::hilbert_roundtrip(x, y), "x={x} y={y}");
+        }
+    }
+}
+
 /// `select_broadword64` on every 16-bit pattern at every byte-pair
 /// offset of the word, every rank: exercises both compare-and-count
 /// phases at all lane positions, independent of the target's PDEP.
@@ -275,6 +313,7 @@ fn u8_u16_catalogue_all_inputs() {
         assert!(laws::pow2_helpers_match_reference(x), "x={x}");
         assert!(laws::longest_run_matches_reference(x), "x={x}");
         assert!(laws::gray_code_laws(x), "x={x}");
+        assert!(laws::suffix_xor_laws(x), "x={x}");
         for c in [false, true] {
             assert!(laws::find_escaped_matches_reference(&[x], c), "x={x} c={c}");
         }
@@ -295,6 +334,7 @@ fn u8_u16_catalogue_all_inputs() {
         assert!(laws::pow2_helpers_match_reference(x), "x={x}");
         assert!(laws::longest_run_matches_reference(x), "x={x}");
         assert!(laws::gray_code_laws(x), "x={x}");
+        assert!(laws::suffix_xor_laws(x), "x={x}");
         assert!(
             laws::basics_match_reference(x, x.rotate_left(5), x.rotate_left(11)),
             "x={x}"

@@ -217,20 +217,33 @@ pub trait Bits: Word {
         self.xor(self.shr(1))
     }
 
+    /// Bit `i` of the result is the XOR (parity) of bits `i..BITS`: the
+    /// scan of [`prefix_xor`](Bits::prefix_xor) run from the top. Its
+    /// inverse is [`gray_encode`](Bits::gray_encode), `x ^ (x >> 1)`.
+    /// State that depends on everything above a position, read at every
+    /// position at once: the orientation of a Hilbert curve at each
+    /// level ([`crate::hilbert`]), the Gray decode.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // Toggles at bits 2 and 6, read from the top: set on [3, 6].
+    /// let toggles: u8 = 0b0100_0100;
+    /// assert_eq!(toggles.suffix_xor(), 0b0111_1000);
+    /// ```
+    #[inline]
+    #[must_use]
+    fn suffix_xor(self) -> Self {
+        self.xor_scan_down()
+    }
+
     /// Inverse of [`gray_encode`](Bits::gray_encode): the prefix XOR
-    /// from the top, i.e. [`prefix_xor`](Bits::prefix_xor) of the
-    /// bit-reversed word, reversed back; computed directly as a
-    /// downward smear.
+    /// from the top, [`suffix_xor`](Bits::suffix_xor) under its
+    /// other name.
     #[inline]
     #[must_use]
     fn gray_decode(self) -> Self {
-        let mut x = self;
-        let mut s = 1;
-        while s < Self::BITS {
-            x = x.xor(x.shr(s));
-            s <<= 1;
-        }
-        x
+        self.suffix_xor()
     }
 
     /// Positions immediately following an odd-length run of backslashes

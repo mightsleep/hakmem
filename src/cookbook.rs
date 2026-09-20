@@ -455,3 +455,172 @@
 //!
 //! **Cost.** One multiply, one shift, one AND; a 64-entry table per
 //! line instead of a magic-bitboard's per-square tables.
+//!
+//! # 13. Hilbert: parities one way, the carry chain two bits wide the other
+//!
+//! **Problem.** A 2D Hilbert index to and from `(x, y)`, for the
+//! locality a Z-order does not give: consecutive indices are always
+//! neighbouring cells.
+//!
+//! **Decomposition.** A Hilbert index has the shape of a Morton code,
+//! one pair of bits per level, top level first, and each level is read
+//! in one of four frames (base, transposed, reflected, both) that the
+//! levels above it chose. Which frame is a parity of what the pairs
+//! above did: transpose when the pair is `0` or `3`, reflect when it
+//! is `3`. Parities from the top are [`suffix_xor`](crate::Bits::suffix_xor),
+//! one per flag, over the even lane of the index word; the odd lane of
+//! the same scan holds the parity over the levels *strictly* above,
+//! the exclusive scan for free. Two scans, a handful of lane
+//! operations, then [`Morton2::decode`](crate::Morton2::decode).
+//!
+//! ```
+//! use hakmem::prelude::*;
+//!
+//! // Order 2, the 4 × 4 curve: 0 1 2 3 climb the left column's
+//! // first quadrant, 15 sits at (3, 0).
+//! let cells: Vec<(u8, u8)> = (0..16u8)
+//!     .map(|h| Hilbert2::from_index(h).decode_order(2))
+//!     .collect();
+//! assert_eq!(cells[..4], [(0, 0), (1, 0), (1, 1), (0, 1)]);
+//! assert_eq!(cells[15], (3, 0));
+//! // Every step is one cell.
+//! for w in cells.windows(2) {
+//!     let ((x0, y0), (x1, y1)) = (w[0], w[1]);
+//!     assert_eq!(x0.abs_diff(x1) + y0.abs_diff(y1), 1);
+//! }
+//! assert_eq!(Hilbert2::<u8>::encode_order(3, 0, 2).index(), 15);
+//! ```
+//!
+//! **The encode, and why it costs more.** With the coordinates as
+//! input the frame at each level is an affine map of the frame above
+//! it, `(a, c) ↦ (a ^ ¬(c ^ x), c)` when `x = y` and
+//! `(a, c) ↦ (c ^ x, a ^ x)` when `x ≠ y`. The two linear parts do
+//! not commute; they generate `GL(2, 2) ≅ S₃`, and with the
+//! translations `AGL(2, 2) ≅ S₄`. So no parity computes the frames
+//! and no adder does either. But the maps themselves depend only on
+//! the input, and affine maps compose associatively, which is all a
+//! Kogge–Stone scan needs: [`Hilbert2::from_morton`](crate::Hilbert2::from_morton)
+//! keeps each level's map bit-sliced in six words (`M ^ I` and `b`,
+//! one bit per level), composes every window with the window `s`
+//! levels above it for `s = 1, 2, 4, …`, and reads the frames off the
+//! vector parts, since the top frame is zero. This is exactly the
+//! adder's carry chain, whose maps are the affine maps of one bit
+//! (`kill`, `propagate`, `generate`, composed as `(g, p)` in three
+//! operations), one bit wider: `Aff(2, 2)` instead of `Aff(1, 2)`,
+//! thirty-six operations a round instead of three, and no
+//! instruction for it. The decode gets away with two parities because
+//! its transitions are functions of the *output* pairs, which the scan
+//! has in hand from the start; the encode's are functions of the
+//! output it is computing, and the affine product is what solving that
+//! recurrence in log depth looks like.
+//!
+//! The representation is what decides the cost. Six words for a
+//! general element of `Aff(2, 2)` cost 36 operations a round. But the
+//! two frame maps are involutions, and a product of two involutions
+//! from a group of order six has order one or three: pair the levels
+//! and every window's linear part lies in the cyclic group of order
+//! three, which is GF(4)*, with the translations in GF(4). Four words,
+//! a GF(4) multiplication per word pair, about 24 operations a round,
+//! one round fewer. This is rawrunprotected's construction (2016);
+//! the six-word form is the same scan before anyone noticed the
+//! pairing.
+//!
+//! The general pattern: a finite-state machine over a word is a prefix
+//! over its transition monoid; it is a broadword kernel when the
+//! monoid has a low-dimensional representation with a cheap
+//! composition. `{K, P, G}` is the adder (`Aff(1, GF(2))`), this
+//! recipe is `Aff(1, GF(4))`, a permutation of sixteen states is
+//! [`Lanes::shuffle`](crate::lanes::Lanes::shuffle) composing tables.
+//! The four-state loop this replaces is kept as
+//! `laws::reference::hilbert_index_machine`.
+//!
+//! **Laws.** `hilbert_matches_reference` (both directions against the
+//! textbook `xy2d` / `d2xy` loops, every cell of every order up to 8
+//! on `u16`), `hilbert_roundtrip`, `hilbert_consecutive_are_adjacent`
+//! (the path property, every index of the 256 × 256 curve),
+//! `hilbert_order_laws` (the order-`n` curve is the first quadrant of
+//! the order-`n + 1` curve transposed, and runs corner to corner).
+//!
+//! **Cost.** Decode: two suffix XORs (one CLMUL each with
+//! `+pclmulqdq`, six operations each without) and about ten lane
+//! operations, then a Morton decode; 1.6 ns per `u64` with CLMUL,
+//! 3 ns without, against 50 to 80 ns for the `d2xy` loop. Encode:
+//! a pairing round and four rounds of about 24 operations for a
+//! `u64`, all independent within a round; 11 ns per word portable,
+//! 5 ns with `+bmi2`, against 40 ns for the four-state loop and 33 ns
+//! for `xy2d`. The loop is
+//! bound by a three-operation carried chain per level; the scan is
+//! bound by how many independent operations the core retires. Against
+//! the crates people use (`benches/hilbert.rs`): `fast_hilbert`, a
+//! 512-byte transition table walked three levels a step, decodes in
+//! 12.5 ns and encodes in 11 ns; `lindel` (Skilling, one bit a step)
+//! takes about 70 ns either way. The decode here wins by four to
+//! eight times, the encode by 5 % portable and twice with `+bmi2`;
+//! the table is a chain of eleven dependent loads, the scan is about
+//! 120 independent operations.
+//!
+//! # 13. Hilbert decode is two scans; Hilbert encode is not
+//!
+//! **Problem.** A 2D Hilbert index to and from `(x, y)`, for the
+//! locality a Z-order does not give: consecutive indices are always
+//! neighbouring cells.
+//!
+//! **Decomposition.** A Hilbert index has the shape of a Morton code,
+//! one pair of bits per level, top level first, and each level is read
+//! in one of four frames (base, transposed, reflected, both) that the
+//! levels above it chose. Which frame is a parity of what the pairs
+//! above did: transpose when the pair is `0` or `3`, reflect when it
+//! is `3`. Parities from the top are [`suffix_xor`](crate::Bits::suffix_xor),
+//! one per flag, over the even lane of the index word; the odd lane of
+//! the same scan holds the parity over the levels *strictly* above,
+//! the exclusive scan for free. Two scans, a handful of lane
+//! operations, then [`Morton2::decode`](crate::Morton2::decode).
+//!
+//! ```
+//! use hakmem::prelude::*;
+//!
+//! // Order 2, the 4 × 4 curve: 0 1 2 3 fill the lower-left quadrant,
+//! // 15 sits at (3, 0).
+//! let cells: Vec<(u8, u8)> = (0..16u8)
+//!     .map(|h| Hilbert2::from_index(h).decode_order(2))
+//!     .collect();
+//! assert_eq!(cells[..4], [(0, 0), (1, 0), (1, 1), (0, 1)]);
+//! assert_eq!(cells[15], (3, 0));
+//! // Every step is one cell.
+//! for w in cells.windows(2) {
+//!     let ((x0, y0), (x1, y1)) = (w[0], w[1]);
+//!     assert_eq!(x0.abs_diff(x1) + y0.abs_diff(y1), 1);
+//! }
+//! assert_eq!(Hilbert2::<u8>::encode_order(3, 0, 2).index(), 15);
+//! ```
+//!
+//! **Why the encode is a loop.** With the coordinates as input the
+//! frame at each level is an affine map of the frame above it,
+//! `(a, c) ↦ (a ^ ¬(c ^ x), c)` when `x = y` and
+//! `(a, c) ↦ (c ^ x, a ^ x)` when `x ≠ y`. The two linear parts do
+//! not commute; they generate `GL(2, 2) ≅ S₃`, and with the
+//! translations `AGL(2, 2) ≅ S₄`. A prefix over a non-abelian group is
+//! not a parity and not a carry chain, so
+//! [`Hilbert2::from_morton`](crate::Hilbert2::from_morton) is
+//! `BITS / 2` steps of a four-state machine, branch-free, three
+//! operations on the loop-carried chain per level. The decode escapes
+//! because its transitions are functions of the *output* pairs, which
+//! are known before the scan starts; the encode's are functions of the
+//! output it is still computing. A log-depth encode exists in
+//! principle: a prefix over `S₄` as a composition of 4-entry tables,
+//! which is what [`Lanes::shuffle`](crate::lanes::Lanes::shuffle)
+//! does to sixteen of them at once. It is not built here.
+//!
+//! **Laws.** `hilbert_matches_reference` (both directions against the
+//! textbook `xy2d` / `d2xy` loops, every cell of every order up to 8
+//! on `u16`), `hilbert_roundtrip`, `hilbert_consecutive_are_adjacent`
+//! (the path property, every index of the 256 × 256 curve),
+//! `hilbert_order_laws` (the order-`n` curve is the first quadrant of
+//! the order-`n + 1` curve transposed, and runs corner to corner).
+//!
+//! **Cost.** Decode: two suffix XORs (one CLMUL each with
+//! `+pclmulqdq`, six operations each without) and about ten lane
+//! operations, then a Morton decode; 1.6 ns per `u64` with CLMUL,
+//! 3 ns without, against 50 to 80 ns for the `d2xy` loop. Encode:
+//! 32 steps for a `u64`, about 40 ns, within 20 % of the `xy2d` loop
+//! it is checked against; the Morton encode it starts from is 1.6 ns.

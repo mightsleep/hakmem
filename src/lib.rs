@@ -11,6 +11,7 @@ pub mod bits;
 pub mod cookbook;
 pub mod dilated;
 pub mod grid;
+pub mod hilbert;
 pub mod lanes;
 pub mod laws;
 pub mod myers;
@@ -26,6 +27,7 @@ pub mod word;
 pub mod prelude {
     pub use crate::bits::Bits;
     pub use crate::dilated::{Dilated, Morton2};
+    pub use crate::hilbert::Hilbert2;
     pub use crate::set::Positions;
     pub use crate::wide::Wide;
     pub use crate::word::Word;
