@@ -186,3 +186,56 @@ impl<W: Word> Morton2<W> {
         self.with_y(self.y().incr())
     }
 }
+
+/// A 3D Morton code: `x` dilated by 3 in bits `0, 3, 6, …`, `y` in
+/// `1, 4, 7, …`, `z` in `2, 5, 8, …`.
+///
+/// `BITS / 3` levels; when `BITS` is not a multiple of three the top
+/// one or two bits are unused, and coordinates above `BITS / 3` bits
+/// are dropped.
+///
+/// ```
+/// use hakmem::prelude::*;
+///
+/// let m = Morton3::<u32>::encode(3, 5, 6);
+/// assert_eq!(m.decode(), (3, 5, 6));
+/// ```
+#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+pub struct Morton3<W: Word>(W);
+
+impl<W: Word> Morton3<W> {
+    /// Levels: `BITS / 3`.
+    pub const LEVELS: u32 = W::BITS / 3;
+
+    /// Interleaves three coordinates. Bits above `LEVELS` are dropped.
+    #[inline]
+    #[must_use]
+    pub fn encode(x: W, y: W, z: W) -> Self {
+        let side = W::low_ones(Self::LEVELS);
+        let d = |v: W| Dilated::<W, 3>::from_int(v.and(side)).bits();
+        Self(d(x).or(d(y).shl(1)).or(d(z).shl(2)))
+    }
+
+    /// Splits the code back into `(x, y, z)`.
+    #[inline]
+    #[must_use]
+    pub fn decode(self) -> (W, W, W) {
+        let lane = Dilated::<W, 3>::mask();
+        let u = |v: W| Dilated::<W, 3>::from_bits(v.and(lane)).into_int();
+        (u(self.0), u(self.0.shr(1)), u(self.0.shr(2)))
+    }
+
+    /// Wraps an existing code.
+    #[inline]
+    #[must_use]
+    pub const fn from_code(code: W) -> Self {
+        Self(code)
+    }
+
+    /// The raw code.
+    #[inline]
+    #[must_use]
+    pub const fn code(self) -> W {
+        self.0
+    }
+}

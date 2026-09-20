@@ -247,6 +247,22 @@ macro_rules! laws_for {
                 fn hilbert_order_laws(x in $strategy, y in $strategy, order in 0..BITS / 2) {
                     prop_assert!(laws::hilbert_order_laws(x, y, order));
                 }
+                #[test]
+                fn hilbert3_matches_reference(h in $strategy) {
+                    prop_assert!(laws::hilbert3_matches_reference(h));
+                }
+                #[test]
+                fn hilbert3_roundtrip(x in $strategy, y in $strategy, z in $strategy) {
+                    prop_assert!(laws::hilbert3_roundtrip(x, y, z));
+                }
+                #[test]
+                fn hilbert3_consecutive_are_adjacent(h in $strategy) {
+                    prop_assert!(laws::hilbert3_consecutive_are_adjacent(h));
+                }
+                #[test]
+                fn hilbert3_order_laws(x in $strategy, y in $strategy, z in $strategy, order in 0..BITS / 3) {
+                    prop_assert!(laws::hilbert3_order_laws(x, y, z, order));
+                }
                 // ternary and sign bits
                 #[test]
                 fn ternary_is_truth_table(a in $strategy, b in $strategy, c in $strategy, t in any::<u8>()) {

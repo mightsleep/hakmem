@@ -12,6 +12,7 @@ pub mod cookbook;
 pub mod dilated;
 pub mod grid;
 pub mod hilbert;
+pub mod hilbert3;
 pub mod lanes;
 pub mod laws;
 pub mod myers;
@@ -26,8 +27,9 @@ pub mod word;
 /// carrier trait, and the dilated / Morton / positions types.
 pub mod prelude {
     pub use crate::bits::Bits;
-    pub use crate::dilated::{Dilated, Morton2};
+    pub use crate::dilated::{Dilated, Morton2, Morton3};
     pub use crate::hilbert::Hilbert2;
+    pub use crate::hilbert3::Hilbert3;
     pub use crate::set::Positions;
     pub use crate::wide::Wide;
     pub use crate::word::Word;

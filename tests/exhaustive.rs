@@ -227,6 +227,35 @@ fn u16_hilbert_all_orders_all_cells() {
     }
 }
 
+/// Every index of the 32 × 32 × 32 curve on `u16`, and every cell of
+/// every order up to 5: the 3D decode scan against the twelve-state
+/// machine, the path property, the order rotation.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u16_hilbert3_all_indices_all_orders() {
+    for h in 0..(1u16 << 15) {
+        assert!(laws::hilbert3_matches_reference(h), "h={h}");
+        assert!(laws::hilbert3_consecutive_are_adjacent(h), "h={h}");
+    }
+    for order in 0..5u32 {
+        let side = 1u32 << order;
+        for x in 0..side {
+            for y in 0..side {
+                for z in 0..side {
+                    // Fits: side <= 16.
+                    #[allow(clippy::cast_possible_truncation)]
+                    let (x, y, z) = (x as u16, y as u16, z as u16);
+                    assert!(
+                        laws::hilbert3_order_laws(x, y, z, order),
+                        "order={order} ({x},{y},{z})"
+                    );
+                    assert!(laws::hilbert3_roundtrip(x, y, z), "({x},{y},{z})");
+                }
+            }
+        }
+    }
+}
+
 /// `select_broadword64` on every 16-bit pattern at every byte-pair
 /// offset of the word, every rank: exercises both compare-and-count
 /// phases at all lane positions, independent of the target's PDEP.

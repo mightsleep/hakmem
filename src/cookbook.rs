@@ -626,3 +626,64 @@
 //! 3 ns without, against 50 to 80 ns for the `d2xy` loop. Encode:
 //! 32 steps for a `u64`, about 40 ns, within 20 % of the `xy2d` loop
 //! it is checked against; the Morton encode it starts from is 1.6 ns.
+//!
+//! # 14. Hilbert in 3D: the group is `A₄`, which is `AGL(1, 4)`
+//!
+//! **Problem.** The 3D Hilbert index to and from `(x, y, z)`; the
+//! curve of rawrunprotected's tables (2016), which is the one people
+//! use.
+//!
+//! **Decomposition.** Three bits per level, an octant `q(i) = i ^ (i >> 1)`
+//! in a frame, and the frame below is the frame above composed with a
+//! map `g(i)`. The frames form `A₄`, acting on octants as a cyclic
+//! rotation of the axes and an even number of reflections,
+//! `o ↦ rot_r(o) ^ c`. Split an octant into its parity and its even
+//! part: the even octants `{000, 011, 110, 101}` are GF(4), rotation
+//! is multiplication by `ω`, and a frame is `e ↦ m·e + t`, the parity
+//! untouched. That is the group of the 2D encode again, so the 2D
+//! encode's round, one GF(4) multiplication per word pair, is the 3D
+//! decode's round: the maps `g(i)` are read off the index, composed
+//! by suffix product, and each octant is placed in its frame. The
+//! formulas for `g(i)` and the identification of even octants with
+//! GF(4) were read off the tables by a script and are checked against
+//! them on every cell of every order up to 5 (`tests/hilbert3.rs`).
+//!
+//! ```
+//! use hakmem::prelude::*;
+//!
+//! let h = Hilbert3::<u64>::encode(1000, 2000, 3000);
+//! assert_eq!(h.decode(), (1000, 2000, 3000));
+//! // The first octant of the order-3 curve is the order-2 curve with
+//! // the axes rotated once.
+//! assert_eq!(
+//!     Hilbert3::<u16>::encode_order(1, 2, 3, 3),
+//!     Hilbert3::<u16>::encode_order(2, 3, 1, 2)
+//! );
+//! ```
+//!
+//! **Why the encode is a table.** With the coordinates as input the
+//! maps on the twelve frames are not permutations (eight images
+//! each), the monoid they generate passes a million elements at word
+//! length seven, and the all-zero word never resets it: no group
+//! representation, no window. That is the enumerative regime, and its
+//! representation is the machine itself. [`Hilbert3::from_morton`](crate::Hilbert3::from_morton)
+//! walks it through the one table in the crate, 96 bytes, which a
+//! `const fn` builds at compile time from the same GF(4) step the
+//! reference machine runs; the table is a memo of the algebra, not a
+//! constant anyone typed. The algebraic loop costs three to four times
+//! the table: its chain is ten operations a level and a level cannot
+//! start before the frame above it is known, while a lookup is one
+//! load from L1.
+//!
+//! **Laws.** `hilbert3_matches_reference` (the scan and the table
+//! against the machine in GF(4), both directions),
+//! `hilbert3_roundtrip`, `hilbert3_consecutive_are_adjacent` (every
+//! index of the 32³ curve on `u16`), `hilbert3_order_laws` (the
+//! order-`n` curve is the first octant of order `n + 1` with the axes
+//! rotated, `(x, y, z) ↦ (y, z, x)`).
+//!
+//! **Cost.** Decode: five rounds of about 20 operations for a `u64`
+//! (21 levels), 10 ns per point portable and 9 ns with `+bmi2`,
+//! against 16 ns for the table loop. Encode: 21 dependent loads,
+//! 19 ns, the same as the table loop it memoises; the algebraic loop
+//! is 70 ns.

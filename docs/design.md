@@ -252,6 +252,9 @@ that derivation was built and passed (`.github/plan.sh`).
 - **Data-dependent control flow and pointer chasing.** The domain is
   straight-line, fixed-width, data-independent kernels, the same
   boundary as bitslicing.
+- **Tables.** One, 96 bytes, the 3D Hilbert encode: a memo of a
+  twelve-state machine that no algebra composes, built at compile time
+  from the algebra that defines it. Everything else is arithmetic.
 - **Bit storage.** `bitvec` territory. This is an algebra over words,
   not a container of bits. `slice` is the index-free layer between a
   word and a succinct structure; `rank9` is the one structure, and it
@@ -305,6 +308,7 @@ every carrier.
 | `suffix_xor` | Hacker's Delight chapter 13 (the Gray decode as a downward prefix); the CLMUL high half is the same product read the other way |
 | `Hilbert2::into_morton` | Hacker's Delight 16-2, the parallel-prefix form of Lam and Shapiro's state machine (1994); the quadrant order of figure 16-1 |
 | `Hilbert2::from_morton` | rawrunprotected, *2D Hilbert curves in O(log n)*, 2016: the frame maps of Lam and Shapiro composed by parallel prefix, linear parts in GF(4)*; here in the dilated layout on any carrier |
+| `Hilbert3` | the curve of rawrunprotected's 3D tables (2016, 2020); the frames as `A₄ ≅ AGL(1, 4)`, the decode as the 2D encode's scan, the encode as the machine memoised at compile time |
 | `myers::edit_distance`, `myers::search` | Myers, 1999; Hyyrö's formulation |
 | `rank9::Rank9` | Vigna, 2008: rank9, and a select inventory in the shape of his select9, cases cut at block boundaries |
 | `lanes::U8x8` add and subtract | Hacker's Delight 2-18 (SWAR without inter-lane carry) |
@@ -389,10 +393,20 @@ What is and is not a breaking change:
   stable enough to depend on.
 - The 32 × 32 transpose when something needs it.
 - In the same vein, in this order: a transition-monoid analyser in
-  `laws`; 3D Hilbert without tables (`A₄ ≅ AGL(1, 4)`, so the GF(4)
-  composition of the 2D encode should carry over); balanced
+  `laws` (the script that read the 3D tables, made reusable); balanced
   parentheses next to `rank9` (Vigna 2013); bit-parallel LCS;
-  shift-and.
+  shift-and. A 3D encode table over two levels at a step (1.5 KB)
+  would halve its 21 loads; not done, the crate keeps one small table.
+- A 3D curve with a log-depth encode does not exist in the natural
+  class: of the 10 752 corner-to-corner self-similar 3D curves whose
+  sub-cubes are symmetries of the cube (every Hamiltonian path of the
+  octants, every choice of symmetry per octant meeting the continuity
+  conditions), the frame group is `A₄` for 42 and `S₄` for the rest,
+  never abelian, and the encode monoid of every one outgrows any
+  affine representation. The 2D encode was affine because `V₄` is
+  elementary abelian and acts regularly on the quadrants; no 3D curve
+  of this kind has that. Face-gated and non-self-similar curves were
+  not searched.
 - A batched Hilbert encode: the scan is throughput-bound, so on many
   points at once the four-state loop interleaved eight ways may match
   it; not measured.

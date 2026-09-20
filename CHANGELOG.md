@@ -12,7 +12,14 @@ into GF(4), the adder's carry chain over a four-element field, here
 on any carrier; four rounds for a `u64` after a pairing round, four
 to seven times the speed of the four-state loop (cookbook recipe 13,
 design notes section 8). Benched against `fast_hilbert` and `lindel`
-in `benches/hilbert.rs` and the README. Laws against the
+in `benches/hilbert.rs` and the README. `hakmem::hilbert3::Hilbert3` and
+`Morton3`: the 3D curve of rawrunprotected's tables, whose frames are
+`A₄ ≅ AGL(1, 4)`, so the decode is the 2D encode's scan in log depth
+(1.6 to 1.7 times the table loop); the encode, whose transition monoid
+has no structure, is the twelve-state machine memoised into the
+crate's one table, 96 bytes built by a `const fn` from the algebra,
+on par with the incumbent. Checked against the published tables on
+every cell of every order up to 5. Cookbook recipe 14. Laws against the
 textbook `xy2d` / `d2xy` loops, the path property and the order
 recursion, exhaustive on `u16` up to order 8. `Bits::suffix_xor` and
 the `Word::xor_scan_down` primitive behind it, with a PCLMULQDQ path

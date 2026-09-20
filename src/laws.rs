@@ -223,6 +223,59 @@ pub fn morton_aligned_block_is_contiguous<W: Word>(x: W, y: W) -> bool {
 
 // --- Hilbert ------------------------------------------------------------
 
+/// The 3D decode scan and the memoised encode agree with the
+/// twelve-state machine walked level by level in GF(4) arithmetic,
+/// both directions, and undo each other. On the full-width curve.
+#[must_use]
+pub fn hilbert3_matches_reference<W: Word>(h: W) -> bool {
+    let h = h.and(W::low_ones(3 * Hilbert3::<W>::LEVELS));
+    let hi = Hilbert3::from_index(h);
+    let m = hi.into_morton();
+    m == reference::hilbert3_morton_machine(hi)
+        && Hilbert3::from_morton(m) == hi
+        && reference::hilbert3_index_machine(m) == hi
+}
+
+/// Encode undoes decode on coordinates of the full-width cube, and on
+/// Morton codes.
+#[must_use]
+pub fn hilbert3_roundtrip<W: Word>(x: W, y: W, z: W) -> bool {
+    let side = W::low_ones(Hilbert3::<W>::LEVELS);
+    let (x, y, z) = (x.and(side), y.and(side), z.and(side));
+    let m = Morton3::encode(x, y, z);
+    Hilbert3::encode(x, y, z).decode() == (x, y, z) && Hilbert3::from_morton(m).into_morton() == m
+}
+
+/// The 3D curve is a path: indices `h` and `h + 1` are cells one step
+/// apart along exactly one axis.
+#[must_use]
+pub fn hilbert3_consecutive_are_adjacent<W: Word>(h: W) -> bool {
+    let last = W::low_ones(3 * Hilbert3::<W>::LEVELS);
+    let h = h.and(last);
+    if h == last {
+        return true;
+    }
+    let (x0, y0, z0) = Hilbert3::from_index(h).decode();
+    let (x1, y1, z1) = Hilbert3::from_index(h.wrapping_add(W::ONE)).decode();
+    let unit = |a: W, b: W| a.wrapping_sub(b) == W::ONE || b.wrapping_sub(a) == W::ONE;
+    (x0 == x1 && y0 == y1 && unit(z0, z1))
+        || (x0 == x1 && z0 == z1 && unit(y0, y1))
+        || (y0 == y1 && z0 == z1 && unit(x0, x1))
+}
+
+/// The curve of `order + 1` restricted to its first octant is the
+/// curve of `order` with the axes rotated once, `(x, y, z) ↦ (y, z, x)`,
+/// and every curve starts at the origin. `order` in `0..BITS / 3`.
+#[must_use]
+pub fn hilbert3_order_laws<W: Word>(x: W, y: W, z: W, order: u32) -> bool {
+    let side = W::low_ones(order);
+    let (x, y, z) = (x.and(side), y.and(side), z.and(side));
+    let h = Hilbert3::encode_order(x, y, z, order + 1);
+    h == Hilbert3::encode_order(y, z, x, order)
+        && h.decode_order(order + 1) == (x, y, z)
+        && Hilbert3::encode_order(W::ZERO, W::ZERO, W::ZERO, order).index() == W::ZERO
+}
+
 /// The state-machine encode and the two-scan decode agree with the
 /// textbook loops (`xy2d` / `d2xy`) and undo each other.
 ///
@@ -284,6 +337,8 @@ pub fn hilbert_order_laws<W: Word>(x: W, y: W, order: u32) -> bool {
 /// every combinator is measured against.
 pub mod reference {
     use crate::affine::Affine8;
+    use crate::dilated::Morton3;
+    use crate::hilbert3::Hilbert3;
     use crate::word::Word;
 
     /// Bit `p` set iff bits `p..p + k` of `x` are all set.
@@ -466,6 +521,85 @@ pub mod reference {
             index = index.or(quad::<W>(u32::from(hi) << 1 | u32::from(lo)).shl(2 * level));
         }
         index
+    }
+
+    /// The 3D Hilbert decode as the twelve-state machine, one level at
+    /// a time.
+    ///
+    /// The frame `(m, t)` in GF(4), the octant `q(i) = i ^ (i >> 1)`
+    /// placed in it, the frame below `(m·m_g, t + m·t_g)`. The loop the
+    /// scan in `Hilbert3::into_morton` replaces.
+    #[must_use]
+    pub fn hilbert3_morton_machine<W: Word>(h: Hilbert3<W>) -> Morton3<W> {
+        let h = h.index();
+        let levels = W::BITS / 3;
+        let (mut ma, mut mb, mut ta, mut tb) = (1u8, 0u8, 0u8, 0u8);
+        let mut code = W::ZERO;
+        for level in (0..levels).rev() {
+            let bit = |k: u32| u8::from(h.bit(3 * level + k));
+            let (i0, i1, i2) = (bit(0), bit(1), bit(2));
+            // The octant as (e, p).
+            let e = (i1, i0 ^ i2);
+            let p = i0;
+            let (fa, fb) = gf4(ma, mb, e.0, e.1);
+            let (ea, eb) = (fa ^ ta, fb ^ tb);
+            let (v0, v1, v2) = (ea ^ p, ea ^ eb ^ p, eb ^ p);
+            code = code.or(quad::<W>(u32::from(v0) | u32::from(v1) << 1).shl(3 * level));
+            if v2 == 1 {
+                code = code.or(W::ONE.shl(3 * level + 2));
+            }
+            // The map of this triple, then the frame below.
+            let both = i0 & i1;
+            let either = i0 | i1;
+            let maj = both | (i2 & (i0 ^ i1));
+            let par = i0 ^ i1 ^ i2;
+            let (ga, gb) = (par ^ maj, (i2 ^ maj) ^ 1);
+            let (ha, hb) = (both | (i2 & (either ^ 1)), i2 & either);
+            let (sa, sb) = gf4(ma, mb, ha, hb);
+            (ta, tb) = (ta ^ sa, tb ^ sb);
+            (ma, mb) = gf4(ma, mb, ga, gb);
+        }
+        Morton3::from_code(code)
+    }
+
+    /// The 3D Hilbert encode as the twelve-state machine, one level at
+    /// a time, in GF(4) arithmetic.
+    ///
+    /// The definition `Hilbert3::from_morton` memoises. Per level the
+    /// octant `(e, p)` in the frame is `e' = m⁻¹·(e + t)`, the triple
+    /// `(p, e'_a, e'_b ^ p)`, the frame below `(m·m_g, t + m·t_g)`.
+    #[must_use]
+    pub fn hilbert3_index_machine<W: Word>(m: Morton3<W>) -> Hilbert3<W> {
+        let code = m.code();
+        let levels = W::BITS / 3;
+        let (mut ma, mut mb, mut ta, mut tb) = (1u8, 0u8, 0u8, 0u8);
+        let mut index = W::ZERO;
+        for level in (0..levels).rev() {
+            let bit = |k: u32| u8::from(code.bit(3 * level + k));
+            let (v0, v1, v2) = (bit(0), bit(1), bit(2));
+            let p = v0 ^ v1 ^ v2;
+            let (fa, fb) = gf4(ma ^ mb, mb, v0 ^ p ^ ta, v2 ^ p ^ tb);
+            let (i0, i1, i2) = (p, fa, fb ^ p);
+            let both = i0 & i1;
+            let either = i0 | i1;
+            let maj = both | (i2 & (i0 ^ i1));
+            let par = i0 ^ i1 ^ i2;
+            let (ga, gb) = (par ^ maj, (i2 ^ maj) ^ 1);
+            let (ha, hb) = (both | (i2 & (either ^ 1)), i2 & either);
+            let (sa, sb) = gf4(ma, mb, ha, hb);
+            (ta, tb) = (ta ^ sa, tb ^ sb);
+            (ma, mb) = gf4(ma, mb, ga, gb);
+            index = index.or(quad::<W>(u32::from(i0) | u32::from(i1) << 1).shl(3 * level));
+            if i2 == 1 {
+                index = index.or(W::ONE.shl(3 * level + 2));
+            }
+        }
+        Hilbert3::from_index(index)
+    }
+
+    /// GF(4) product on one-bit `u8` scalars, `ω² = ω + 1`.
+    const fn gf4(a: u8, b: u8, c: u8, d: u8) -> (u8, u8) {
+        (a & c ^ b & d, a & d ^ b & c ^ b & d)
     }
 
     /// A quadrant number as a word.
