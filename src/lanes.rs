@@ -1037,7 +1037,7 @@ mod x16 {
         fn to_bits(self) -> u16 {
             // SAFETY: NEON is enabled by cfg.
             let mut x = unsafe {
-                let full = vreinterpretq_u8_s8(vcltzq_s8(vreinterpretq_s8_u8(self.0)));
+                let full = vcltzq_s8(vreinterpretq_s8_u8(self.0));
                 let nibbles = vshrn_n_u16::<4>(vreinterpretq_u16_u8(full));
                 vget_lane_u64::<0>(vreinterpret_u64_u8(nibbles))
             } & 0x1111_1111_1111_1111;

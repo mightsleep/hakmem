@@ -24,6 +24,10 @@ in {
         type = t.package;
         description = "Nightly toolchain: rustc, cargo, clippy, rustfmt (nightly options in rustfmt.toml), rust-src, rust-analyzer.";
       };
+      nightlyDev = lib.mkOption {
+        type = t.package;
+        description = "The nightly toolchain plus the aarch64 std, for the dev shell: cross `cargo check` of the NEON paths.";
+      };
       miri = lib.mkOption {
         type = t.package;
         description = "Nightly toolchain with the miri component.";
@@ -55,6 +59,15 @@ in {
         fenixPkgs.latest.rustfmt
         fenixPkgs.latest.rust-src
         fenixPkgs.latest.rust-analyzer
+      ];
+      # The dev shell only: the CI derivations hash `nightly`, and a target
+      # std they never use would rebuild every cell once.
+      nightlyDev = fenixPkgs.combine [
+        config.rust.nightly
+        # `cargo check --target aarch64-unknown-linux-gnu`: the NEON branch
+        # of `lanes` type-checks locally instead of in CI. No linker, check
+        # only; running the tests still needs the arm runner.
+        fenixPkgs.targets.aarch64-unknown-linux-gnu.latest.rust-std
       ];
       miri = fenixPkgs.latest.withComponents ["rustc" "cargo" "rust-src" "miri"];
       msrv =
