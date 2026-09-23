@@ -1,5 +1,6 @@
 # Miri over the unsafe modules (BMI2 / PCLMULQDQ intrinsics in word.rs,
-# SSSE3 and GFNI in lanes.rs). Not a `check`: `cargo miri setup` builds a
+# SSSE3 and GFNI in lanes.rs, VBMI and NEON batch kernels in hilbert.rs and
+# hilbert3.rs). Not a `check`: `cargo miri setup` builds a
 # sysroot from rust-src and fetches crates, which the Nix sandbox without
 # network cannot do. Runs as an app outside the sandbox.
 #
@@ -32,12 +33,15 @@
             RUSTFLAGS="$1" cargo miri test --test miri
           }
           # Portable paths first, then the intrinsics; Miri has shims for
-          # BMI2, PCLMULQDQ, SSSE3 and GFNI. The GFNI cell is Miri-only: the
-          # GitHub runners are a mix of Zen 3 (no GFNI) and Ice Lake, so a
-          # native cell would SIGILL at random; the interpreter does not care.
+          # BMI2, PCLMULQDQ, SSSE3, GFNI and AVX-512 VBMI. The GFNI and VBMI
+          # cells are Miri-only: the GitHub runners are a mix of Zen 3 (no
+          # GFNI, no AVX-512) and Ice Lake, so a native cell would SIGILL at
+          # random; the interpreter does not care.
           run ""
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3"
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+gfni"
+          # The batch Hilbert kernels: vpermb and vpermi2b.
+          run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx512vbmi"
         '';
       });
     };

@@ -260,15 +260,18 @@ similar strings and is not implemented.
 
 | Hilbert curve in 3D, 21 levels (1024 points) | decode, portable | decode, `+bmi2` | encode, portable | encode, `+bmi2` |
 |---|---|---|---|---|
-| `hakmem` `Hilbert3` | **10.5 µs** | **8.8 µs** | 19.6 µs | 19.6 µs |
-| rawrunprotected's tables, 96 bytes each way | 16.9 µs | 14.9 µs | **18.7 µs** | **15.0 µs** |
-| `Morton3` | 2.1 µs | 0.87 µs | 2.0 µs | 0.72 µs |
+| `hakmem` `Hilbert3` | **10.6 µs** | **8.8 µs** | **18.3 µs** | **13.2 µs** |
+| rawrunprotected's tables, 96 bytes each way | 17.5 µs | 14.9 µs | 19.0 µs | 15.0 µs |
+| `Morton3` | 2.1 µs | 0.78 µs | 2.0 µs | 0.72 µs |
 
 In 3D the frames form the alternating group `A₄`, which is
 `AGL(1, 4)`, so the 2D encode's scan is the 3D decode; the 3D encode
 has no such structure and is the twelve-state machine memoised into
-the crate's one table, 96 bytes built at compile time from the same
-arithmetic, which is why it ties the incumbent instead of beating it.
+a table of 96 bytes built at compile time from the same
+arithmetic. It is the incumbent's machine, ahead of it by a table padded
+to 128 entries (the masked index needs no bounds check) and a loop the
+compiler vectorises over points; in batches a `vpermi2b` walks it for
+64 keys at a time.
 The 2D decode is two suffix XORs over the Morton code and a Morton
 decode, straight-line. The encode is a Kogge–Stone scan over the
 per-level frame maps, affine maps over GF(4) once levels are paired,
@@ -281,6 +284,35 @@ no carried chain, which is why it gains from `+bmi2` (the BMI
 instructions) where the table walk cannot. Recipe 13 of the cookbook
 has the derivation and the group that makes the encode the heavier
 direction.
+
+Batches of keys convert in place: fill a slice with Morton codes from
+whatever layout the points are in, then turn them into Hilbert indices
+in one call (`from_morton_in_place`, and `into_morton_in_place` back;
+the `_order` forms for a curve of fewer levels). With AVX-512 VBMI a
+step is one `vpermb` (2D, two levels through a 64-entry table) or
+`vpermi2b` (3D, the 96-byte encode or decode table) per register of
+keys; NEON uses `tbl`; elsewhere it is the per-key conversion.
+Coordinates never enter the kernel.
+
+```rust
+use hakmem::prelude::*;
+
+let points = [(3u64, 5u64), (40_000, 7), (1 << 31, 12)];
+let mut keys: Vec<u64> = points
+    .iter()
+    .map(|&(x, y)| Morton2::<u64>::encode(x, y).code())
+    .collect();
+Hilbert2::<u64>::from_morton_in_place(&mut keys);
+assert_eq!(keys[1], Hilbert2::<u64>::encode(40_000, 7).index());
+keys.sort_unstable(); // curve order, as a packed R-tree builds it
+```
+
+| Batch conversion, 1024 points, `target-cpu=native` on Zen 5 | in place | per key | incumbent |
+|---|---|---|---|
+| 2D encode, `u64` keys, 32 levels | **2.1 µs** | 6.1 µs | `fast_hilbert` 12.2 µs |
+| 2D encode, `u16` coordinates, `u32` keys, 16 levels | **0.94 µs** | 6.3 µs | `fast_hilbert` 8.5 µs |
+| 3D encode, `u64` keys, 21 levels | **2.7 µs** | 13.1 µs | rawrunprotected's tables 15.2 µs |
+| 3D decode, `u64` keys, 21 levels | **2.7 µs** | 8.8 µs | rawrunprotected's tables 15.1 µs |
 
 ## Cookbook
 

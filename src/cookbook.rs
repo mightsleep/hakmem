@@ -667,7 +667,7 @@
 //! length seven, and the all-zero word never resets it: no group
 //! representation, no window. That is the enumerative regime, and its
 //! representation is the machine itself. [`Hilbert3::from_morton`](crate::Hilbert3::from_morton)
-//! walks it through the one table in the crate, 96 bytes, which a
+//! walks it through a table of 96 bytes, which a
 //! `const fn` builds at compile time from the same GF(4) step the
 //! reference machine runs; the table is a memo of the algebra, not a
 //! constant anyone typed. The algebraic loop costs three to four times

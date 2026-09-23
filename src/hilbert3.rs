@@ -26,7 +26,7 @@
 //! passes a million elements at word length seven, and the all-zero
 //! word never resets it, so neither a group representation nor a
 //! window exists. [`Hilbert3::from_morton`] walks the levels through
-//! the one table in the crate, 96 bytes that a `const fn` builds from
+//! a table of 96 bytes that a `const fn` builds from
 //! the same GF(4) step ([`encode_step`]); the algebraic loop is three
 //! to four times slower, its chain being ten operations a level
 //! against one load. Both directions are checked against the tables
@@ -87,6 +87,29 @@ const fn rotate_axes<W: Word>(c: (W, W, W), k: u32) -> (W, W, W) {
         0 => c,
         1 => (c.2, c.0, c.1),
         _ => (c.1, c.2, c.0),
+    }
+}
+
+/// [`rotate_axes`] on Morton codes in place: `k` in `0..3`, every
+/// triple of bits `x y z` (low to high) rotated so that the coordinate
+/// order becomes that of `rotate_axes(_, k)`.
+fn rotate_triples<W: Word>(keys: &mut [W], k: u32) {
+    let x = Dilated::<W, 3>::mask();
+    let (y, z) = (x.shl(1), x.shl(2));
+    match k {
+        // (x, y, z) ↦ (z, x, y): x moves up to y, y to z, z down to x.
+        1 => {
+            for key in keys {
+                *key = key.shl(1).and(y.or(z)).or(key.shr(2).and(x));
+            }
+        }
+        // (x, y, z) ↦ (y, z, x): y moves down to x, z to y, x up to z.
+        2 => {
+            for key in keys {
+                *key = key.shr(1).and(x.or(y)).or(key.and(x).shl(2));
+            }
+        }
+        _ => {}
     }
 }
 
@@ -209,7 +232,7 @@ impl<W: Word> Hilbert3<W> {
     /// The machine's step is GF(4) arithmetic on the frame, about 25
     /// operations with a chain of ten, and a level cannot start before
     /// the frame above it is known; a table lookup is one load. So this
-    /// is the one table in the crate: [`ENCODE_TABLE`], 96 bytes,
+    /// is a table: [`ENCODE_TABLE`], 96 bytes,
     /// `state · 8 + octant → state · 8 + triple`, built at compile time
     /// from the same arithmetic ([`encode_step`]) and checked against
     /// the published constants (`tests/hilbert3.rs`). The machine
@@ -223,7 +246,10 @@ impl<W: Word> Hilbert3<W> {
         while level > 0 {
             level -= 1;
             let octant = code.shr(3 * level).and(W::low_ones(3)).low_byte() as usize;
-            let entry = usize::from(ENCODE_TABLE[state | octant]);
+            // Padded to 128 entries so the mask proves the index in range:
+            // no bounds check, and the loop over keys still vectorises
+            // (gathers under AVX-512), which a restructured body did not.
+            let entry = usize::from(ENCODE_PADDED[(state | octant) & 127]);
             state = entry & !7;
             // Truncation is the point: the low three bits are the triple.
             #[allow(clippy::cast_possible_truncation)]
@@ -298,3 +324,467 @@ pub const ENCODE_TABLE: [u8; 96] = {
     }
     table
 };
+
+/// [`ENCODE_TABLE`] padded to 128 entries: an index masked with `127`
+/// is provably in range, and two AVX-512 registers hold it for
+/// `vpermi2b`.
+const ENCODE_PADDED: [u8; 128] = {
+    let mut t = [0u8; 128];
+    let mut i = 0;
+    while i < 96 {
+        t[i] = ENCODE_TABLE[i];
+        i += 1;
+    }
+    t
+};
+
+/// The decode machine as a table, for the batch kernels: entry
+/// `state · 8 + triple` holds `state_below · 8 + octant`. For a fixed
+/// state [`encode_step`] is a bijection of the octants, so this is its
+/// inverse level by level, with the same states; built here and
+/// checked to be a bijection at compile time. Padded to 128 like
+/// [`ENCODE_PADDED`].
+#[cfg_attr(
+    not(any(
+        all(
+            target_arch = "x86_64",
+            target_feature = "avx512vbmi",
+            not(feature = "portable")
+        ),
+        all(
+            target_arch = "aarch64",
+            target_feature = "neon",
+            not(feature = "portable")
+        )
+    )),
+    allow(dead_code)
+)]
+const DECODE_PADDED: [u8; 128] = {
+    let mut t = [0u8; 128];
+    let mut seen = [false; 96];
+    let mut state = 0u8;
+    while state < 12 {
+        let mut octant = 0u8;
+        while octant < 8 {
+            let (triple, below) = encode_step(state, octant);
+            let at = (state * 8 + triple) as usize;
+            assert!(!seen[at], "encode_step is not a bijection of the octants");
+            seen[at] = true;
+            t[at] = below * 8 + octant;
+            octant += 1;
+        }
+        state += 1;
+    }
+    t
+};
+
+macro_rules! hilbert3_batch {
+    ($($w:ty => $encode:ident, $decode:ident),* $(,)?) => {$(
+        impl Hilbert3<$w> {
+            /// [`from_morton`](Self::from_morton) over a slice of keys, in
+            /// place: each Morton code becomes the Hilbert index of the
+            /// same cell.
+            ///
+            /// The encode has no algebra (the maps on the twelve frames
+            /// are not permutations), which is the case a shuffle serves:
+            /// with AVX-512 VBMI a level is one `vpermi2b` through
+            /// [`ENCODE_TABLE`], padded to 128 bytes in two registers, per
+            /// register of keys, the frame riding in the index byte as
+            /// `state · 8`; with NEON the table is `tbl` over four
+            /// registers and `tbx` over two. Otherwise, and for the keys
+            /// past the last whole batch, it is
+            /// [`from_morton`](Self::from_morton) per key.
+            pub fn from_morton_in_place(keys: &mut [$w]) {
+                let done = batch::$encode(keys);
+                for key in &mut keys[done..] {
+                    *key = Self::from_morton(Morton3::from_code(*key)).index();
+                }
+            }
+
+            /// [`into_morton`](Self::into_morton) over a slice of keys, in
+            /// place: each Hilbert index becomes the Morton code of the
+            /// same cell.
+            ///
+            /// The decode as a machine is the same twelve states read the
+            /// other way, so the same kernel runs it through the inverse
+            /// table, a level a step; per key it is the algebraic scan
+            /// ([`into_morton`](Self::into_morton)), which beats a table
+            /// walk, and that finishes the keys past the last whole batch.
+            pub fn into_morton_in_place(keys: &mut [$w]) {
+                let done = batch::$decode(keys);
+                for key in &mut keys[done..] {
+                    *key = Self::from_index(*key).into_morton().code();
+                }
+            }
+
+            /// [`from_morton_in_place`](Self::from_morton_in_place) on the
+            /// curve of `order` levels, as [`encode_order`](Self::encode_order)
+            /// per key; `order` in `0..=LEVELS`, codes below `8^order`
+            /// (debug-asserted). The axes rotate by `LEVELS − order`
+            /// modulo three, which in a Morton code rotates every triple of
+            /// bits: one pass over the keys, then the full-width batch.
+            pub fn from_morton_in_place_order(keys: &mut [$w], order: u32) {
+                debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
+                debug_assert!(
+                    keys.iter().all(|&k| k.checked_shr(3 * order).unwrap_or(0) == 0),
+                    "codes above 8^{order}"
+                );
+                rotate_triples(keys, (Self::LEVELS - order) % 3);
+                Self::from_morton_in_place(keys);
+            }
+
+            /// [`into_morton_in_place`](Self::into_morton_in_place) on the
+            /// curve of `order` levels, as [`decode_order`](Self::decode_order)
+            /// per key; indices below `8^order` (debug-asserted).
+            pub fn into_morton_in_place_order(keys: &mut [$w], order: u32) {
+                debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
+                debug_assert!(
+                    keys.iter().all(|&k| k.checked_shr(3 * order).unwrap_or(0) == 0),
+                    "indices above 8^{order}"
+                );
+                Self::into_morton_in_place(keys);
+                rotate_triples(keys, 2 * (Self::LEVELS - order) % 3);
+            }
+        }
+    )*};
+}
+
+hilbert3_batch!(
+    u32 => from_morton_u32, into_morton_u32,
+    u64 => from_morton_u64, into_morton_u64,
+);
+
+/// The batch kernels; each returns how many keys from the front it
+/// converted, a whole number of batches. The intrinsics are `unsafe`
+/// solely because they require the target feature, which `cfg` makes a
+/// compile-time fact.
+mod batch {
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx512vbmi",
+        not(feature = "portable")
+    ))]
+    #[allow(unsafe_code)]
+    mod vbmi {
+        use core::arch::x86_64::{
+            _mm512_and_si512, _mm512_loadu_si512, _mm512_or_si512, _mm512_permutex2var_epi8,
+            _mm512_set1_epi32, _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi32,
+            _mm512_slli_epi64, _mm512_srlv_epi32, _mm512_srlv_epi64, _mm512_storeu_si512,
+        };
+
+        use super::super::{DECODE_PADDED, ENCODE_PADDED};
+
+        macro_rules! kernel {
+            ($name:ident, $table:ident, $w:ty, $lanes:literal, $set1:ident, $srlv:ident, $slli:ident) => {
+                /// Batches of 64 keys, `64 / LANES` registers in flight.
+                pub(in crate::hilbert3) fn $name(keys: &mut [$w]) -> usize {
+                    const REGS: usize = 64 / $lanes;
+                    #[allow(clippy::cast_possible_truncation)]
+                    const LEVELS: u8 = (<$w>::BITS / 3) as u8;
+
+                    let (chunks, _) = keys.as_chunks_mut::<64>();
+                    let done = chunks.len() * 64;
+                    for chunk in chunks {
+                        // SAFETY: AVX-512 F, BW and VBMI are enabled by cfg;
+                        // every load and store stays inside the 64 keys of
+                        // `chunk` or the 128 bytes of the table.
+                        unsafe {
+                            let lo = _mm512_loadu_si512($table.as_ptr().cast());
+                            let hi = _mm512_loadu_si512($table.as_ptr().add(64).cast());
+                            let octant = $set1(7);
+                            let state_bits = $set1(0x78);
+                            let mut code = [_mm512_setzero_si512(); REGS];
+                            let mut acc = [_mm512_setzero_si512(); REGS];
+                            let mut state = [_mm512_setzero_si512(); REGS];
+                            for (r, c) in code.iter_mut().enumerate() {
+                                *c = _mm512_loadu_si512(chunk.as_ptr().add($lanes * r).cast());
+                            }
+                            let mut level = LEVELS;
+                            while level > 0 {
+                                level -= 1;
+                                let shift = $set1((3 * level).into());
+                                for r in 0..REGS {
+                                    let index = _mm512_or_si512(
+                                        _mm512_and_si512($srlv(code[r], shift), octant),
+                                        state[r],
+                                    );
+                                    let entry = _mm512_permutex2var_epi8(lo, index, hi);
+                                    acc[r] = _mm512_or_si512(
+                                        $slli::<3>(acc[r]),
+                                        _mm512_and_si512(entry, octant),
+                                    );
+                                    state[r] = _mm512_and_si512(entry, state_bits);
+                                }
+                            }
+                            for (r, a) in acc.iter().enumerate() {
+                                _mm512_storeu_si512(chunk.as_mut_ptr().add($lanes * r).cast(), *a);
+                            }
+                        }
+                    }
+                    done
+                }
+            };
+        }
+
+        kernel!(
+            from_morton_u32,
+            ENCODE_PADDED,
+            u32,
+            16,
+            _mm512_set1_epi32,
+            _mm512_srlv_epi32,
+            _mm512_slli_epi32
+        );
+        kernel!(
+            from_morton_u64,
+            ENCODE_PADDED,
+            u64,
+            8,
+            _mm512_set1_epi64,
+            _mm512_srlv_epi64,
+            _mm512_slli_epi64
+        );
+        kernel!(
+            into_morton_u32,
+            DECODE_PADDED,
+            u32,
+            16,
+            _mm512_set1_epi32,
+            _mm512_srlv_epi32,
+            _mm512_slli_epi32
+        );
+        kernel!(
+            into_morton_u64,
+            DECODE_PADDED,
+            u64,
+            8,
+            _mm512_set1_epi64,
+            _mm512_srlv_epi64,
+            _mm512_slli_epi64
+        );
+    }
+
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx512vbmi",
+        not(feature = "portable")
+    ))]
+    pub(super) use vbmi::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
+
+    #[cfg(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "portable")
+    ))]
+    #[allow(unsafe_code)]
+    mod neon {
+        use core::arch::aarch64::{
+            vandq_u32, vandq_u64, vdupq_n_s32, vdupq_n_s64, vdupq_n_u8, vdupq_n_u32, vdupq_n_u64,
+            vld1q_u8_x2, vld1q_u8_x4, vld1q_u32, vld1q_u64, vorrq_u32, vorrq_u64, vqtbl4q_u8,
+            vqtbx2q_u8, vreinterpretq_u8_u32, vreinterpretq_u8_u64, vreinterpretq_u32_u8,
+            vreinterpretq_u64_u8, vshlq_n_u32, vshlq_n_u64, vshlq_u32, vshlq_u64, vst1q_u32,
+            vst1q_u64, vsubq_u8,
+        };
+
+        use super::super::{DECODE_PADDED, ENCODE_PADDED};
+
+        macro_rules! kernel {
+            (
+                $name:ident, $table:ident, $w:ty, $per_reg:literal, $dup:ident, $dup_s:ident, $s:ty,
+                $ld:ident, $st:ident, $and:ident, $or:ident, $shl:ident, $shl_n:ident,
+                $to_u8:ident, $from_u8:ident
+            ) => {
+                /// Batches of eight registers.
+                pub(in crate::hilbert3) fn $name(keys: &mut [$w]) -> usize {
+                    #[allow(clippy::cast_possible_truncation)]
+                    const LEVELS: u8 = (<$w>::BITS / 3) as u8;
+
+                    let (chunks, _) = keys.as_chunks_mut::<{ 8 * $per_reg }>();
+                    let done = chunks.len() * 8 * $per_reg;
+                    for chunk in chunks {
+                        // SAFETY: NEON is enabled by cfg; every load and
+                        // store stays inside `chunk` or the 96 bytes of
+                        // `ENCODE_TABLE`.
+                        unsafe {
+                            let low = vld1q_u8_x4($table.as_ptr());
+                            let high = vld1q_u8_x2($table.as_ptr().add(64));
+                            let sixty_four = vdupq_n_u8(64);
+                            let octant = $dup(7);
+                            let state_bits = $dup(0x78);
+                            let mut code = [$dup(0); 8];
+                            let mut acc = [$dup(0); 8];
+                            let mut state = [$dup(0); 8];
+                            for (r, c) in code.iter_mut().enumerate() {
+                                *c = $ld(chunk.as_ptr().add($per_reg * r));
+                            }
+                            let mut level = LEVELS;
+                            while level > 0 {
+                                level -= 1;
+                                let shift = $dup_s(-<$s>::from(3 * level));
+                                for r in 0..8 {
+                                    let index =
+                                        $to_u8($or($and($shl(code[r], shift), octant), state[r]));
+                                    // Entries 64..96 by `tbx` over the second
+                                    // table: indices below 64 wrap past its
+                                    // range and keep the `tbl` result.
+                                    let entry = $from_u8(vqtbx2q_u8(
+                                        vqtbl4q_u8(low, index),
+                                        high,
+                                        vsubq_u8(index, sixty_four),
+                                    ));
+                                    acc[r] = $or($shl_n::<3>(acc[r]), $and(entry, octant));
+                                    state[r] = $and(entry, state_bits);
+                                }
+                            }
+                            for (r, a) in acc.iter().enumerate() {
+                                $st(chunk.as_mut_ptr().add($per_reg * r), *a);
+                            }
+                        }
+                    }
+                    done
+                }
+            };
+        }
+
+        kernel!(
+            from_morton_u32,
+            ENCODE_PADDED,
+            u32,
+            4,
+            vdupq_n_u32,
+            vdupq_n_s32,
+            i32,
+            vld1q_u32,
+            vst1q_u32,
+            vandq_u32,
+            vorrq_u32,
+            vshlq_u32,
+            vshlq_n_u32,
+            vreinterpretq_u8_u32,
+            vreinterpretq_u32_u8
+        );
+        kernel!(
+            from_morton_u64,
+            ENCODE_PADDED,
+            u64,
+            2,
+            vdupq_n_u64,
+            vdupq_n_s64,
+            i64,
+            vld1q_u64,
+            vst1q_u64,
+            vandq_u64,
+            vorrq_u64,
+            vshlq_u64,
+            vshlq_n_u64,
+            vreinterpretq_u8_u64,
+            vreinterpretq_u64_u8
+        );
+        kernel!(
+            into_morton_u32,
+            DECODE_PADDED,
+            u32,
+            4,
+            vdupq_n_u32,
+            vdupq_n_s32,
+            i32,
+            vld1q_u32,
+            vst1q_u32,
+            vandq_u32,
+            vorrq_u32,
+            vshlq_u32,
+            vshlq_n_u32,
+            vreinterpretq_u8_u32,
+            vreinterpretq_u32_u8
+        );
+        kernel!(
+            into_morton_u64,
+            DECODE_PADDED,
+            u64,
+            2,
+            vdupq_n_u64,
+            vdupq_n_s64,
+            i64,
+            vld1q_u64,
+            vst1q_u64,
+            vandq_u64,
+            vorrq_u64,
+            vshlq_u64,
+            vshlq_n_u64,
+            vreinterpretq_u8_u64,
+            vreinterpretq_u64_u8
+        );
+    }
+
+    #[cfg(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "portable")
+    ))]
+    pub(super) use neon::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
+
+    /// No batch path: the caller converts every key.
+    #[cfg(not(any(
+        all(
+            target_arch = "x86_64",
+            target_feature = "avx512vbmi",
+            not(feature = "portable")
+        ),
+        all(
+            target_arch = "aarch64",
+            target_feature = "neon",
+            not(feature = "portable")
+        )
+    )))]
+    pub(super) const fn from_morton_u32(_: &mut [u32]) -> usize {
+        0
+    }
+
+    #[cfg(not(any(
+        all(
+            target_arch = "x86_64",
+            target_feature = "avx512vbmi",
+            not(feature = "portable")
+        ),
+        all(
+            target_arch = "aarch64",
+            target_feature = "neon",
+            not(feature = "portable")
+        )
+    )))]
+    pub(super) const fn from_morton_u64(_: &mut [u64]) -> usize {
+        0
+    }
+
+    #[cfg(not(any(
+        all(
+            target_arch = "x86_64",
+            target_feature = "avx512vbmi",
+            not(feature = "portable")
+        ),
+        all(
+            target_arch = "aarch64",
+            target_feature = "neon",
+            not(feature = "portable")
+        )
+    )))]
+    pub(super) const fn into_morton_u32(_: &mut [u32]) -> usize {
+        0
+    }
+
+    #[cfg(not(any(
+        all(
+            target_arch = "x86_64",
+            target_feature = "avx512vbmi",
+            not(feature = "portable")
+        ),
+        all(
+            target_arch = "aarch64",
+            target_feature = "neon",
+            not(feature = "portable")
+        )
+    )))]
+    pub(super) const fn into_morton_u64(_: &mut [u64]) -> usize {
+        0
+    }
+}

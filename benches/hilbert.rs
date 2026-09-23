@@ -139,6 +139,98 @@ fn bench(c: &mut Criterion) {
     }
 }
 
+/// Batch encode against the per-key forms, from coordinates to keys.
+fn bench_batch(c: &mut Criterion) {
+    let coords: Vec<(u64, u64)> = words()
+        .iter()
+        .map(|&h| Hilbert2::<u64>::from_index(h).decode())
+        .collect();
+    // Truncation is the point: the coordinates fit in 32 bits.
+    #[allow(clippy::cast_possible_truncation)]
+    let coords32: Vec<(u32, u32)> = coords.iter().map(|&(x, y)| (x as u32, y as u32)).collect();
+    // Batch encode, from coordinates to keys the way a caller does it:
+    // Morton per point, then the in-place conversion. Against the
+    // per-key forms on the same points.
+    {
+        let mut keys = vec![0u64; N];
+        let mut g = c.benchmark_group("hilbert/encode batch");
+        g.bench_function("hakmem in place", |b| {
+            b.iter(|| {
+                for (k, &(x, y)) in keys.iter_mut().zip(&coords) {
+                    *k = Morton2::<u64>::encode(black_box(x), black_box(y)).code();
+                }
+                Hilbert2::<u64>::from_morton_in_place(&mut keys);
+                black_box(&keys);
+            });
+        });
+        g.bench_function("hakmem per key", |b| {
+            b.iter(|| {
+                for (k, &(x, y)) in keys.iter_mut().zip(&coords) {
+                    *k = Hilbert2::<u64>::encode(black_box(x), black_box(y)).index();
+                }
+                black_box(&keys);
+            });
+        });
+        g.bench_function("fast_hilbert", |b| {
+            b.iter(|| {
+                for (k, &(x, y)) in keys.iter_mut().zip(&coords32) {
+                    *k = fast_hilbert::xy2h(black_box(x), black_box(y), 32);
+                }
+                black_box(&keys);
+            });
+        });
+        g.finish();
+    }
+
+    // The packed R-tree case (flatbush, geo-index): 16-bit coordinates,
+    // 32-bit keys, 16 levels.
+    {
+        // Truncation is the point: 16-bit coordinates.
+        #[allow(clippy::cast_possible_truncation)]
+        let coords16: Vec<(u16, u16)> = coords32
+            .iter()
+            .map(|&(x, y)| (x as u16, y as u16))
+            .collect();
+        for &(x, y) in &coords16 {
+            assert_eq!(
+                fast_hilbert::xy2h(x, y, 16),
+                Hilbert2::<u32>::encode(u32::from(x), u32::from(y)).index(),
+                "fast_hilbert orientation at 16 levels"
+            );
+        }
+        let mut keys = vec![0u32; N];
+        let mut g = c.benchmark_group("hilbert/encode batch u16");
+        g.bench_function("hakmem in place", |b| {
+            b.iter(|| {
+                for (k, &(x, y)) in keys.iter_mut().zip(&coords16) {
+                    *k = Morton2::<u32>::encode(u32::from(black_box(x)), u32::from(black_box(y)))
+                        .code();
+                }
+                Hilbert2::<u32>::from_morton_in_place(&mut keys);
+                black_box(&keys);
+            });
+        });
+        g.bench_function("hakmem per key", |b| {
+            b.iter(|| {
+                for (k, &(x, y)) in keys.iter_mut().zip(&coords16) {
+                    *k = Hilbert2::<u32>::encode(u32::from(black_box(x)), u32::from(black_box(y)))
+                        .index();
+                }
+                black_box(&keys);
+            });
+        });
+        g.bench_function("fast_hilbert", |b| {
+            b.iter(|| {
+                for (k, &(x, y)) in keys.iter_mut().zip(&coords16) {
+                    *k = fast_hilbert::xy2h(black_box(x), black_box(y), 16);
+                }
+                black_box(&keys);
+            });
+        });
+        g.finish();
+    }
+}
+
 fn bench3(c: &mut Criterion) {
     let indices: Vec<u64> = words().iter().map(|&h| h >> 1).collect();
     let coords: Vec<(u64, u64, u64)> = indices
@@ -209,6 +301,77 @@ fn bench3(c: &mut Criterion) {
     }
 }
 
+/// 3D batch conversions against the per-key forms and the tables.
+fn bench3_batch(c: &mut Criterion) {
+    let indices: Vec<u64> = words().iter().map(|&h| h >> 1).collect();
+    let coords: Vec<(u64, u64, u64)> = indices
+        .iter()
+        .map(|&h| Hilbert3::<u64>::from_index(h).decode())
+        .collect();
+    {
+        let mut keys = vec![0u64; N];
+        let mut out = vec![(0u64, 0u64, 0u64); N];
+        let mut g = c.benchmark_group("hilbert3/decode batch");
+        g.bench_function("hakmem in place", |b| {
+            b.iter(|| {
+                keys.copy_from_slice(&indices);
+                Hilbert3::<u64>::into_morton_in_place(&mut keys);
+                for (o, &k) in out.iter_mut().zip(&keys) {
+                    *o = Morton3::<u64>::from_code(k).decode();
+                }
+                black_box(&out);
+            });
+        });
+        g.bench_function("hakmem per key", |b| {
+            b.iter(|| {
+                for (o, &h) in out.iter_mut().zip(&indices) {
+                    *o = Hilbert3::<u64>::from_index(black_box(h)).decode();
+                }
+                black_box(&out);
+            });
+        });
+        g.bench_function("rawrunprotected tables", |b| {
+            b.iter(|| {
+                for (o, &h) in out.iter_mut().zip(&indices) {
+                    *o = tables::decode(black_box(h), 21);
+                }
+                black_box(&out);
+            });
+        });
+        g.finish();
+    }
+    {
+        let mut keys = vec![0u64; N];
+        let mut g = c.benchmark_group("hilbert3/encode batch");
+        g.bench_function("hakmem in place", |b| {
+            b.iter(|| {
+                for (k, &(x, y, z)) in keys.iter_mut().zip(&coords) {
+                    *k = Morton3::<u64>::encode(black_box(x), black_box(y), black_box(z)).code();
+                }
+                Hilbert3::<u64>::from_morton_in_place(&mut keys);
+                black_box(&keys);
+            });
+        });
+        g.bench_function("hakmem per key", |b| {
+            b.iter(|| {
+                for (k, &(x, y, z)) in keys.iter_mut().zip(&coords) {
+                    *k = Hilbert3::<u64>::encode(black_box(x), black_box(y), black_box(z)).index();
+                }
+                black_box(&keys);
+            });
+        });
+        g.bench_function("rawrunprotected tables", |b| {
+            b.iter(|| {
+                for (k, &(x, y, z)) in keys.iter_mut().zip(&coords) {
+                    *k = tables::encode(black_box(x), black_box(y), black_box(z), 21);
+                }
+                black_box(&keys);
+            });
+        });
+        g.finish();
+    }
+}
+
 /// rawrunprotected's 3D tables (public domain), the incumbent for the
 /// 3D curve: a twelve-state machine, one dependent load per level.
 mod tables {
@@ -257,5 +420,5 @@ mod tables {
     }
 }
 
-criterion_group!(benches, bench, bench3);
+criterion_group!(benches, bench, bench_batch, bench3, bench3_batch);
 criterion_main!(benches);

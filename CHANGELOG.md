@@ -16,8 +16,8 @@ in `benches/hilbert.rs` and the README. `hakmem::hilbert3::Hilbert3` and
 `Morton3`: the 3D curve of rawrunprotected's tables, whose frames are
 `A₄ ≅ AGL(1, 4)`, so the decode is the 2D encode's scan in log depth
 (1.6 to 1.7 times the table loop); the encode, whose transition monoid
-has no structure, is the twelve-state machine memoised into the
-crate's one table, 96 bytes built by a `const fn` from the algebra,
+has no structure, is the twelve-state machine memoised into a
+table of 96 bytes built by a `const fn` from the algebra,
 on par with the incumbent. Checked against the published tables on
 every cell of every order up to 5. Cookbook recipe 14. Laws against the
 textbook `xy2d` / `d2xy` loops, the path property and the order
@@ -25,6 +25,32 @@ recursion, exhaustive on `u16` up to order 8. `Bits::suffix_xor` and
 the `Word::xor_scan_down` primitive behind it, with a PCLMULQDQ path
 (the high half of the product by all-ones); `gray_decode` is now that
 scan by another name.
+
+Batch conversions, in place over a slice of keys the caller owns:
+`Hilbert2::from_morton_in_place` / `into_morton_in_place` and the same
+for `Hilbert3`, on `u32` and `u64`. The caller fills the keys with
+Morton codes from any point layout; the kernel sees words only (design
+notes section 3). With AVX-512 VBMI a step is one `vpermb` through a
+64-entry table (2D, two levels a step) or one `vpermi2b` through the
+96-byte encode table (3D, a level a step) per register of keys, the
+frame riding in the index byte; with NEON the same tables in `tbl` and
+`tbx`; otherwise the per-key conversion. On Zen 5: 2.1 ns a key for
+the 2D `u64` encode from coordinates against 11.9 for `fast_hilbert`,
+0.92 against 8.3 for 16-bit coordinates, 2.7 against 15.2 for the 3D
+tables. Laws: the batch equals the per-key conversion both ways, on
+every length to 300 (the tails of the 16-, 32- and 64-key batches).
+Miri runs the VBMI kernels (`nix run .#miri-hakmem`, a new cell); the
+NEON kernels run on the aarch64 CI runner. The 3D decode batches too,
+through the inverse of the encode table (a bijection of the octants per
+state, checked at compile time): 2.7 ns a key against 8.8 for the
+algebraic scan per key and 15.1 for the tables. `_order` forms of all
+four for curves of fewer levels, as `encode_order` / `decode_order` per
+key: a lane swap (2D) or a rotation of every bit triple (3D) over the
+Morton codes, then the full-width batch. The per-key 3D encode indexes
+its table padded to 128 entries under a mask: no bounds check, and the
+loop over points still vectorises, 18.3 µs per 1024 points portable and
+13.2 with `+bmi2` against 19.0 and 15.0 for the tables, where it tied
+or trailed before.
 
 `hakmem::lanes`: the SIMD half of the algebra on stable Rust. `Lanes` is
 the trait for independent 8-bit lanes (bitwise, wrapping add and

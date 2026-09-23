@@ -121,6 +121,21 @@ byte splat, `count_ones`, `trailing_zeros`, `leading_zeros`,
 `clear_lowest_set`, `pext`, `pdep`, `select_lowest`, `xor_scan`,
 `xor_scan_down`, `low_ones`. Everything else is derived.
 
+Batch operations are transforms of indices over words the caller
+owns: a slice of keys in, the same slice converted in place, no
+allocation, and coordinates never enter the kernel.
+`Hilbert2::<u64>::from_morton_in_place(&mut keys)` is the first: the
+caller fills the keys with `Morton2::encode` from whatever layout its
+points are in (arrays of pairs, separate columns, quantised floats)
+and the kernel sees words only. So the crate commits to no point type,
+the batch has the shape of `slice` and `Rank9` (words in, caller's
+storage, O(1) work a word), and a convenience form over coordinate
+slices can be added later without breaking anything, where the
+reverse would not. They are inherent functions on the concrete widths
+that have a kernel (`u32`, `u64`), not on every `Word`: dispatching on
+the width of a generic `W` would need an unsafe cast of the slice, and
+the crate's only `unsafe` is intrinsic calls.
+
 Free functions and types stay in their modules: `slice`, `grid`,
 `myers`, `permute::board8`, `dilated::{Dilated, Morton2}`,
 `set::Positions`. The README is the crate documentation
@@ -177,10 +192,37 @@ byte maps built on it, and every `Lanes` method of
 | `xor_scan_down` (suffix XOR, the Gray decode) | the high half of the same PCLMULQDQ product is the exclusive suffix parity; one XOR more | the smear run downward, six operations |
 | `Lanes::affine`, and `reverse_bits`, `sra`, `rotl`, `rotr` (and `shl`, `shr` on x86) through it | one GFNI `gf2p8affineqb`; NEON has `rbit` and native byte shifts | two nibble lookups (`lut16`) and an XOR, by linearity; eight parity folds on the SWAR carrier |
 
-The choice lives in `word.rs` and, for the lanes, `lanes.rs`, and
-nowhere else. The `unsafe` in the crate is the intrinsic calls in those
-two modules, allowed only when the matching `target_feature` is a
-compile-time fact. The safe-intrinsics route of Rust 1.87 does not
+The batch Hilbert conversions have their own kernels, one level
+machine read as a table and applied to a register of keys at a time:
+
+| batch | with the target feature | without |
+|---|---|---|
+| `Hilbert2::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermb` through a 64-entry table a step, two levels a step, the frame riding in the index byte; NEON: the same table in four registers for `tbl` | `from_morton` per key |
+| `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step; NEON: `tbl` over four registers and `tbx` over two | `from_morton` per key |
+| `Hilbert3::into_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time) | `into_morton` per key, the algebraic scan |
+
+Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
+1024 keys, `benches/hilbert.rs`), from coordinates to keys and back, ns a key:
+
+| conversion | batch | per key | incumbent |
+|---|---|---|---|
+| 2D encode, `u64` keys, 32 levels | 2.1 | 5.9 | `fast_hilbert` 11.9 |
+| 2D encode, `u16` coordinates to `u32` keys, 16 levels (the packed R-tree case) | 0.92 | 6.1 | `fast_hilbert` 8.3 |
+| 3D encode, `u64` keys, 21 levels | 2.7 | 13.1 | rawrunprotected's tables 15.2 |
+| 3D decode, `u64` keys, 21 levels | 2.7 | 8.8 | rawrunprotected's tables 15.1 |
+
+Without VBMI the batch is still faster than the per-key form (7.0
+against 12.3 µs for the 2D `u64` case on the same core): Morton first
+and the conversion second is two loops the compiler schedules better
+than one fused one. The 3D encode is where the kernel matters most:
+its transition monoid has no algebra (section 8), which is exactly
+the case a table in a register serves. The NEON paths are checked in
+CI on the aarch64 runner and not yet measured.
+
+The choice lives in `word.rs`, `lanes.rs` and the batch kernels at the
+end of `hilbert.rs` and `hilbert3.rs`, and nowhere else. The `unsafe`
+in the crate is the intrinsic calls in those modules, allowed only
+when the matching `target_feature` is a compile-time fact. The safe-intrinsics route of Rust 1.87 does not
 apply: it needs `#[target_feature]` on the calling function, which a
 trait method cannot carry, and the build configuration does not count.
 Miri runs `tests/miri.rs` over both paths (`nix run .#miri-hakmem`).

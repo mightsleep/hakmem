@@ -378,6 +378,151 @@ mod broadword_compress {
     }
 }
 
+// The batch Hilbert conversions against the per-key ones, on every
+// length around the batch sizes (16 and 32 keys on NEON, 64 on
+// AVX-512), so each hardware path and its tail is covered.
+mod hilbert2_in_place {
+    use hakmem::laws;
+    use proptest::prelude::*;
+
+    fn xorshift(n: usize, mut s: u64) -> Vec<u64> {
+        (0..n)
+            .map(|_| {
+                s ^= s << 13;
+                s ^= s >> 7;
+                s ^= s << 17;
+                s
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_length_to_200() {
+        for n in 0..=200 {
+            let codes = xorshift(n, 0x9E37_79B9_7F4A_7C15 ^ n as u64);
+            let mut scratch = vec![0; n];
+            assert!(
+                laws::hilbert2_in_place_matches_per_key_u64(&codes, &mut scratch),
+                "n={n}"
+            );
+            // Truncation is the point: the low halves as u32 codes.
+            #[allow(clippy::cast_possible_truncation)]
+            let codes32: Vec<u32> = codes.iter().map(|&c| c as u32).collect();
+            let mut scratch32 = vec![0; n];
+            assert!(
+                laws::hilbert2_in_place_matches_per_key_u32(&codes32, &mut scratch32),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_length_to_200_3d() {
+        for n in 0..=200 {
+            let codes = xorshift(n, 0x2545_F491_4F6C_DD1D ^ n as u64);
+            let mut scratch = vec![0; n];
+            assert!(
+                laws::hilbert3_in_place_matches_per_key_u64(&codes, &mut scratch),
+                "n={n}"
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let codes32: Vec<u32> = codes.iter().map(|&c| c as u32).collect();
+            let mut scratch32 = vec![0; n];
+            assert!(
+                laws::hilbert3_in_place_matches_per_key_u32(&codes32, &mut scratch32),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_order() {
+        for n in [7usize, 130] {
+            let codes = xorshift(n, 0xD1B5_4A32_D192_ED03 ^ n as u64);
+            // Truncation is the point: the low halves as u32 codes.
+            #[allow(clippy::cast_possible_truncation)]
+            let codes32: Vec<u32> = codes.iter().map(|&c| c as u32).collect();
+            let (mut a, mut b) = (vec![0; n], vec![0; n]);
+            for order in 0..=32 {
+                assert!(
+                    laws::hilbert2_in_place_order_matches_per_key_u64(&codes, &mut a, order),
+                    "2D u64 n={n} order={order}"
+                );
+            }
+            for order in 0..=21 {
+                assert!(
+                    laws::hilbert3_in_place_order_matches_per_key_u64(&codes, &mut a, order),
+                    "3D u64 n={n} order={order}"
+                );
+            }
+            for order in 0..=16 {
+                assert!(
+                    laws::hilbert2_in_place_order_matches_per_key_u32(&codes32, &mut b, order),
+                    "2D u32 n={n} order={order}"
+                );
+            }
+            for order in 0..=10 {
+                assert!(
+                    laws::hilbert3_in_place_order_matches_per_key_u32(&codes32, &mut b, order),
+                    "3D u32 n={n} order={order}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn structured_words() {
+        for &w in &[
+            0u64,
+            u64::MAX,
+            0x5555_5555_5555_5555,
+            0xAAAA_AAAA_AAAA_AAAA,
+            1,
+            1 << 63,
+        ] {
+            let codes = vec![w; 130];
+            let mut scratch = vec![0; 130];
+            assert!(
+                laws::hilbert2_in_place_matches_per_key_u64(&codes, &mut scratch),
+                "w={w:#x}"
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let codes32 = vec![w as u32; 130];
+            let mut scratch32 = vec![0; 130];
+            assert!(
+                laws::hilbert2_in_place_matches_per_key_u32(&codes32, &mut scratch32),
+                "w={w:#x}"
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn u64_codes(codes in prop::collection::vec(any::<u64>(), 0..=300)) {
+            let mut scratch = vec![0; codes.len()];
+            prop_assert!(laws::hilbert2_in_place_matches_per_key_u64(&codes, &mut scratch));
+        }
+
+        #[test]
+        fn u32_codes(codes in prop::collection::vec(any::<u32>(), 0..=300)) {
+            let mut scratch = vec![0; codes.len()];
+            prop_assert!(laws::hilbert2_in_place_matches_per_key_u32(&codes, &mut scratch));
+        }
+
+        #[test]
+        fn u64_codes_3d(codes in prop::collection::vec(any::<u64>(), 0..=300)) {
+            let mut scratch = vec![0; codes.len()];
+            prop_assert!(laws::hilbert3_in_place_matches_per_key_u64(&codes, &mut scratch));
+        }
+
+        #[test]
+        fn u32_codes_3d(codes in prop::collection::vec(any::<u32>(), 0..=300)) {
+            let mut scratch = vec![0; codes.len()];
+            prop_assert!(laws::hilbert3_in_place_matches_per_key_u32(&codes, &mut scratch));
+        }
+    }
+}
+
 // The rank9 directory against the linear scans it indexes, on dense and
 // on sparse bit slices, across block and sample boundaries.
 mod rank9 {

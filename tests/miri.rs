@@ -80,3 +80,59 @@ fn lanes_hardware_paths() {
         table
     ));
 }
+
+/// The batch Hilbert kernels (VBMI `vpermb` / `vpermi2b`, NEON `tbl`)
+/// against the per-key conversions, on lengths around every batch size.
+#[test]
+fn hilbert_batch_paths() {
+    use hakmem::laws;
+    let mut s = 0x9E37_79B9_7F4A_7C15u64;
+    for n in [0usize, 1, 15, 16, 17, 32, 63, 64, 65, 130] {
+        let codes: Vec<u64> = (0..n)
+            .map(|_| {
+                s ^= s << 13;
+                s ^= s >> 7;
+                s ^= s << 17;
+                s
+            })
+            .collect();
+        // Truncation is the point: the low halves as u32 codes.
+        #[allow(clippy::cast_possible_truncation)]
+        let codes32: Vec<u32> = codes.iter().map(|&c| c as u32).collect();
+        let (mut a, mut b) = (vec![0; n], vec![0; n]);
+        assert!(
+            laws::hilbert2_in_place_matches_per_key_u64(&codes, &mut a),
+            "n={n}"
+        );
+        assert!(
+            laws::hilbert3_in_place_matches_per_key_u64(&codes, &mut a),
+            "n={n}"
+        );
+        assert!(
+            laws::hilbert2_in_place_matches_per_key_u32(&codes32, &mut b),
+            "n={n}"
+        );
+        assert!(
+            laws::hilbert3_in_place_matches_per_key_u32(&codes32, &mut b),
+            "n={n}"
+        );
+        for order in [0, 1, 7, 10] {
+            assert!(
+                laws::hilbert2_in_place_order_matches_per_key_u64(&codes, &mut a, order),
+                "n={n} order={order}"
+            );
+            assert!(
+                laws::hilbert3_in_place_order_matches_per_key_u64(&codes, &mut a, order),
+                "n={n} order={order}"
+            );
+            assert!(
+                laws::hilbert2_in_place_order_matches_per_key_u32(&codes32, &mut b, order),
+                "n={n} order={order}"
+            );
+            assert!(
+                laws::hilbert3_in_place_order_matches_per_key_u32(&codes32, &mut b, order),
+                "n={n} order={order}"
+            );
+        }
+    }
+}

@@ -333,6 +333,121 @@ pub fn hilbert_order_laws<W: Word>(x: W, y: W, order: u32) -> bool {
         && Hilbert2::encode_order(side, W::ZERO, order).index() == W::low_ones(2 * order)
 }
 
+macro_rules! hilbert2_in_place_law {
+    ($($w:ty => $name:ident),* $(,)?) => {$(
+        /// The batch conversion is the per-key one, both ways.
+        ///
+        /// `codes` copied into `scratch` (same length, asserted) and
+        /// converted in place equals [`Hilbert2::from_morton`] of each
+        /// code, and converting back gives `codes`. Lengths off a multiple
+        /// of the batch exercise the tail.
+        #[must_use]
+        pub fn $name(codes: &[$w], scratch: &mut [$w]) -> bool {
+            assert_eq!(codes.len(), scratch.len(), "scratch must match codes");
+            scratch.copy_from_slice(codes);
+            Hilbert2::<$w>::from_morton_in_place(scratch);
+            let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
+                h == Hilbert2::<$w>::from_morton(Morton2::from_code(c)).index()
+            });
+            Hilbert2::<$w>::into_morton_in_place(scratch);
+            forward && scratch == codes
+        }
+    )*};
+}
+
+hilbert2_in_place_law!(
+    u32 => hilbert2_in_place_matches_per_key_u32,
+    u64 => hilbert2_in_place_matches_per_key_u64,
+);
+
+macro_rules! hilbert3_in_place_law {
+    ($($w:ty => $name:ident),* $(,)?) => {$(
+        /// The 3D batch conversion is the per-key one, both ways.
+        ///
+        /// As in the 2D law: `codes` copied into `scratch` (same length,
+        /// asserted), converted in place, compared with
+        /// [`Hilbert3::from_morton`](crate::hilbert3::Hilbert3::from_morton)
+        /// of each code, and converted back to `codes`. Bits above
+        /// `3 · LEVELS` are outside the curve and are masked off first.
+        #[must_use]
+        pub fn $name(codes: &[$w], scratch: &mut [$w]) -> bool {
+            use crate::dilated::Morton3;
+            use crate::hilbert3::Hilbert3;
+            assert_eq!(codes.len(), scratch.len(), "scratch must match codes");
+            let used: $w = <$w>::MAX >> (<$w>::BITS - 3 * Hilbert3::<$w>::LEVELS);
+            for (s, &c) in scratch.iter_mut().zip(codes) {
+                *s = c & used;
+            }
+            Hilbert3::<$w>::from_morton_in_place(scratch);
+            let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
+                h == Hilbert3::<$w>::from_morton(Morton3::from_code(c & used)).index()
+            });
+            Hilbert3::<$w>::into_morton_in_place(scratch);
+            forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
+        }
+    )*};
+}
+
+hilbert3_in_place_law!(
+    u32 => hilbert3_in_place_matches_per_key_u32,
+    u64 => hilbert3_in_place_matches_per_key_u64,
+);
+
+macro_rules! hilbert_in_place_order_law {
+    ($($w:ty => $name2:ident, $name3:ident),* $(,)?) => {$(
+        /// The batch on the curve of `order` levels is
+        /// [`Hilbert2::encode_order`] per key, both ways.
+        ///
+        /// `codes` masked to `4^order`, copied into `scratch` (same
+        /// length, asserted), converted with
+        /// `from_morton_in_place_order`, compared per key, and converted
+        /// back with `into_morton_in_place_order`. `order` in
+        /// `0..=LEVELS`.
+        #[must_use]
+        pub fn $name2(codes: &[$w], scratch: &mut [$w], order: u32) -> bool {
+            assert_eq!(codes.len(), scratch.len(), "scratch must match codes");
+            let used = <$w>::MAX.checked_shl(2 * order).map_or(<$w>::MAX, |m| !m);
+            for (s, &c) in scratch.iter_mut().zip(codes) {
+                *s = c & used;
+            }
+            Hilbert2::<$w>::from_morton_in_place_order(scratch, order);
+            let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
+                let (x, y) = Morton2::<$w>::from_code(c & used).decode();
+                h == Hilbert2::<$w>::encode_order(x, y, order).index()
+            });
+            Hilbert2::<$w>::into_morton_in_place_order(scratch, order);
+            forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
+        }
+
+        /// The 3D batch on the curve of `order` levels is
+        /// [`Hilbert3::encode_order`](crate::hilbert3::Hilbert3::encode_order)
+        /// per key, both ways, as in the 2D law, with codes masked to
+        /// `8^order`.
+        #[must_use]
+        pub fn $name3(codes: &[$w], scratch: &mut [$w], order: u32) -> bool {
+            use crate::dilated::Morton3;
+            use crate::hilbert3::Hilbert3;
+            assert_eq!(codes.len(), scratch.len(), "scratch must match codes");
+            let used = <$w>::MAX.checked_shl(3 * order).map_or(<$w>::MAX, |m| !m);
+            for (s, &c) in scratch.iter_mut().zip(codes) {
+                *s = c & used;
+            }
+            Hilbert3::<$w>::from_morton_in_place_order(scratch, order);
+            let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
+                let (x, y, z) = Morton3::<$w>::from_code(c & used).decode();
+                h == Hilbert3::<$w>::encode_order(x, y, z, order).index()
+            });
+            Hilbert3::<$w>::into_morton_in_place_order(scratch, order);
+            forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
+        }
+    )*};
+}
+
+hilbert_in_place_order_law!(
+    u32 => hilbert2_in_place_order_matches_per_key_u32, hilbert3_in_place_order_matches_per_key_u32,
+    u64 => hilbert2_in_place_order_matches_per_key_u64, hilbert3_in_place_order_matches_per_key_u64,
+);
+
 /// Bit-loop reference semantics. Slow, obviously correct, the thing
 /// every combinator is measured against.
 pub mod reference {
