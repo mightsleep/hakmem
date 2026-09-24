@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Typed combinator algebra over machine words. A register is an 8- to 128-element container; an instruction (POPCNT, TZCNT, the carry chain, PEXT/PDEP, PCLMULQDQ) is a combinator; a kernel is a composition. The crate names the combinators, restricts them to the domains where they are lawful, and exports the laws they obey so downstream code can property-test its own carriers and backends."><title>hakmem - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (feaadeeac 2026-09-19)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate hakmem</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../hakmem/index.html">hakmem</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#status" title="Status">Status</a></li><li><a href="#checks" title="Checks">Checks</a></li><li><a href="#benchmarks-against-the-crates-people-use" title="Benchmarks against the crates people use">Benchmarks against the crates people use</a></li><li><a href="#cookbook" title="Cookbook">Cookbook</a></li><li><a href="#hardware-paths" title="Hardware paths">Hardware paths</a></li><li><a href="#laws" title="Laws">Laws</a></li></ul><h3><a href="#modules">Crate Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1>Crate <span>hakmem</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/hakmem/lib.rs.html#1-32">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h1 align="center">hakmem</h1>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Every fast codebase has a `bits.rs`: one-liners from Hacker’s Delight, each under a comment that says `// do not touch`. This crate is that file with the comment replaced by a proof obligation. Every trick has a name, a type, a domain where it is defined, and the laws it obeys, property-tested on every carrier from `u8` to `[u64; N]` and exhaustively at 8 and 16 bits. The laws are exported, so your own backends can be held to them too."><title>hakmem - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../" data-static-root-path="../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (feaadeeac 2026-09-19)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../static.files/storage-41dd4d93.js"></script><script defer src="../crates.js"></script><script defer src="../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../static.files/favicon-044be391.svg"></head><body class="rustdoc mod crate"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Crate hakmem</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../hakmem/index.html">hakmem</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><ul class="block"><li><a id="all-types" href="all.html">All Items</a></li></ul><section id="rustdoc-toc"><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#a-tour" title="A tour">A tour</a></li><li><a href="#status" title="Status">Status</a></li><li><a href="#examples" title="Examples">Examples</a></li><li><a href="#benchmarks-against-the-crates-people-use" title="Benchmarks against the crates people use">Benchmarks against the crates people use</a></li><li><a href="#cookbook" title="Cookbook">Cookbook</a></li><li><a href="#hardware-paths" title="Hardware paths">Hardware paths</a></li><li><a href="#laws" title="Laws">Laws</a></li><li><a href="#checks" title="Checks">Checks</a></li></ul><h3><a href="#modules">Crate Items</a></h3><ul class="block"><li><a href="#modules" title="Modules">Modules</a></li></ul></section><div id="rustdoc-modnav"></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><h1>Crate <span>hakmem</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../src/hakmem/lib.rs.html#1-49">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><h1 align="center">hakmem</h1>
 <p align="center">Bit tricks as a lawful algebra.</p>
 <p align="center">
   <a href="https://mightsleep.github.io/hakmem/doc/hakmem/">docs</a> ·
@@ -11,21 +11,40 @@
   <a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img alt="aarch64" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fall.json&style=for-the-badge"></a>
   <a href="https://crates.io/crates/hakmem"><img alt="crates.io" src="https://img.shields.io/crates/v/hakmem?style=for-the-badge&labelColor=313244&color=a6e3a1&logo=rust&logoColor=cdd6f4"></a>
   <a href="https://docs.rs/hakmem"><img alt="docs.rs" src="https://img.shields.io/docsrs/hakmem?style=for-the-badge&labelColor=313244&color=cba6f7&logo=docsdotrs&logoColor=cdd6f4"></a>
-  <img alt="msrv 1.87" src="https://img.shields.io/badge/msrv-1.87-fab387?style=for-the-badge&labelColor=313244&logo=rust&logoColor=cdd6f4">
+  <img alt="msrv 1.89" src="https://img.shields.io/badge/msrv-1.89-fab387?style=for-the-badge&labelColor=313244&logo=rust&logoColor=cdd6f4">
   <img alt="no_std" src="https://img.shields.io/badge/no__std-yes-94e2d5?style=for-the-badge&labelColor=313244">
   <img alt="license" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-b4befe?style=for-the-badge&labelColor=313244">
 </p>
-<p>Typed combinator algebra over machine words. A register is an 8- to
-128-element container; an instruction (POPCNT, TZCNT, the carry chain,
-PEXT/PDEP, PCLMULQDQ) is a combinator; a kernel is a composition. The
-crate names the combinators, restricts them to the domains where they
-are lawful, and exports the laws they obey so downstream code can
-property-test its own carriers and backends.</p>
+<p>Every fast codebase has a <code>bits.rs</code>: one-liners from Hacker’s Delight,
+each under a comment that says <code>// do not touch</code>. This crate is that
+file with the comment replaced by a proof obligation. Every trick has a
+name, a type, a domain where it is defined, and the laws it obeys,
+property-tested on every carrier from <code>u8</code> to <code>[u64; N]</code> and
+exhaustively at 8 and 16 bits. The laws are exported, so your own
+backends can be held to them too.</p>
+<p>The plan was correctness. Speed turned up anyway:</p>
+<ul>
+<li>Hilbert encode at 1.3 ns a point in 2D, where <code>fast_hilbert</code> takes 12;
+the 3D curve beats the 96-byte lookup tables it was derived from.</li>
+<li>A rectangle becomes 16 sorted key ranges in 0.3 µs (Morton) or 1.1 µs
+(Hilbert); “can this row group hold anything in the rectangle” takes
+10 to 100 ns.</li>
+<li>Levenshtein on a 64-byte pattern over 1 KiB of text in 2.4 µs, where
+<code>strsim</code> takes 44 and <code>triple_accel</code> 235. Fuzzy search reports where
+each match starts, too, which the bit-parallel column does not know.</li>
+<li>Rank over 2^20 bits in two thirds of <code>sux</code>’s time, bounds checks
+included.</li>
+</ul>
+<p><code>no_std</code>, zero dependencies, stable Rust, no <code>unsafe</code> outside the
+intrinsics. Where it loses (and it does, see the tables), the tables
+say so.</p>
 <p>Named after <a href="https://en.wikipedia.org/wiki/HAKMEM">HAKMEM</a> (MIT AI Memo
 239, 1972), items 161–180 of which are the first catalogue of these
-sentences.</p>
+tricks. They still work; now a compiler checks.</p>
+<h3 id="a-tour"><a class="doc-anchor" href="#a-tour">§</a>A tour</h3>
+<p>Every line is a doctest, so if this README lies, CI goes red.</p>
 
-<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::{Bits, Morton2};
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::{Bits, Hilbert2, Hilbert3, Morton2, Words};
 
 <span class="comment">// Runs: bit p set iff bits p..p+3 are all set (Hacker's Delight 6-5).
 </span><span class="kw">let </span>x: u64 = <span class="number">0b0111_0110</span>;
@@ -52,6 +71,12 @@ sentences.</p>
 </span><span class="kw">let </span>m = Morton2::&lt;u32&gt;::encode(<span class="number">3</span>, <span class="number">5</span>);
 <span class="macro">assert_eq!</span>(m.step_x().decode(), (<span class="number">4</span>, <span class="number">5</span>));
 
+<span class="comment">// Hilbert indices: the decode is two suffix XORs over the Morton code.
+</span><span class="macro">assert_eq!</span>(Hilbert2::&lt;u8&gt;::encode_order(<span class="number">3</span>, <span class="number">1</span>, <span class="number">2</span>).index(), <span class="number">12</span>);
+<span class="macro">assert_eq!</span>(Hilbert2::from_index(<span class="number">13u8</span>).decode_order(<span class="number">2</span>), (<span class="number">2</span>, <span class="number">1</span>));
+<span class="comment">// In 3D the frames form A₄ = AGL(1, 4): the decode is a scan over GF(4).
+</span><span class="macro">assert_eq!</span>(Hilbert3::&lt;u64&gt;::encode(<span class="number">1000</span>, <span class="number">2000</span>, <span class="number">3000</span>).decode(), (<span class="number">1000</span>, <span class="number">2000</span>, <span class="number">3000</span>));
+
 <span class="comment">// 8×8 bit matrices: three delta swaps per transpose.
 </span><span class="kw">use </span>hakmem::permute::board8::transpose;
 <span class="macro">assert_eq!</span>(transpose(<span class="number">1 </span>&lt;&lt; (<span class="number">8 </span>* <span class="number">1 </span>+ <span class="number">5</span>)), <span class="number">1 </span>&lt;&lt; (<span class="number">8 </span>* <span class="number">5 </span>+ <span class="number">1</span>));
@@ -70,17 +95,23 @@ sentences.</p>
 <span class="macro">assert_eq!</span>(escaped, <span class="number">0b10_0000_0100</span>);
 
 <span class="comment">// The carry chain as a dynamic-programming column (Myers 1999).
-</span><span class="kw">use </span>hakmem::myers::{distance, edit_distance, search};
-<span class="macro">assert_eq!</span>(edit_distance::&lt;u64&gt;(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>));
+</span><span class="kw">use </span>hakmem::myers::{distance, distance_in, search};
+<span class="macro">assert_eq!</span>(distance_in::&lt;u64&gt;(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>));
 <span class="macro">assert_eq!</span>(distance(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>)); <span class="comment">// carrier by length
-</span><span class="kw">let </span>hits: Vec&lt;<span class="kw">_</span>&gt; = search::&lt;u64&gt;(<span class="string">b"lo"</span>, <span class="string">b"hello lo"</span>, <span class="number">0</span>).unwrap().collect();
-<span class="macro">assert_eq!</span>(hits, [(<span class="number">5</span>, <span class="number">0</span>), (<span class="number">8</span>, <span class="number">0</span>)]);
+// Fuzzy search, with where each match starts. The typo is deliberate.
+</span><span class="kw">let </span>text = <span class="string">b"the quick brown fox and the quikc brown fox"</span>;
+<span class="kw">let </span>found: Vec&lt;<span class="kw">_</span>&gt; = search::&lt;u64&gt;(<span class="string">b"quick brown fox"</span>, text, <span class="number">2</span>)
+    .unwrap()
+    .occurrences()
+    .map(|o| (o.start(), o.distance()))
+    .collect();
+<span class="macro">assert_eq!</span>(found, [(<span class="number">4</span>, <span class="number">0</span>), (<span class="number">28</span>, <span class="number">2</span>)]);
 
 <span class="comment">// Patterns wider than a register: `Wide&lt;N&gt;` is `[u64; N]` as one word,
 // and the same Myers code runs on it unchanged.
 </span><span class="kw">use </span>hakmem::Wide;
 <span class="kw">let </span>long = [<span class="string">b'a'</span>; <span class="number">200</span>];
-<span class="macro">assert_eq!</span>(edit_distance::&lt;Wide&lt;<span class="number">4</span>&gt;&gt;(<span class="kw-2">&amp;</span>long, <span class="kw-2">&amp;</span>long[..<span class="number">190</span>]), <span class="prelude-val">Some</span>(<span class="number">10</span>));
+<span class="macro">assert_eq!</span>(distance_in::&lt;Wide&lt;<span class="number">4</span>&gt;&gt;(<span class="kw-2">&amp;</span>long, <span class="kw-2">&amp;</span>long[..<span class="number">190</span>]), <span class="prelude-val">Some</span>(<span class="number">10</span>));
 
 <span class="comment">// 2D runs: a w×h block in a bitmap of rows, by two halving chains
 // (binary erosion by a rectangle; first-fit for tile allocators).
@@ -89,57 +120,55 @@ sentences.</p>
 <span class="macro">assert_eq!</span>(hakmem::grid::find_block(<span class="kw-2">&amp;</span>rows, <span class="number">2</span>, <span class="number">2</span>, <span class="kw-2">&amp;mut </span>scratch), <span class="prelude-val">Some</span>((<span class="number">0</span>, <span class="number">3</span>)));
 
 <span class="comment">// Slices of words, no index needed.
-</span><span class="macro">assert_eq!</span>(hakmem::slice::find_run(<span class="kw-2">&amp;</span>[<span class="number">0xFFu64 </span>&lt;&lt; <span class="number">56</span>, u64::MAX], <span class="number">16</span>), <span class="prelude-val">Some</span>(<span class="number">56</span>));
+</span><span class="macro">assert_eq!</span>([<span class="number">0xFFu64 </span>&lt;&lt; <span class="number">56</span>, u64::MAX].find_run(<span class="number">16</span>), <span class="prelude-val">Some</span>(<span class="number">56</span>));
 
-<span class="comment">// A rank/select directory over any `&amp;[u64]`, storage you provide.
+<span class="comment">// Byte lanes, the SIMD half: sixteen bytes to a mask, then back to `Bits`.
+</span><span class="kw">use </span>hakmem::lanes::{Lanes, U8x16};
+<span class="kw">let </span>block = U8x16::load(<span class="string">b"{\"a\": [1, 2]}   "</span>);
+<span class="kw">let </span>quotes = block.cmp_eq(U8x16::splat(<span class="string">b'"'</span>)).to_bitmask();
+<span class="macro">assert_eq!</span>(quotes, <span class="number">0b1010</span>);
+<span class="macro">assert_eq!</span>(quotes.prefix_xor(), <span class="number">0b0110</span>); <span class="comment">// inside the string
+
+// A rank/select directory over any `&amp;[u64]`, storage you provide.
 </span><span class="kw">use </span>hakmem::rank9::Rank9;
 <span class="kw">let </span>bits = [<span class="number">0b1011u64</span>, u64::MAX, <span class="number">0</span>];
 <span class="kw">let </span><span class="kw-2">mut </span>counts = <span class="macro">vec!</span>[<span class="number">0</span>; Rank9::counts_len(bits.len())];
 <span class="kw">let </span><span class="kw-2">mut </span>select = <span class="macro">vec!</span>[<span class="number">0</span>; Rank9::select_len(bits.len())];
-Rank9::build(<span class="kw-2">&amp;</span>bits, <span class="kw-2">&amp;mut </span>counts, <span class="kw-2">&amp;mut </span>select);
-<span class="kw">let </span>dir = Rank9::new(<span class="kw-2">&amp;</span>bits, <span class="kw-2">&amp;</span>counts, <span class="kw-2">&amp;</span>select);
+<span class="kw">let </span>dir = Rank9::build(<span class="kw-2">&amp;</span>bits, <span class="kw-2">&amp;mut </span>counts, <span class="kw-2">&amp;mut </span>select);
 <span class="macro">assert_eq!</span>((dir.rank(<span class="number">64</span>), dir.select(<span class="number">3</span>)), (<span class="number">3</span>, <span class="prelude-val">Some</span>(<span class="number">64</span>)));</code></pre></div><h3 id="status"><a class="doc-anchor" href="#status">§</a>Status</h3>
-<p>This is a learning project, one person’s, and far from production.
-I am working through the broadword literature by giving each trick a
-type, a law and a test; the crate is what that leaves behind. Expect
-the API to change between minor versions, and do not expect every
-definition to be the best one available: the portable <code>select</code> loses
-to a plain loop for small <code>k</code>, the portable <code>compact</code> to one over sparse
-masks, and definitions were chosen for clarity and lawfulness before
-speed.</p>
+<p>One person’s learning project, and far from production. I am working
+through the broadword literature by giving each trick a type, a law and
+a test; the crate is what that leaves behind. Definitions were chosen
+for lawfulness first and speed second, and it shows in places: the
+portable <code>select</code> loses to a plain loop for small <code>k</code>, the portable
+<code>compact</code> to one over sparse masks.</p>
+<p>The API will change between minor versions (0.2 broke 0.1 without
+apology). It changes on purpose, though: <code>public-api.txt</code> is checked in
+and diffed in CI, and cargo-semver-checks says whether the version
+number admits it.</p>
 <p>What I do take seriously is finding bugs. Every combinator ships
 with laws; the laws run on every carrier, with and without the
 hardware paths, exhaustively at 8 and 16 bits, and under Miri for
-the intrinsics; CI builds all of it as sandboxed Nix derivations on
+the intrinsics (GFNI under Miri only, the runners being a mix of CPUs);
+CI builds all of it as sandboxed Nix derivations on
 <code>x86_64</code> and <code>aarch64</code>. A wrong result is a bug and I want to hear about
 it. A slow one may be known; the design notes linked at the end list
 what is.</p>
 <p>If you need a stable dependency today, take the two or three lines
-you need from Hacker’s Delight; that is where this crate started. If
-you want to see them named, typed and checked, read on.</p>
-<h3 id="checks"><a class="doc-anchor" href="#checks">§</a>Checks</h3>
-<p>Every cell is one Nix derivation built in a sandbox without network,
-on every push to <code>main</code>. The badges are written by CI after each run
-(<code>.github/status.sh</code>) and read from the <a href="https://mightsleep.github.io/hakmem/">site</a>.</p>
-<div class="table"><table><thead><tr><th>check</th><th><code>x86_64</code></th><th><code>aarch64</code></th></tr></thead><tbody>
-<tr><td>tests, portable</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-portable-default.json&amp;style=flat-square" alt="hakmem-test-portable-default" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-test-portable-default.json&amp;style=flat-square" alt="hakmem-test-portable-default" /></a></td></tr>
-<tr><td>tests, <code>+bmi2,+pclmulqdq</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-default.json&amp;style=flat-square" alt="hakmem-test-bmi2-default" /></a></td><td>n/a</td></tr>
-<tr><td>tests, <code>+bmi2</code> with feature <code>portable</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-portable-feature.json&amp;style=flat-square" alt="hakmem-test-bmi2-portable-feature" /></a></td><td>n/a</td></tr>
-<tr><td>doctests (this README), portable</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-portable.json&amp;style=flat-square" alt="hakmem-doctest-portable" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doctest-portable.json&amp;style=flat-square" alt="hakmem-doctest-portable" /></a></td></tr>
-<tr><td>doctests, <code>+bmi2</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-bmi2.json&amp;style=flat-square" alt="hakmem-doctest-bmi2" /></a></td><td>n/a</td></tr>
-<tr><td>clippy, portable</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-portable-default.json&amp;style=flat-square" alt="hakmem-clippy-portable-default" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-clippy-portable-default.json&amp;style=flat-square" alt="hakmem-clippy-portable-default" /></a></td></tr>
-<tr><td>clippy, <code>+bmi2</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-default.json&amp;style=flat-square" alt="hakmem-clippy-bmi2-default" /></a></td><td>n/a</td></tr>
-<tr><td>clippy, <code>+bmi2</code> with feature <code>portable</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-portable-feature.json&amp;style=flat-square" alt="hakmem-clippy-bmi2-portable-feature" /></a></td><td>n/a</td></tr>
-<tr><td>rustdoc, warnings as errors</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doc.json&amp;style=flat-square" alt="hakmem-doc" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doc.json&amp;style=flat-square" alt="hakmem-doc" /></a></td></tr>
-<tr><td>MSRV 1.87 build of the packaged tarball</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-msrv.json&amp;style=flat-square" alt="hakmem-msrv" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-msrv.json&amp;style=flat-square" alt="hakmem-msrv" /></a></td></tr>
-<tr><td>cargo-deny (licences, bans, sources)</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-deny.json&amp;style=flat-square" alt="hakmem-deny" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-deny.json&amp;style=flat-square" alt="hakmem-deny" /></a></td></tr>
-<tr><td>cargo-audit (advisories, offline)</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-audit.json&amp;style=flat-square" alt="hakmem-audit" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-audit.json&amp;style=flat-square" alt="hakmem-audit" /></a></td></tr>
-<tr><td>treefmt</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Ftreefmt.json&amp;style=flat-square" alt="treefmt" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Ftreefmt.json&amp;style=flat-square" alt="treefmt" /></a></td></tr>
-<tr><td>Miri over the intrinsics, both paths</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fmiri.json&amp;style=flat-square" alt="miri" /></a></td><td>n/a</td></tr>
-</tbody></table>
-</div><h3 id="benchmarks-against-the-crates-people-use"><a class="doc-anchor" href="#benchmarks-against-the-crates-people-use">§</a>Benchmarks against the crates people use</h3>
+you need from Hacker’s Delight; that is where this crate started, and
+their MSRV is 1972. If you want them named, typed and checked, read on.</p>
+<h3 id="examples"><a class="doc-anchor" href="#examples">§</a>Examples</h3>
+<p><code>examples/</code> holds four programs written the way a user would write them,
+each checking itself against the slow way: <code>geo_index</code> (a million
+points in row groups, a rectangle query that skips most of them),
+<code>primes</code> (the primes below ten million as a bitmap with rank and
+select), <code>json_structure</code> (the first stage of simdjson, carries across
+64-byte blocks) and <code>fuzzy</code> (the nearest words to a typo, and a phrase
+found with its typos). <code>cargo run --release --example geo_index</code>.</p>
+<h3 id="benchmarks-against-the-crates-people-use"><a class="doc-anchor" href="#benchmarks-against-the-crates-people-use">§</a>Benchmarks against the crates people use</h3>
 <p>Criterion, AMD Zen 5, one thread, <code>cargo bench --bench incumbents</code>. Numbers are from a sandboxed run; rerun on your machine
-before believing them. What the table does not hide: without BMI2 the
+before believing them. Bold marks the winner, also when it is not
+this crate. What the tables do not hide: without BMI2 the
 select is slower than the <code>broadword</code> crate’s, and <code>Wide&lt;N&gt;</code> pays <code>N</code>
 limb operations per step.</p>
 <p>The same benches run in CI on a shared GitHub runner after every change
@@ -212,7 +241,99 @@ of words, wins:</p>
 <p><code>hakmem</code> always computes the full distance; a banded variant (Ukkonen
 cut-off over the active blocks) is the obvious next step for long
 similar strings and is not implemented.</p>
-<h3 id="cookbook"><a class="doc-anchor" href="#cookbook">§</a>Cookbook</h3>
+<div class="table"><table><thead><tr><th>Hilbert curve, 32 levels, <code>u32</code> coordinates (1024 points)</th><th>decode, portable</th><th>decode, <code>+pclmulqdq</code></th><th>encode, portable</th><th>encode, <code>+bmi2,+pclmulqdq</code></th></tr></thead><tbody>
+<tr><td><code>hakmem</code> <code>Hilbert2</code></td><td><strong>3.0 µs</strong></td><td><strong>1.7 µs</strong></td><td><strong>10.9 µs</strong></td><td><strong>5.4 µs</strong></td></tr>
+<tr><td><code>fast_hilbert</code> (512-byte transition table)</td><td>12.8 µs</td><td>12.7 µs</td><td>11.5 µs</td><td>11.4 µs</td></tr>
+<tr><td><code>lindel</code> (Skilling)</td><td>66 µs</td><td>71 µs</td><td>70 µs</td><td>76 µs</td></tr>
+<tr><td><code>Morton2</code>, for the price of the frames</td><td>1.6 µs</td><td>0.56 µs</td><td>1.6 µs</td><td>0.46 µs</td></tr>
+</tbody></table>
+</div><div class="table"><table><thead><tr><th>Hilbert curve in 3D, 21 levels (1024 points)</th><th>decode, portable</th><th>decode, <code>+bmi2</code></th><th>encode, portable</th><th>encode, <code>+bmi2</code></th></tr></thead><tbody>
+<tr><td><code>hakmem</code> <code>Hilbert3</code></td><td><strong>10.6 µs</strong></td><td><strong>8.8 µs</strong></td><td><strong>18.3 µs</strong></td><td><strong>13.2 µs</strong></td></tr>
+<tr><td>rawrunprotected’s tables, 96 bytes each way</td><td>17.5 µs</td><td>14.9 µs</td><td>19.0 µs</td><td>15.0 µs</td></tr>
+<tr><td><code>Morton3</code></td><td>2.1 µs</td><td>0.78 µs</td><td>2.0 µs</td><td>0.72 µs</td></tr>
+</tbody></table>
+</div>
+<p>In 3D the frames form the alternating group <code>A₄</code>, which is
+<code>AGL(1, 4)</code>, so the 2D encode’s scan is the 3D decode; the 3D encode
+is not a scan and is the twelve-state machine memoised into
+a table of 96 bytes built at compile time from the same
+arithmetic. It is the incumbent’s machine, ahead of it by a table padded
+to 128 entries (the masked index needs no bounds check) and a loop the
+compiler vectorises over points; in batches a <code>vpermi2b</code> walks it for
+64 keys at a time.
+The 2D decode is two suffix XORs over the Morton code and a Morton
+decode, straight-line. The encode is a Kogge–Stone scan over the
+per-level frame maps, affine maps over GF(4) once levels are paired,
+four rounds of about 24 word operations after the pairing: the
+adder’s carry chain with GF(4) in place of GF(2), and no instruction
+for it. The construction is rawrunprotected’s (threadlocalmutex.com,
+2016); this is it on any carrier, with laws. <code>fast_hilbert</code> walks a state table three levels a
+step, eleven dependent loads for 32 levels; the scan has no loads and
+no carried chain, which is why it gains from <code>+bmi2</code> (the BMI
+instructions) where the table walk cannot. Recipe 13 of the cookbook
+has the derivation and the group that makes the encode the heavier
+direction.</p>
+<p>Batches of keys convert in place: fill a slice with Morton codes from
+whatever layout the points are in, then turn them into Hilbert indices
+in one call (<code>from_morton_in_place</code>, and <code>to_morton_in_place</code> back;
+the <code>_order</code> forms for a curve of fewer levels). With AVX-512 VBMI a
+step is one <code>vpermi2b</code> per register of keys (2D, three levels through
+128 entries, the frame modulo a reflection; 3D, the 96-byte encode or
+decode table); with AVX2 alone the 3D machine modulo its translations,
+two PSHUFB a level; NEON uses <code>tbl</code>; elsewhere it is the per-key
+conversion. Coordinates never enter these kernels. For the 3D curve on
+<code>u64</code> they may, as three columns (<code>Hilbert3::&lt;u64&gt;::encode_columns</code>,
+<code>decode_columns</code>): with VBMI and GFNI that skips the Morton code both
+ways, 1.2 and 1.0 ns a point against 1.7 and 1.8, and elsewhere it is
+the Morton code and the batch above.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
+
+<span class="kw">let </span>points = [(<span class="number">3u64</span>, <span class="number">5u64</span>), (<span class="number">40_000</span>, <span class="number">7</span>), (<span class="number">1 </span>&lt;&lt; <span class="number">31</span>, <span class="number">12</span>)];
+<span class="kw">let </span><span class="kw-2">mut </span>keys: Vec&lt;u64&gt; = points
+    .iter()
+    .map(|<span class="kw-2">&amp;</span>(x, y)| Morton2::encode(x, y).code())
+    .collect();
+Hilbert2::&lt;u64&gt;::from_morton_in_place(<span class="kw-2">&amp;mut </span>keys);
+<span class="macro">assert_eq!</span>(keys[<span class="number">1</span>], Hilbert2::&lt;u64&gt;::encode(<span class="number">40_000</span>, <span class="number">7</span>).index());
+keys.sort_unstable(); <span class="comment">// curve order, as a packed R-tree builds it</span></code></pre></div><div class="table"><table><thead><tr><th>Batch conversion, 1024 points, <code>target-cpu=native</code> on Zen 5</th><th>in place</th><th>per key</th><th>incumbent</th></tr></thead><tbody>
+<tr><td>2D encode, <code>u64</code> keys, 32 levels</td><td><strong>1.6 µs</strong></td><td>6.1 µs</td><td><code>fast_hilbert</code> 12.2 µs</td></tr>
+<tr><td>2D encode, <code>u16</code> coordinates, <code>u32</code> keys, 16 levels</td><td><strong>0.90 µs</strong></td><td>6.3 µs</td><td><code>fast_hilbert</code> 8.5 µs</td></tr>
+<tr><td>2D encode from two columns, <code>u64</code> keys (<code>Hilbert2::encode_columns</code>)</td><td><strong>1.3 µs</strong></td><td>6.1 µs</td><td><code>fast_hilbert</code> 12.2 µs</td></tr>
+<tr><td>3D encode, <code>u64</code> keys, 21 levels</td><td><strong>1.8 µs</strong></td><td>13.1 µs</td><td>rawrunprotected’s tables 15.2 µs</td></tr>
+<tr><td>3D decode, <code>u64</code> keys, 21 levels</td><td><strong>1.8 µs</strong></td><td>8.8 µs</td><td>rawrunprotected’s tables 15.1 µs</td></tr>
+</tbody></table>
+</div>
+<p>The query side: <code>Hilbert2::cover</code> and <code>Morton2::cover</code> turn a rectangle
+into at most as many ranges of keys as the output slice holds, sorted
+and inclusive, every cell of the rectangle in one. With room for the
+exact cover they hold nothing else; with less they hold the least
+extra a budget of ranges of the deepest cover that fits can hold. A
+scan of the sorted keys seeks once per range. No allocation, and the
+depth is counted rather than searched for: 0.3 µs a rectangle for 16
+Morton ranges on the full <code>u64</code> grid, 1.1 µs for 16 Hilbert ranges.
+The other way round, <code>intersects(keys, x, y)</code>, all three ranges, says whether a block of
+keys (a granule, a row group, a file, by its least and greatest key)
+can hold a point of the rectangle: one descent where a node is an
+interval of keys and a square of cells at once. 40 to 90 ns when the
+answer is yes, 100 when a granule just misses, 10 when it is nowhere
+near.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
+
+<span class="kw">let </span>points = [(<span class="number">10u64</span>, <span class="number">10u64</span>), (<span class="number">11</span>, <span class="number">12</span>), (<span class="number">500</span>, <span class="number">500</span>), (<span class="number">12</span>, <span class="number">11</span>)];
+<span class="kw">let </span><span class="kw-2">mut </span>keys: Vec&lt;u64&gt; = points
+    .iter()
+    .map(|<span class="kw-2">&amp;</span>(x, y)| Hilbert2::encode(x, y).index())
+    .collect();
+keys.sort_unstable();
+<span class="comment">// The block 8..=15 × 8..=15 in at most four ranges, a seek each.
+</span><span class="kw">let </span><span class="kw-2">mut </span>ranges = [(<span class="number">0u64</span>, <span class="number">0u64</span>); <span class="number">4</span>];
+<span class="kw">let </span>hits: usize = Hilbert2::cover(<span class="number">8</span>..=<span class="number">15</span>, <span class="number">8</span>..=<span class="number">15</span>, <span class="kw-2">&amp;mut </span>ranges)
+    .iter()
+    .map(|<span class="kw-2">&amp;</span>(a, b)| keys.partition_point(|<span class="kw-2">&amp;</span>k| k &lt;= b) - keys.partition_point(|<span class="kw-2">&amp;</span>k| k &lt; a))
+    .sum();
+<span class="macro">assert_eq!</span>(hits, <span class="number">3</span>);</code></pre></div><h3 id="cookbook"><a class="doc-anchor" href="#cookbook">§</a>Cookbook</h3>
 <p><code>hakmem::cookbook</code> explains how the shipped kernels were composed:
 the simdjson inside-string mask, first-fit runs across words, the
 Myers column step, Morton neighbours, <code>strlen</code> in one word, sliding
@@ -220,16 +341,27 @@ attacks, each as problem, decomposition, the laws that justify it,
 and cost, with doctests. The last recipe is the one deliberately left
 unbuilt (banded Myers over <code>Wide&lt;N&gt;</code>), sketched so you can.</p>
 <h3 id="hardware-paths"><a class="doc-anchor" href="#hardware-paths">§</a>Hardware paths</h3>
-<p>Chosen at compile time, never at run time: build with
+<p>The batch conversions (<code>from_morton_in_place</code>, <code>to_morton_in_place</code>,
+<code>encode_columns</code>, <code>decode_columns</code>, the last two on <code>Morton2</code> and
+<code>Hilbert2</code> too) choose their kernel at run time on
+<code>x86_64</code>: AVX-512 VBMI (and GFNI), else AVX2, else the per-key form,
+with no build flags and still <code>no_std</code>; the <code>portable</code> feature turns
+that off. Everything else is chosen at compile time, never at run
+time: build with
 <code>-C target-feature=+bmi2,+pclmulqdq</code> (or <code>-C target-cpu=native</code>) and
-<code>pext</code>/<code>pdep</code>/<code>select</code>/<code>prefix_xor</code> become single instructions; without
+<code>pext</code>/<code>pdep</code>/<code>select</code>/<code>prefix_xor</code>/<code>suffix_xor</code> become single
+instructions; without
 them every combinator has a portable definition with the same
 contract. <code>pext</code> and <code>pdep</code> fall back to Hacker’s Delight’s
 parallel-suffix compress and expand (7-4, 7-5), <code>log₂ w</code> rounds of one
 prefix-XOR scan each, constant time. The <code>portable</code> cargo feature turns
 the hardware paths off even when the target feature is present, for the
 microarchitectures where the instruction exists but is microcoded
-(PDEP/PEXT on AMD Zen 1 and 2).</p>
+(PDEP/PEXT on AMD Zen 1 and 2).
+For the lanes, <code>+ssse3</code> (NEON on aarch64) makes <code>U8x16</code> a vector
+register, and <code>+gfni</code> makes every byte map, <code>affine</code> and the shifts,
+rotates and bit reversal built on it, one <code>gf2p8affineqb</code>; without it
+a byte map is two nibble lookups.</p>
 <h3 id="laws"><a class="doc-anchor" href="#laws">§</a>Laws</h3>
 <p>Every combinator ships with the laws it obeys (<code>hakmem::laws</code>), checked
 by property tests on all carriers with and without the hardware paths,
@@ -241,17 +373,46 @@ starts everywhere and <code>run_starts(k)</code> above the width nowhere, a fill
 with a stride of zero or past the width is the identity, <code>low_ones</code> at
 the width is all ones. Where an argument has a domain the definition
 cannot absorb (shift amounts, run lengths above the width in
-<code>slice::find_run</code>, overlapping <code>delta_swap</code> masks, <code>bytes_ge</code> above
+<code>Words::find_run</code>, overlapping <code>delta_swap</code> masks, <code>bytes_ge</code> above
 128, grid sizes), the domain is in the method’s docs, checked with
 <code>debug_assert!</code> in debug builds, and unspecified in release. Run your
 tests in debug once.</p>
-<p><code>no_std</code>, zero dependencies, stable Rust.</p>
+<p><code>no_std</code>, zero dependencies, stable Rust. The one allocating convenience
+(<code>Rank9Buf</code>) sits behind the default <code>alloc</code> feature; with
+<code>default-features = false</code> nothing in the crate allocates.</p>
+<h3 id="checks"><a class="doc-anchor" href="#checks">§</a>Checks</h3>
+<p>Every cell is one Nix derivation built in a sandbox without network,
+on every push to <code>main</code>. The badges are written by CI after each run
+(<code>.github/status.sh</code>) and read from the <a href="https://mightsleep.github.io/hakmem/">site</a>.
+A lot of cells for a crate of one-liners; the one-liner wrong for one
+input in 65 536 is the bug they exist for.</p>
+<div class="table"><table><thead><tr><th>check</th><th><code>x86_64</code></th><th><code>aarch64</code></th></tr></thead><tbody>
+<tr><td>tests, portable</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-portable-default.json&amp;style=flat-square" alt="hakmem-test-portable-default" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-test-portable-default.json&amp;style=flat-square" alt="hakmem-test-portable-default" /></a></td></tr>
+<tr><td>tests, <code>+bmi2,+pclmulqdq,+avx2</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-default.json&amp;style=flat-square" alt="hakmem-test-bmi2-default" /></a></td><td>n/a</td></tr>
+<tr><td>tests, <code>+bmi2</code> with feature <code>portable</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-portable-feature.json&amp;style=flat-square" alt="hakmem-test-bmi2-portable-feature" /></a></td><td>n/a</td></tr>
+<tr><td>tests, debug build (asserts, overflow checks)</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-debug.json&amp;style=flat-square" alt="hakmem-test-debug" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-test-debug.json&amp;style=flat-square" alt="hakmem-test-debug" /></a></td></tr>
+<tr><td>doctests (this README), portable</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-portable.json&amp;style=flat-square" alt="hakmem-doctest-portable" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doctest-portable.json&amp;style=flat-square" alt="hakmem-doctest-portable" /></a></td></tr>
+<tr><td>doctests, <code>+bmi2</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-bmi2.json&amp;style=flat-square" alt="hakmem-doctest-bmi2" /></a></td><td>n/a</td></tr>
+<tr><td>clippy, portable</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-portable-default.json&amp;style=flat-square" alt="hakmem-clippy-portable-default" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-clippy-portable-default.json&amp;style=flat-square" alt="hakmem-clippy-portable-default" /></a></td></tr>
+<tr><td>clippy, <code>+bmi2</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-default.json&amp;style=flat-square" alt="hakmem-clippy-bmi2-default" /></a></td><td>n/a</td></tr>
+<tr><td>clippy, <code>+bmi2</code> with feature <code>portable</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-portable-feature.json&amp;style=flat-square" alt="hakmem-clippy-bmi2-portable-feature" /></a></td><td>n/a</td></tr>
+<tr><td>rustdoc, warnings as errors</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doc.json&amp;style=flat-square" alt="hakmem-doc" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doc.json&amp;style=flat-square" alt="hakmem-doc" /></a></td></tr>
+<tr><td>public API matches <code>public-api.txt</code></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-public-api.json&amp;style=flat-square" alt="hakmem-public-api" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-public-api.json&amp;style=flat-square" alt="hakmem-public-api" /></a></td></tr>
+<tr><td>MSRV 1.89 build of the packaged tarball</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-msrv.json&amp;style=flat-square" alt="hakmem-msrv" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-msrv.json&amp;style=flat-square" alt="hakmem-msrv" /></a></td></tr>
+<tr><td>cargo-deny (licences, bans, sources)</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-deny.json&amp;style=flat-square" alt="hakmem-deny" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-deny.json&amp;style=flat-square" alt="hakmem-deny" /></a></td></tr>
+<tr><td>cargo-audit (advisories, offline)</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-audit.json&amp;style=flat-square" alt="hakmem-audit" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-audit.json&amp;style=flat-square" alt="hakmem-audit" /></a></td></tr>
+<tr><td>treefmt</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Ftreefmt.json&amp;style=flat-square" alt="treefmt" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Ftreefmt.json&amp;style=flat-square" alt="treefmt" /></a></td></tr>
+<tr><td>Miri over the intrinsics, both paths</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fmiri.json&amp;style=flat-square" alt="miri" /></a></td><td>n/a</td></tr>
+</tbody></table>
+</div>
 <p>Design: <a href="https://github.com/mightsleep/hakmem/blob/main/docs/design.md"><code>docs/design.md</code></a>,
 the decisions behind the API, the hardware policy, how the laws are
 verified, and where every combinator comes from.
 Changes: <a href="https://github.com/mightsleep/hakmem/blob/main/CHANGELOG.md"><code>CHANGELOG.md</code></a>.</p>
-</div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><dl class="item-table reexports"><dt><code>pub use <a class="mod" href="prelude/index.html" title="mod hakmem::prelude">prelude</a>::*;</code></dt></dl><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="bits/index.html" title="mod hakmem::bits">bits</a></dt><dd>The one trait to import: every combinator, on every carrier.</dd><dt><a class="mod" href="cookbook/index.html" title="mod hakmem::cookbook">cookbook</a></dt><dd>How the shipped kernels were composed, so you can compose your own.</dd><dt><a class="mod" href="dilated/index.html" title="mod hakmem::dilated">dilated</a></dt><dd>Dilated integers and Morton (Z-order) codes.</dd><dt><a class="mod" href="grid/index.html" title="mod hakmem::grid">grid</a></dt><dd>Two-dimensional runs: rectangular blocks in a bitmap of rows.</dd><dt><a class="mod" href="laws/index.html" title="mod hakmem::laws">laws</a></dt><dd>The algebra’s laws as exported property functions.</dd><dt><a class="mod" href="myers/index.html" title="mod hakmem::myers">myers</a></dt><dd>Bit-parallel edit distance (Myers 1999, Hyyrö’s formulation).</dd><dt><a class="mod" href="permute/index.html" title="mod hakmem::permute">permute</a></dt><dd>Permutations built from delta swaps.</dd><dt><a class="mod" href="prelude/index.html" title="mod hakmem::prelude">prelude</a></dt><dd>Everything most code needs: the <a href="bits/trait.Bits.html" title="trait hakmem::bits::Bits"><code>Bits</code></a> trait, the <a href="word/trait.Word.html" title="trait hakmem::word::Word"><code>Word</code></a>
-carrier trait, and the dilated / Morton / positions types.</dd><dt><a class="mod" href="rank9/index.html" title="mod hakmem::rank9">rank9</a></dt><dd>Rank and select in O(1) over a slice of words: Vigna’s rank9
+</div></details><h2 id="reexports" class="section-header">Re-exports<a href="#reexports" class="anchor">§</a></h2><dl class="item-table reexports"><dt><code>pub use <a class="mod" href="prelude/index.html" title="mod hakmem::prelude">prelude</a>::*;</code></dt></dl><h2 id="modules" class="section-header">Modules<a href="#modules" class="anchor">§</a></h2><dl class="item-table"><dt><a class="mod" href="affine/index.html" title="mod hakmem::affine">affine</a></dt><dd>Affine maps on the bits of a byte: <code>x ↦ A·x ⊕ b</code> over GF(2).</dd><dt><a class="mod" href="bits/index.html" title="mod hakmem::bits">bits</a></dt><dd>The one trait to import: every combinator, on every carrier.</dd><dt><a class="mod" href="cookbook/index.html" title="mod hakmem::cookbook">cookbook</a></dt><dd>How the shipped kernels were composed, so you can compose your own.</dd><dt><a class="mod" href="curve/index.html" title="mod hakmem::curve">curve</a></dt><dd>The curves behind one interface, for code that should not care which.</dd><dt><a class="mod" href="dilated/index.html" title="mod hakmem::dilated">dilated</a></dt><dd>Dilated integers and Morton (Z-order) codes.</dd><dt><a class="mod" href="grid/index.html" title="mod hakmem::grid">grid</a></dt><dd>Two-dimensional runs: rectangular blocks in a bitmap of rows.</dd><dt><a class="mod" href="hilbert/index.html" title="mod hakmem::hilbert">hilbert</a></dt><dd>Hilbert curves as two scans over the Morton code: parities one way,
+the carry chain two bits wide the other.</dd><dt><a class="mod" href="hilbert3/index.html" title="mod hakmem::hilbert3">hilbert3</a></dt><dd>3D Hilbert curves: the decode as a Kogge–Stone scan over
+<code>AGL(1, 4)</code>, the encode as the twelve-state machine in the same
+arithmetic, both without tables.</dd><dt><a class="mod" href="lanes/index.html" title="mod hakmem::lanes">lanes</a></dt><dd>Byte lanes: the SIMD half of the algebra, on stable Rust.</dd><dt><a class="mod" href="laws/index.html" title="mod hakmem::laws">laws</a></dt><dd>The algebra’s laws as exported property functions.</dd><dt><a class="mod" href="myers/index.html" title="mod hakmem::myers">myers</a></dt><dd>Bit-parallel edit distance (Myers 1999, Hyyrö’s formulation).</dd><dt><a class="mod" href="permute/index.html" title="mod hakmem::permute">permute</a></dt><dd>Permutations built from delta swaps.</dd><dt><a class="mod" href="prelude/index.html" title="mod hakmem::prelude">prelude</a></dt><dd>Everything most code needs, one <code>use</code> away.</dd><dt><a class="mod" href="rank9/index.html" title="mod hakmem::rank9">rank9</a></dt><dd>Rank and select in O(1) over a slice of words: Vigna’s rank9
 directory (2008) for rank, and a select inventory in the shape of
 his select9 over the same block counts.</dd><dt><a class="mod" href="set/index.html" title="mod hakmem::set">set</a></dt><dd>Set view: a word as a set of positions <code>0..BITS</code>.</dd><dt><a class="mod" href="slice/index.html" title="mod hakmem::slice">slice</a></dt><dd>Bit-set operations over a slice of words: the index-free layer
 between single-word combinators and a real succinct structure.</dd><dt><a class="mod" href="wide/index.html" title="mod hakmem::wide">wide</a></dt><dd>A multi-limb carrier: <code>N × 64</code> bits that behave as one word.</dd><dt><a class="mod" href="word/index.html" title="mod hakmem::word">word</a></dt><dd>The carrier: a fixed-width word viewed as a container of bits.</dd></dl></section></div></main></body></html>

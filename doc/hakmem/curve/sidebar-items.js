@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"trait":["Curve2","Curve3"]};

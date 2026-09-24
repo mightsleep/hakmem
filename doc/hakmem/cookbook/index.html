@@ -1,4 +1,4 @@
-<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="How the shipped kernels were composed, so you can compose your own."><title>hakmem::cookbook - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (feaadeeac 2026-09-19)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module cookbook</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../hakmem/index.html">hakmem</a><span class="version">0.1.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module cookbook</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#reading-a-sentence" title="Reading a sentence">Reading a sentence</a></li><li><a href="#verifying-your-own" title="Verifying your own">Verifying your own</a></li><li><a href="#1-the-inside-string-mask-simdjson" title="1. The inside-string mask (simdjson)">1. The inside-string mask (simdjson)</a></li><li><a href="#2-first-fit-of-a-run-across-words" title="2. First fit of a run across words">2. First fit of a run across words</a></li><li><a href="#3-the-myers-column-step" title="3. The Myers column step">3. The Myers column step</a></li><li><a href="#4-morton-neighbours-without-decoding" title="4. Morton neighbours without decoding">4. Morton neighbours without decoding</a></li><li><a href="#5-strlen-in-one-word" title="5. `strlen` in one word">5. <code>strlen</code> in one word</a></li><li><a href="#6-sliding-piece-attacks-koggestone" title="6. Sliding-piece attacks (Kogge–Stone)">6. Sliding-piece attacks (Kogge–Stone)</a></li><li><a href="#7-not-built-here-banded-myers-over-widen" title="7. Not built here: banded Myers over `Wide&#60;N&#62;`">7. Not built here: banded Myers over <code>Wide&lt;N&gt;</code></a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate hakmem</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">hakmem</a></div><h1>Module <span>cookbook</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/hakmem/cookbook.rs.html#1-265">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>How the shipped kernels were composed, so you can compose your own.</p>
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="How the shipped kernels were composed, so you can compose your own."><title>hakmem::cookbook - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (feaadeeac 2026-09-19)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module cookbook</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../hakmem/index.html">hakmem</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module cookbook</a></h2><h3><a href="#">Sections</a></h3><ul class="block top-toc"><li><a href="#reading-a-sentence" title="Reading a sentence">Reading a sentence</a></li><li><a href="#verifying-your-own" title="Verifying your own">Verifying your own</a></li><li><a href="#1-the-inside-string-mask-simdjson" title="1. The inside-string mask (simdjson)">1. The inside-string mask (simdjson)</a></li><li><a href="#2-first-fit-of-a-run-across-words" title="2. First fit of a run across words">2. First fit of a run across words</a></li><li><a href="#3-the-myers-column-step" title="3. The Myers column step">3. The Myers column step</a></li><li><a href="#4-morton-neighbours-without-decoding" title="4. Morton neighbours without decoding">4. Morton neighbours without decoding</a></li><li><a href="#5-strlen-in-one-word" title="5. `strlen` in one word">5. <code>strlen</code> in one word</a></li><li><a href="#6-sliding-piece-attacks-koggestone" title="6. Sliding-piece attacks (Kogge–Stone)">6. Sliding-piece attacks (Kogge–Stone)</a></li><li><a href="#7-not-built-here-banded-myers-over-widen" title="7. Not built here: banded Myers over `Wide&#60;N&#62;`">7. Not built here: banded Myers over <code>Wide&lt;N&gt;</code></a></li><li><a href="#8-every-byte-map-is-one-instruction-or-two-lookups" title="8. Every byte map is one instruction, or two lookups">8. Every byte map is one instruction, or two lookups</a></li><li><a href="#9-the-truth-table-is-the-function-at-0xf0-0xcc-0xaa" title="9. The truth table is the function at `(0xF0, 0xCC, 0xAA)`">9. The truth table is the function at <code>(0xF0, 0xCC, 0xAA)</code></a></li><li><a href="#10-constants-from-registers" title="10. Constants from registers">10. Constants from registers</a></li><li><a href="#11-every-occupancy-of-a-mask-in-order" title="11. Every occupancy of a mask, in order">11. Every occupancy of a mask, in order</a></li><li><a href="#12-a-column-as-a-byte-by-one-multiply-kindergarten" title="12. A column as a byte, by one multiply (Kindergarten)">12. A column as a byte, by one multiply (Kindergarten)</a></li><li><a href="#13-hilbert-parities-one-way-the-carry-chain-two-bits-wide-the-other" title="13. Hilbert: parities one way, the carry chain two bits wide the other">13. Hilbert: parities one way, the carry chain two bits wide the other</a></li><li><a href="#13-hilbert-decode-is-two-scans-hilbert-encode-is-not" title="13. Hilbert decode is two scans; Hilbert encode is not">13. Hilbert decode is two scans; Hilbert encode is not</a></li><li><a href="#14-hilbert-in-3d-the-group-is-a₄-which-is-agl1-4" title="14. Hilbert in 3D: the group is `A₄`, which is `AGL(1, 4)`">14. Hilbert in 3D: the group is <code>A₄</code>, which is <code>AGL(1, 4)</code></a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate hakmem</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">hakmem</a></div><h1>Module <span>cookbook</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/hakmem/cookbook.rs.html#1-690">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>How the shipped kernels were composed, so you can compose your own.</p>
 <p>This module is documentation only. Every recipe has the same shape:
 the <strong>problem</strong>, the <strong>decomposition</strong> into combinators, the
 <strong>laws</strong> that justify each step (all of them live in <a href="../laws/index.html" title="mod hakmem::laws"><code>crate::laws</code></a>
@@ -71,15 +71,13 @@ Across the boundary there is exactly one candidate: the word’s top
 run of ones (<code>leading_ones</code>) continued by the next word’s bottom run
 (<code>trailing_ones</code>). No wider window is needed; an earlier version
 of this kernel widened to <code>u128</code> and was 1.6–2.2× slower for it.
-Shipped as <a href="../slice/fn.find_run.html" title="fn hakmem::slice::find_run"><code>crate::slice::find_run</code></a>.</p>
+Shipped as <a href="../slice/trait.Words.html#tymethod.find_run" title="method hakmem::slice::Words::find_run"><code>Words::find_run</code></a>.</p>
 
-<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::slice::find_run;
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
 
 <span class="comment">// 60 free slots, then 4 taken, then all free: a 6-run must straddle.
-</span><span class="kw">let </span>words = [u64::MAX &gt;&gt; <span class="number">4</span>, u64::MAX];
-<span class="macro">assert_eq!</span>(find_run(<span class="kw-2">&amp;</span>words, <span class="number">6</span>), <span class="prelude-val">Some</span>(<span class="number">0</span>));
-<span class="kw">let </span>words = [<span class="number">0xFFu64 </span>&lt;&lt; <span class="number">56</span>, u64::MAX];
-<span class="macro">assert_eq!</span>(find_run(<span class="kw-2">&amp;</span>words, <span class="number">16</span>), <span class="prelude-val">Some</span>(<span class="number">56</span>));</code></pre></div>
+</span><span class="macro">assert_eq!</span>([u64::MAX &gt;&gt; <span class="number">4</span>, u64::MAX].find_run(<span class="number">6</span>), <span class="prelude-val">Some</span>(<span class="number">0</span>));
+<span class="macro">assert_eq!</span>([<span class="number">0xFFu64 </span>&lt;&lt; <span class="number">56</span>, u64::MAX].find_run(<span class="number">16</span>), <span class="prelude-val">Some</span>(<span class="number">56</span>));</code></pre></div>
 <p><strong>Laws.</strong> <code>run_starts_composes</code>: <code>run_starts(a) ∘ run_starts(b) = run_starts(a + b − 1)</code>. This is <em>why</em> the halving chain is
 correct, each halving step is a composition. <code>run_starts_shrinks</code>
 (longer runs start at a subset of positions) is what makes binary
@@ -107,9 +105,9 @@ bit shifted into <code>Ph</code> (global) or not (semi-global search). Shipped
 as <a href="../myers/index.html" title="mod hakmem::myers"><code>crate::myers</code></a>, written against <a href="../word/trait.Word.html" title="trait hakmem::word::Word"><code>crate::Word</code></a> so that
 <a href="../wide/struct.Wide.html" title="struct hakmem::wide::Wide"><code>crate::wide::Wide</code></a> runs it unchanged for long patterns.</p>
 
-<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::myers::{edit_distance, search};
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::myers::{distance_in, search};
 
-<span class="macro">assert_eq!</span>(edit_distance::&lt;u64&gt;(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>));
+<span class="macro">assert_eq!</span>(distance_in::&lt;u64&gt;(<span class="string">b"kitten"</span>, <span class="string">b"sitting"</span>), <span class="prelude-val">Some</span>(<span class="number">3</span>));
 <span class="kw">let </span>ends: Vec&lt;<span class="kw">_</span>&gt; = search::&lt;u64&gt;(<span class="string">b"lo"</span>, <span class="string">b"hello lo"</span>, <span class="number">0</span>).unwrap().collect();
 <span class="macro">assert_eq!</span>(ends, [(<span class="number">5</span>, <span class="number">0</span>), (<span class="number">8</span>, <span class="number">0</span>)]);</code></pre></div>
 <p><strong>Laws.</strong> None of the exported ones, the kernel is verified against
@@ -206,4 +204,369 @@ agreement with recipe 3 on the same inputs when <code>k</code> is large, and
 <code>None</code>-agreement with the DP when it is small. Both are one
 proptest each against <code>tests/myers.rs</code>’s reference. Do that and you
 have your microkernel; it will be shorter than this paragraph.</p>
+<h2 id="8-every-byte-map-is-one-instruction-or-two-lookups"><a class="doc-anchor" href="#8-every-byte-map-is-one-instruction-or-two-lookups">§</a>8. Every byte map is one instruction, or two lookups</h2>
+<p><strong>Problem.</strong> Shift, rotate or reverse the bits of every byte in a
+register. SSE has no 8-bit shift at all; NEON has the shifts and
+<code>rbit</code> but no rotate; and a kernel usually wants three of these in
+a row.</p>
+<p><strong>Decomposition.</strong> Each of those is XOR-linear in the bits of the
+byte, so each is an 8×8 matrix over GF(2), an
+<a href="../affine/struct.Affine8.html" title="struct hakmem::affine::Affine8"><code>Affine8</code></a>; NOT adds a constant. GFNI’s
+<code>gf2p8affineqb</code> applies one to sixteen bytes in one instruction,
+and matrix multiplication (<a href="../affine/struct.Affine8.html#method.then" title="method hakmem::affine::Affine8::then"><code>then</code></a>)
+composes them, so a chain of byte tricks is one constant and one
+instruction. Without GFNI, linearity gives <code>A·x = A·hi ⊕ A·lo</code>: two
+nibble lookups (<a href="../lanes/trait.Lanes.html#tymethod.lut16" title="method hakmem::lanes::Lanes::lut16"><code>lut16</code></a>) and an XOR,
+the tables folded at compile time. The named maps are the identity
+matrix moved: a left shift by <code>n</code> is the identity shifted right by
+<code>8 n</code> bits, the arithmetic shift adds <code>0x80</code> rows for the vacated
+bits, the reversal reverses the rows (Wunkolo, 2020).</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::affine::Affine8;
+<span class="kw">use </span>hakmem::lanes::{Lanes, U8x16};
+
+<span class="kw">let </span>x = U8x16::load(<span class="string">b"0123456789abcdef"</span>);
+<span class="comment">// Reverse the bits, then shift left by one, as one map.
+</span><span class="kw">let </span>map = Affine8::REVERSE.then(Affine8::shl(<span class="number">1</span>));
+<span class="macro">assert_eq!</span>(x.affine(map), x.reverse_bits().shl(<span class="number">1</span>));
+<span class="comment">// The matrices are the ones in Wunkolo's posts.
+</span><span class="macro">assert_eq!</span>(Affine8::shl(<span class="number">1</span>).matrix(), <span class="number">0x0001_0204_0810_2040</span>);
+<span class="macro">assert_eq!</span>(Affine8::sra(<span class="number">2</span>).matrix(), <span class="number">0x0408_1020_4080_8080</span>);</code></pre></div>
+<p><strong>Laws.</strong> <code>affine_matches_reference</code> (the scalar, the SWAR word,
+the nibble tables and the lanes against the bit-by-bit definition),
+<code>affine_composes</code> (<code>then</code> is <code>apply</code> after <code>apply</code>; the identity is
+neutral), <code>affine_named_maps_match_ops</code> (each named map is the <code>u8</code>
+operation, for every shift count), <code>lane_maps_match_reference</code>.</p>
+<p><strong>Cost.</strong> One instruction with GFNI (latency 3, one every other
+cycle on Ice Lake, per uops.info); five without (two PSHUFB, a
+shift, an AND, an XOR); on the SWAR carrier eight rounds of seven
+operations.</p>
+<h2 id="9-the-truth-table-is-the-function-at-0xf0-0xcc-0xaa"><a class="doc-anchor" href="#9-the-truth-table-is-the-function-at-0xf0-0xcc-0xaa">§</a>9. The truth table is the function at <code>(0xF0, 0xCC, 0xAA)</code></h2>
+<p><strong>Problem.</strong> VPTERNLOG computes any Boolean function of three
+registers from an 8-bit immediate. Which immediate? And the
+question it is usually asked for: signed saturation on lanes that
+have no signed saturating add.</p>
+<p><strong>Decomposition.</strong> Bit <code>k</code> of <code>0xF0</code>, <code>0xCC</code>, <code>0xAA</code> is bit 2, 1, 0
+of <code>k</code>, so across their bit positions the three bytes enumerate
+the eight inputs; the function evaluated once on them is its table
+(<a href="../bits/fn.truth_table.html" title="fn hakmem::bits::truth_table"><code>truth_table</code></a>), and
+<a href="../bits/trait.Bits.html#method.ternary" title="method hakmem::bits::Bits::ternary"><code>ternary</code></a> reads the table back. Signed
+overflow needs only sign bits (Hacker’s Delight 2-13): the operands
+agree and the sum disagrees, <code>!(x ^ y) &amp; (x ^ s)</code>. Its table is
+<code>0x42</code>; the subtraction’s, <code>(x ^ y) &amp; (x ^ d)</code>, is <code>0x18</code>. Those are
+the immediates in Wunkolo’s saturation kernel, derived instead of
+looked up. <a href="../bits/trait.Bits.html#method.signed_add_overflows" title="method hakmem::bits::Bits::signed_add_overflows"><code>signed_add_overflows</code></a>
+is the scalar form.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::Bits;
+<span class="kw">use </span>hakmem::bits::truth_table;
+
+<span class="macro">assert_eq!</span>(truth_table(|a, b, s| !(a ^ b) &amp; (a ^ s)), <span class="number">0x42</span>);
+<span class="macro">assert_eq!</span>(truth_table(|a, b, d| (a ^ b) &amp; (a ^ d)), <span class="number">0x18</span>);
+<span class="kw">let </span>(a, b) = (<span class="number">100u8</span>, <span class="number">100u8</span>);
+<span class="kw">let </span>sum = a.wrapping_add(b);
+<span class="macro">assert_eq!</span>(
+    a.ternary(b, sum, <span class="number">0x42</span>) &amp; <span class="number">0x80 </span>!= <span class="number">0</span>,
+    a.signed_add_overflows(b)
+);
+<span class="macro">assert!</span>(a.signed_add_overflows(b)); <span class="comment">// 100 + 100 does not fit an i8</span></code></pre></div>
+<p><strong>Laws.</strong> <code>ternary_is_truth_table</code> (against the bit-by-bit reading
+of the table), <code>truth_table_names_the_function</code> (mux, majority,
+XOR3 and the two overflow tests come back as themselves, with
+<code>0x42</code> and <code>0x18</code>), <code>signed_overflow_matches_sign_test</code>; and
+<code>i8::checked_add</code> on every pair of bytes as the outside witness.</p>
+<p><strong>Cost.</strong> One VPTERNLOG per register with AVX-512; the provided
+expansion is at most ten operations, fewer once a constant table
+folds.</p>
+<h2 id="10-constants-from-registers"><a class="doc-anchor" href="#10-constants-from-registers">§</a>10. Constants from registers</h2>
+<p><strong>Problem.</strong> <code>splat(0x80)</code>, the sign mask, is a load, like every
+lane constant. In a loop that is a port and a cache line; and SSE
+cannot build <code>0x80</code> from all-ones in registers, having no byte
+shift.</p>
+<p><strong>Decomposition.</strong> All-ones is a compare of a register with itself.
+The rounding average of <code>0x00</code> and <code>0xFF</code> is <code>(0 + 255 + 1) &gt;&gt; 1 = 0x80</code> (PAVGB; Wunkolo, 2022), and
+<a href="../lanes/trait.Lanes.html#method.avg_round" title="method hakmem::lanes::Lanes::avg_round"><code>avg_round</code></a> is that instruction,
+with Hacker’s Delight 2-5 as the definition where there is none:
+<code>(x | y) − ((x ^ y) &gt;&gt; 1)</code> cannot overflow.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::lanes::{Lanes, U8x16};
+
+<span class="kw">let </span>ones = U8x16::zero().not(); <span class="comment">// pcmpeqb x, x
+</span><span class="macro">assert_eq!</span>(U8x16::zero().avg_round(ones), U8x16::splat(<span class="number">0x80</span>)); <span class="comment">// pavgb
+</span><span class="macro">assert_eq!</span>(U8x16::splat(<span class="number">7</span>).avg_round(U8x16::splat(<span class="number">8</span>)), U8x16::splat(<span class="number">8</span>));
+<span class="macro">assert_eq!</span>(U8x16::splat(<span class="number">7</span>).avg_floor(U8x16::splat(<span class="number">8</span>)), U8x16::splat(<span class="number">7</span>));</code></pre></div>
+<p><strong>Laws.</strong> <code>lane_maps_match_reference</code>: both averages against 16-bit
+arithmetic on every lane, and the sign mask from the average.</p>
+<p><strong>Cost.</strong> Two instructions, no memory.</p>
+<h2 id="11-every-occupancy-of-a-mask-in-order"><a class="doc-anchor" href="#11-every-occupancy-of-a-mask-in-order">§</a>11. Every occupancy of a mask, in order</h2>
+<p><strong>Problem.</strong> Fill a table indexed by the occupancy of a set of
+squares (a magic-bitboard table, a Kindergarten row), or search
+every subset of a mask for a constant that works. Walking <code>0..2^k</code>
+and depositing each with PDEP is one way; the carry-rippler is
+the way without PDEP.</p>
+<p><strong>Decomposition.</strong> <code>(x − mask) &amp; mask</code> is the next subset of <code>mask</code>
+after <code>x</code>: subtracting the mask borrows through the selected bits
+the way adding one carries through contiguous ones, so the step
+is <code>+ 1</code> in the compacted domain without ever compacting.
+<a href="../bits/trait.Bits.html#method.next_subset" title="method hakmem::bits::Bits::next_subset"><code>next_subset</code></a> is the step,
+<a href="../bits/trait.Bits.html#method.subsets" title="method hakmem::bits::Bits::subsets"><code>subsets</code></a> the iterator from zero to the mask.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
+
+<span class="kw">let </span>relevant = <span class="number">0b1010_0100u8</span>;
+<span class="kw">let </span>occupancies: Vec&lt;u8&gt; = relevant.subsets().collect();
+<span class="macro">assert_eq!</span>(occupancies.len(), <span class="number">8</span>);
+<span class="macro">assert_eq!</span>(occupancies[..<span class="number">4</span>], [<span class="number">0</span>, <span class="number">0b100</span>, <span class="number">0b10_0000</span>, <span class="number">0b10_0100</span>]);
+<span class="comment">// The same walk through PEXT / PDEP.
+</span><span class="kw">for </span>(i, s) <span class="kw">in </span>relevant.subsets().enumerate() {
+    <span class="macro">assert_eq!</span>(u8::try_from(i).unwrap().expand(relevant), s);
+}</code></pre></div>
+<p><strong>Laws.</strong> <code>next_subset_is_increment_in_mask</code> (the step is
+<code>expand(compact(x) + 1)</code>), <code>subsets_enumerate_each_once</code> (<code>2^k</code>
+items, consecutive in the compacted domain, all inside the mask).</p>
+<p><strong>Cost.</strong> Two operations per subset, no table, no PDEP.</p>
+<h2 id="12-a-column-as-a-byte-by-one-multiply-kindergarten"><a class="doc-anchor" href="#12-a-column-as-a-byte-by-one-multiply-kindergarten">§</a>12. A column as a byte, by one multiply (Kindergarten)</h2>
+<p><strong>Problem.</strong> The occupancy of a file, a diagonal or an antidiagonal
+of a bitboard as a small integer, to index a table: the bits are
+eight or nine apart and a table wants them adjacent.</p>
+<p><strong>Decomposition.</strong> A multiply by a constant is the sum of the
+operand shifted left by each set bit of the constant. Choose one
+shift per selected bit, the distance from where it is to where it
+should land, and if no two of the shifted copies ever put a bit on
+the same position the sum is an OR and the product holds the
+gathered bits: PEXT by arithmetic. <a href="../bits/trait.Bits.html#method.gather" title="method hakmem::bits::Bits::gather"><code>gather</code></a>
+is the multiply, mask and shift; <a href="../bits/trait.Bits.html#method.gather_factor" title="associated function hakmem::bits::Bits::gather_factor"><code>gather_factor</code></a>
+derives the constant, and it derives the ones in the literature: a
+file’s factor is the identity matrix of recipe 8, a diagonal’s
+read by column is the a-file <code>0x0101…01</code>. For bits <code>stride</code> apart
+with <code>stride ≥ k</code> the copies cannot meet
+(<code>strided_gather_is_exact</code>), which covers files and diagonals;
+anything else is one brute-force run of <code>gather_is_exact</code> over the
+<code>2^k</code> occupancies of recipe 11.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
+
+<span class="comment">// The a1-h8 diagonal, read by column onto the top rank.
+</span><span class="kw">let </span>diagonal = <span class="number">0x8040_2010_0804_0201u64</span>;
+<span class="kw">let </span>factor = u64::gather_factor(diagonal, <span class="number">56</span>).unwrap();
+<span class="macro">assert_eq!</span>(factor, <span class="number">0x0101_0101_0101_0101</span>);
+<span class="kw">let </span>occupied = diagonal &amp; <span class="number">0xFFFFu64</span>; <span class="comment">// ranks 1 and 2
+</span><span class="macro">assert_eq!</span>(occupied.gather(diagonal, factor, <span class="number">56</span>), <span class="number">0b11</span>);
+<span class="macro">assert!</span>(hakmem::laws::gather_is_exact(diagonal, factor, <span class="number">56</span>));</code></pre></div>
+<p><strong>Laws.</strong> <code>gather_is_exact_by</code> (agreement with <code>compact</code> on every
+occupancy, for any placement), <code>strided_gather_is_exact</code> (the
+theorem that makes files and diagonals safe without the sweep),
+and <code>kindergarten_gathers_are_exact</code> in <code>tests/laws.rs</code>, every
+file, diagonal and antidiagonal of the board.</p>
+<p><strong>Cost.</strong> One multiply, one shift, one AND; a 64-entry table per
+line instead of a magic-bitboard’s per-square tables.</p>
+<h2 id="13-hilbert-parities-one-way-the-carry-chain-two-bits-wide-the-other"><a class="doc-anchor" href="#13-hilbert-parities-one-way-the-carry-chain-two-bits-wide-the-other">§</a>13. Hilbert: parities one way, the carry chain two bits wide the other</h2>
+<p><strong>Problem.</strong> A 2D Hilbert index to and from <code>(x, y)</code>, for the
+locality a Z-order does not give: consecutive indices are always
+neighbouring cells.</p>
+<p><strong>Decomposition.</strong> A Hilbert index has the shape of a Morton code,
+one pair of bits per level, top level first, and each level is read
+in one of four frames (base, transposed, reflected, both) that the
+levels above it chose. Which frame is a parity of what the pairs
+above did: transpose when the pair is <code>0</code> or <code>3</code>, reflect when it
+is <code>3</code>. Parities from the top are <a href="../bits/trait.Bits.html#method.suffix_xor" title="method hakmem::bits::Bits::suffix_xor"><code>suffix_xor</code></a>,
+one per flag, over the even lane of the index word; the odd lane of
+the same scan holds the parity over the levels <em>strictly</em> above,
+the exclusive scan for free. Two scans, a handful of lane
+operations, then <a href="../dilated/struct.Morton2.html#method.decode" title="method hakmem::dilated::Morton2::decode"><code>Morton2::decode</code></a>.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
+
+<span class="comment">// Order 2, the 4 × 4 curve: 0 1 2 3 climb the left column's
+// first quadrant, 15 sits at (3, 0).
+</span><span class="kw">let </span>cells: Vec&lt;(u8, u8)&gt; = (<span class="number">0</span>..<span class="number">16u8</span>)
+    .map(|h| Hilbert2::from_index(h).decode_order(<span class="number">2</span>))
+    .collect();
+<span class="macro">assert_eq!</span>(cells[..<span class="number">4</span>], [(<span class="number">0</span>, <span class="number">0</span>), (<span class="number">1</span>, <span class="number">0</span>), (<span class="number">1</span>, <span class="number">1</span>), (<span class="number">0</span>, <span class="number">1</span>)]);
+<span class="macro">assert_eq!</span>(cells[<span class="number">15</span>], (<span class="number">3</span>, <span class="number">0</span>));
+<span class="comment">// Every step is one cell.
+</span><span class="kw">for </span>w <span class="kw">in </span>cells.windows(<span class="number">2</span>) {
+    <span class="kw">let </span>((x0, y0), (x1, y1)) = (w[<span class="number">0</span>], w[<span class="number">1</span>]);
+    <span class="macro">assert_eq!</span>(x0.abs_diff(x1) + y0.abs_diff(y1), <span class="number">1</span>);
+}
+<span class="macro">assert_eq!</span>(Hilbert2::&lt;u8&gt;::encode_order(<span class="number">3</span>, <span class="number">0</span>, <span class="number">2</span>).index(), <span class="number">15</span>);</code></pre></div>
+<p><strong>The encode, and why it costs more.</strong> With the coordinates as
+input the frame at each level is an affine map of the frame above
+it, <code>(a, c) ↦ (a ^ ¬(c ^ x), c)</code> when <code>x = y</code> and
+<code>(a, c) ↦ (c ^ x, a ^ x)</code> when <code>x ≠ y</code>. The two linear parts do
+not commute; they generate <code>GL(2, 2) ≅ S₃</code>, and with the
+translations <code>AGL(2, 2) ≅ S₄</code>. So no parity computes the frames
+and no adder does either. But the maps themselves depend only on
+the input, and affine maps compose associatively, which is all a
+Kogge–Stone scan needs: <a href="../hilbert/struct.Hilbert2.html#method.from_morton" title="associated function hakmem::hilbert::Hilbert2::from_morton"><code>Hilbert2::from_morton</code></a>
+keeps each level’s map bit-sliced in six words (<code>M ^ I</code> and <code>b</code>,
+one bit per level), composes every window with the window <code>s</code>
+levels above it for <code>s = 1, 2, 4, …</code>, and reads the frames off the
+vector parts, since the top frame is zero. This is exactly the
+adder’s carry chain, whose maps are the affine maps of one bit
+(<code>kill</code>, <code>propagate</code>, <code>generate</code>, composed as <code>(g, p)</code> in three
+operations), one bit wider: <code>Aff(2, 2)</code> instead of <code>Aff(1, 2)</code>,
+thirty-six operations a round instead of three, and no
+instruction for it. The decode gets away with two parities because
+its transitions are functions of the <em>output</em> pairs, which the scan
+has in hand from the start; the encode’s are functions of the
+output it is computing, and the affine product is what solving that
+recurrence in log depth looks like.</p>
+<p>The representation is what decides the cost. Six words for a
+general element of <code>Aff(2, 2)</code> cost 36 operations a round. But the
+two frame maps are involutions, and a product of two involutions
+from a group of order six has order one or three: pair the levels
+and every window’s linear part lies in the cyclic group of order
+three, which is GF(4)*, with the translations in GF(4). Four words,
+a GF(4) multiplication per word pair, about 24 operations a round,
+one round fewer. This is rawrunprotected’s construction (2016);
+the six-word form is the same scan before anyone noticed the
+pairing.</p>
+<p>The general pattern: a finite-state machine over a word is a prefix
+over its transition monoid; it is a broadword kernel when the
+monoid has a low-dimensional representation with a cheap
+composition. <code>{K, P, G}</code> is the adder (<code>Aff(1, GF(2))</code>), this
+recipe is <code>Aff(1, GF(4))</code>, a permutation of sixteen states is
+<a href="../lanes/trait.Lanes.html#method.shuffle" title="method hakmem::lanes::Lanes::shuffle"><code>Lanes::shuffle</code></a> composing tables.
+The four-state loop this replaces is kept as
+<code>laws::reference::hilbert_index_machine</code>. The rule is a theorem for
+the aperiodic and modular cases (Serre 2004; Paperman, Salvati and
+Soyez-Martin 2023) and open for groups.</p>
+<p><strong>Laws.</strong> <code>hilbert_matches_reference</code> (both directions against the
+textbook <code>xy2d</code> / <code>d2xy</code> loops, every cell of every order up to 8
+on <code>u16</code>), <code>hilbert_roundtrip</code>, <code>hilbert_consecutive_are_adjacent</code>
+(the path property, every index of the 256 × 256 curve),
+<code>hilbert_order_laws</code> (the order-<code>n</code> curve is the first quadrant of
+the order-<code>n + 1</code> curve transposed, and runs corner to corner).</p>
+<p><strong>Cost.</strong> Decode: two suffix XORs (one CLMUL each with
+<code>+pclmulqdq</code>, six operations each without) and about ten lane
+operations, then a Morton decode; 1.6 ns per <code>u64</code> with CLMUL,
+3 ns without, against 50 to 80 ns for the <code>d2xy</code> loop. Encode:
+a pairing round and four rounds of about 24 operations for a
+<code>u64</code>, all independent within a round; 11 ns per word portable,
+5 ns with <code>+bmi2</code>, against 40 ns for the four-state loop and 33 ns
+for <code>xy2d</code>. The loop is
+bound by a three-operation carried chain per level; the scan is
+bound by how many independent operations the core retires. Against
+the crates people use (<code>benches/hilbert.rs</code>): <code>fast_hilbert</code>, a
+512-byte transition table walked three levels a step, decodes in
+12.5 ns and encodes in 11 ns; <code>lindel</code> (Skilling, one bit a step)
+takes about 70 ns either way. The decode here wins by four to
+eight times, the encode by 5 % portable and twice with <code>+bmi2</code>;
+the table is a chain of eleven dependent loads, the scan is about
+120 independent operations.</p>
+<h2 id="13-hilbert-decode-is-two-scans-hilbert-encode-is-not"><a class="doc-anchor" href="#13-hilbert-decode-is-two-scans-hilbert-encode-is-not">§</a>13. Hilbert decode is two scans; Hilbert encode is not</h2>
+<p><strong>Problem.</strong> A 2D Hilbert index to and from <code>(x, y)</code>, for the
+locality a Z-order does not give: consecutive indices are always
+neighbouring cells.</p>
+<p><strong>Decomposition.</strong> A Hilbert index has the shape of a Morton code,
+one pair of bits per level, top level first, and each level is read
+in one of four frames (base, transposed, reflected, both) that the
+levels above it chose. Which frame is a parity of what the pairs
+above did: transpose when the pair is <code>0</code> or <code>3</code>, reflect when it
+is <code>3</code>. Parities from the top are <a href="../bits/trait.Bits.html#method.suffix_xor" title="method hakmem::bits::Bits::suffix_xor"><code>suffix_xor</code></a>,
+one per flag, over the even lane of the index word; the odd lane of
+the same scan holds the parity over the levels <em>strictly</em> above,
+the exclusive scan for free. Two scans, a handful of lane
+operations, then <a href="../dilated/struct.Morton2.html#method.decode" title="method hakmem::dilated::Morton2::decode"><code>Morton2::decode</code></a>.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
+
+<span class="comment">// Order 2, the 4 × 4 curve: 0 1 2 3 fill the lower-left quadrant,
+// 15 sits at (3, 0).
+</span><span class="kw">let </span>cells: Vec&lt;(u8, u8)&gt; = (<span class="number">0</span>..<span class="number">16u8</span>)
+    .map(|h| Hilbert2::from_index(h).decode_order(<span class="number">2</span>))
+    .collect();
+<span class="macro">assert_eq!</span>(cells[..<span class="number">4</span>], [(<span class="number">0</span>, <span class="number">0</span>), (<span class="number">1</span>, <span class="number">0</span>), (<span class="number">1</span>, <span class="number">1</span>), (<span class="number">0</span>, <span class="number">1</span>)]);
+<span class="macro">assert_eq!</span>(cells[<span class="number">15</span>], (<span class="number">3</span>, <span class="number">0</span>));
+<span class="comment">// Every step is one cell.
+</span><span class="kw">for </span>w <span class="kw">in </span>cells.windows(<span class="number">2</span>) {
+    <span class="kw">let </span>((x0, y0), (x1, y1)) = (w[<span class="number">0</span>], w[<span class="number">1</span>]);
+    <span class="macro">assert_eq!</span>(x0.abs_diff(x1) + y0.abs_diff(y1), <span class="number">1</span>);
+}
+<span class="macro">assert_eq!</span>(Hilbert2::&lt;u8&gt;::encode_order(<span class="number">3</span>, <span class="number">0</span>, <span class="number">2</span>).index(), <span class="number">15</span>);</code></pre></div>
+<p><strong>Why the encode is a loop.</strong> With the coordinates as input the
+frame at each level is an affine map of the frame above it,
+<code>(a, c) ↦ (a ^ ¬(c ^ x), c)</code> when <code>x = y</code> and
+<code>(a, c) ↦ (c ^ x, a ^ x)</code> when <code>x ≠ y</code>. The two linear parts do
+not commute; they generate <code>GL(2, 2) ≅ S₃</code>, and with the
+translations <code>AGL(2, 2) ≅ S₄</code>. A prefix over a non-abelian group is
+not a parity and not a carry chain, so
+<a href="../hilbert/struct.Hilbert2.html#method.from_morton" title="associated function hakmem::hilbert::Hilbert2::from_morton"><code>Hilbert2::from_morton</code></a> is
+<code>BITS / 2</code> steps of a four-state machine, branch-free, three
+operations on the loop-carried chain per level. The decode escapes
+because its transitions are functions of the <em>output</em> pairs, which
+are known before the scan starts; the encode’s are functions of the
+output it is still computing. A log-depth encode exists in
+principle: a prefix over <code>S₄</code> as a composition of 4-entry tables,
+which is what <a href="../lanes/trait.Lanes.html#method.shuffle" title="method hakmem::lanes::Lanes::shuffle"><code>Lanes::shuffle</code></a>
+does to sixteen of them at once. It is not built here.</p>
+<p><strong>Laws.</strong> <code>hilbert_matches_reference</code> (both directions against the
+textbook <code>xy2d</code> / <code>d2xy</code> loops, every cell of every order up to 8
+on <code>u16</code>), <code>hilbert_roundtrip</code>, <code>hilbert_consecutive_are_adjacent</code>
+(the path property, every index of the 256 × 256 curve),
+<code>hilbert_order_laws</code> (the order-<code>n</code> curve is the first quadrant of
+the order-<code>n + 1</code> curve transposed, and runs corner to corner).</p>
+<p><strong>Cost.</strong> Decode: two suffix XORs (one CLMUL each with
+<code>+pclmulqdq</code>, six operations each without) and about ten lane
+operations, then a Morton decode; 1.6 ns per <code>u64</code> with CLMUL,
+3 ns without, against 50 to 80 ns for the <code>d2xy</code> loop. Encode:
+32 steps for a <code>u64</code>, about 40 ns, within 20 % of the <code>xy2d</code> loop
+it is checked against; the Morton encode it starts from is 1.6 ns.</p>
+<h2 id="14-hilbert-in-3d-the-group-is-a₄-which-is-agl1-4"><a class="doc-anchor" href="#14-hilbert-in-3d-the-group-is-a%E2%82%84-which-is-agl1-4">§</a>14. Hilbert in 3D: the group is <code>A₄</code>, which is <code>AGL(1, 4)</code></h2>
+<p><strong>Problem.</strong> The 3D Hilbert index to and from <code>(x, y, z)</code>; the
+curve of rawrunprotected’s tables (2016), which is the one people
+use.</p>
+<p><strong>Decomposition.</strong> Three bits per level, an octant <code>q(i) = i ^ (i &gt;&gt; 1)</code>
+in a frame, and the frame below is the frame above composed with a
+map <code>g(i)</code>. The frames form <code>A₄</code>, acting on octants as a cyclic
+rotation of the axes and an even number of reflections,
+<code>o ↦ rot_r(o) ^ c</code>. Split an octant into its parity and its even
+part: the even octants <code>{000, 011, 110, 101}</code> are GF(4), rotation
+is multiplication by <code>ω</code>, and a frame is <code>e ↦ m·e + t</code>, the parity
+untouched. That is the group of the 2D encode again, so the 2D
+encode’s round, one GF(4) multiplication per word pair, is the 3D
+decode’s round: the maps <code>g(i)</code> are read off the index, composed
+by suffix product, and each octant is placed in its frame. The
+formulas for <code>g(i)</code> and the identification of even octants with
+GF(4) were read off the tables by a script and are checked against
+them on every cell of every order up to 5 (<code>tests/hilbert3.rs</code>).</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
+
+<span class="kw">let </span>h = Hilbert3::&lt;u64&gt;::encode(<span class="number">1000</span>, <span class="number">2000</span>, <span class="number">3000</span>);
+<span class="macro">assert_eq!</span>(h.decode(), (<span class="number">1000</span>, <span class="number">2000</span>, <span class="number">3000</span>));
+<span class="comment">// The first octant of the order-3 curve is the order-2 curve with
+// the axes rotated once.
+</span><span class="macro">assert_eq!</span>(
+    Hilbert3::&lt;u16&gt;::encode_order(<span class="number">1</span>, <span class="number">2</span>, <span class="number">3</span>, <span class="number">3</span>),
+    Hilbert3::&lt;u16&gt;::encode_order(<span class="number">2</span>, <span class="number">3</span>, <span class="number">1</span>, <span class="number">2</span>)
+);</code></pre></div>
+<p><strong>Why the encode is a table.</strong> With the coordinates as input the
+maps on the twelve frames are not permutations (eight images
+each), the monoid they generate passes a million elements at word
+length seven, and the all-zero word never resets it: no group
+representation, no window. That is the enumerative regime, and its
+representation is the machine itself. <a href="../hilbert3/struct.Hilbert3.html#method.from_morton" title="associated function hakmem::hilbert3::Hilbert3::from_morton"><code>Hilbert3::from_morton</code></a>
+walks it through a table of 96 bytes, which a
+<code>const fn</code> builds at compile time from the same GF(4) step the
+reference machine runs; the table is a memo of the algebra, not a
+constant anyone typed. The algebraic loop costs three to four times
+the table: its chain is ten operations a level and a level cannot
+start before the frame above it is known, while a lookup is one
+load from L1. The monoid lacks composition, not symmetry: a step
+commutes with the translations of <code>V₄ ⊲ A₄</code>, which move an octant
+by a XOR, so the 96 entries are 24 between two XORs, small enough
+for two 16-entry shuffles.</p>
+<p><strong>Laws.</strong> <code>hilbert3_matches_reference</code> (the scan and the table
+against the machine in GF(4), both directions),
+<code>hilbert3_roundtrip</code>, <code>hilbert3_consecutive_are_adjacent</code> (every
+index of the 32³ curve on <code>u16</code>), <code>hilbert3_order_laws</code> (the
+order-<code>n</code> curve is the first octant of order <code>n + 1</code> with the axes
+rotated, <code>(x, y, z) ↦ (y, z, x)</code>).</p>
+<p><strong>Cost.</strong> Decode: five rounds of about 20 operations for a <code>u64</code>
+(21 levels), 10 ns per point portable and 9 ns with <code>+bmi2</code>,
+against 16 ns for the table loop. Encode: 21 dependent loads,
+19 ns, the same as the table loop it memoises; the algebraic loop
+is 70 ns.</p>
 </div></details></section></div></main></body></html>

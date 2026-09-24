@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"struct":["U8x16","U8x8"],"trait":["Lanes"]};

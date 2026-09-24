@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"trait":["Bits"]};
+window.SIDEBAR_ITEMS = {"fn":["truth_table"],"trait":["Bits"]};

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["find_run","next_set_after","popcount","positions","rank","select"]};
+window.SIDEBAR_ITEMS = {"trait":["Words"]};

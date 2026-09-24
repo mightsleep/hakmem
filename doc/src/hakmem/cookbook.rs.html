@@ -88,179 +88,604 @@
 <a href=#88 id=88 data-nosnippet>88</a>//! run of ones (`leading_ones`) continued by the next word's bottom run
 <a href=#89 id=89 data-nosnippet>89</a>//! (`trailing_ones`). No wider window is needed; an earlier version
 <a href=#90 id=90 data-nosnippet>90</a>//! of this kernel widened to `u128` and was 1.6–2.2× slower for it.
-<a href=#91 id=91 data-nosnippet>91</a>//! Shipped as [`crate::slice::find_run`].
+<a href=#91 id=91 data-nosnippet>91</a>//! Shipped as [`Words::find_run`](crate::slice::Words::find_run).
 <a href=#92 id=92 data-nosnippet>92</a>//!
 <a href=#93 id=93 data-nosnippet>93</a>//! ```
-<a href=#94 id=94 data-nosnippet>94</a>//! use hakmem::slice::find_run;
+<a href=#94 id=94 data-nosnippet>94</a>//! use hakmem::prelude::*;
 <a href=#95 id=95 data-nosnippet>95</a>//!
 <a href=#96 id=96 data-nosnippet>96</a>//! // 60 free slots, then 4 taken, then all free: a 6-run must straddle.
-<a href=#97 id=97 data-nosnippet>97</a>//! let words = [u64::MAX &gt;&gt; 4, u64::MAX];
-<a href=#98 id=98 data-nosnippet>98</a>//! assert_eq!(find_run(&amp;words, 6), Some(0));
-<a href=#99 id=99 data-nosnippet>99</a>//! let words = [0xFFu64 &lt;&lt; 56, u64::MAX];
-<a href=#100 id=100 data-nosnippet>100</a>//! assert_eq!(find_run(&amp;words, 16), Some(56));
-<a href=#101 id=101 data-nosnippet>101</a>//! ```
-<a href=#102 id=102 data-nosnippet>102</a>//!
-<a href=#103 id=103 data-nosnippet>103</a>//! **Laws.** `run_starts_composes`: `run_starts(a) ∘ run_starts(b) =
-<a href=#104 id=104 data-nosnippet>104</a>//! run_starts(a + b − 1)`. This is *why* the halving chain is
-<a href=#105 id=105 data-nosnippet>105</a>//! correct, each halving step is a composition. `run_starts_shrinks`
-<a href=#106 id=106 data-nosnippet>106</a>//! (longer runs start at a subset of positions) is what makes binary
-<a href=#107 id=107 data-nosnippet>107</a>//! search for [`crate::Bits::longest_run`] valid. `slice_ops_match_reference`
-<a href=#108 id=108 data-nosnippet>108</a>//! covers the boundary case.
-<a href=#109 id=109 data-nosnippet>109</a>//!
-<a href=#110 id=110 data-nosnippet>110</a>//! **Cost.** ≤ 6 operations per word for `k ≤ 64` plus two count-ones
-<a href=#111 id=111 data-nosnippet>111</a>//! at a boundary; the scan is memory-bound, not ALU-bound.
+<a href=#97 id=97 data-nosnippet>97</a>//! assert_eq!([u64::MAX &gt;&gt; 4, u64::MAX].find_run(6), Some(0));
+<a href=#98 id=98 data-nosnippet>98</a>//! assert_eq!([0xFFu64 &lt;&lt; 56, u64::MAX].find_run(16), Some(56));
+<a href=#99 id=99 data-nosnippet>99</a>//! ```
+<a href=#100 id=100 data-nosnippet>100</a>//!
+<a href=#101 id=101 data-nosnippet>101</a>//! **Laws.** `run_starts_composes`: `run_starts(a) ∘ run_starts(b) =
+<a href=#102 id=102 data-nosnippet>102</a>//! run_starts(a + b − 1)`. This is *why* the halving chain is
+<a href=#103 id=103 data-nosnippet>103</a>//! correct, each halving step is a composition. `run_starts_shrinks`
+<a href=#104 id=104 data-nosnippet>104</a>//! (longer runs start at a subset of positions) is what makes binary
+<a href=#105 id=105 data-nosnippet>105</a>//! search for [`crate::Bits::longest_run`] valid. `slice_ops_match_reference`
+<a href=#106 id=106 data-nosnippet>106</a>//! covers the boundary case.
+<a href=#107 id=107 data-nosnippet>107</a>//!
+<a href=#108 id=108 data-nosnippet>108</a>//! **Cost.** ≤ 6 operations per word for `k ≤ 64` plus two count-ones
+<a href=#109 id=109 data-nosnippet>109</a>//! at a boundary; the scan is memory-bound, not ALU-bound.
+<a href=#110 id=110 data-nosnippet>110</a>//!
+<a href=#111 id=111 data-nosnippet>111</a>//! # 3. The Myers column step
 <a href=#112 id=112 data-nosnippet>112</a>//!
-<a href=#113 id=113 data-nosnippet>113</a>//! # 3. The Myers column step
-<a href=#114 id=114 data-nosnippet>114</a>//!
-<a href=#115 id=115 data-nosnippet>115</a>//! **Problem.** Levenshtein distance is a dynamic-programming table;
-<a href=#116 id=116 data-nosnippet>116</a>//! compute it without touching cells one at a time.
-<a href=#117 id=117 data-nosnippet>117</a>//!
-<a href=#118 id=118 data-nosnippet>118</a>//! **Decomposition.** Adjacent cells in a DP column differ by −1, 0 or
-<a href=#119 id=119 data-nosnippet>119</a>//! +1, so a column of `m` cells is two `m`-bit words: `Pv` (delta +1)
-<a href=#120 id=120 data-nosnippet>120</a>//! and `Mv` (delta −1). Matches of the next text character are a mask
-<a href=#121 id=121 data-nosnippet>121</a>//! `Eq`. The step is
-<a href=#122 id=122 data-nosnippet>122</a>//!
-<a href=#123 id=123 data-nosnippet>123</a>//! ```text
-<a href=#124 id=124 data-nosnippet>124</a>//! Xh = ((Eq &amp; Pv) + Pv) ^ Pv | Eq     // matches propagate down the column
-<a href=#125 id=125 data-nosnippet>125</a>//! Ph = Mv | !(Xh | Pv)                // horizontal deltas out
-<a href=#126 id=126 data-nosnippet>126</a>//! Mh = Pv &amp; Xh
-<a href=#127 id=127 data-nosnippet>127</a>//! score += top bit of Ph, −= top bit of Mh
-<a href=#128 id=128 data-nosnippet>128</a>//! Pv = (Mh &lt;&lt; 1) | !(Xv | (Ph &lt;&lt; 1))  // shift deltas one row down
-<a href=#129 id=129 data-nosnippet>129</a>//! Mv = (Ph &lt;&lt; 1) &amp; Xv
-<a href=#130 id=130 data-nosnippet>130</a>//! ```
-<a href=#131 id=131 data-nosnippet>131</a>//!
-<a href=#132 id=132 data-nosnippet>132</a>//! The addition is the whole trick: a carry chain is a scan, and the
-<a href=#133 id=133 data-nosnippet>133</a>//! DP's "a match at row `i` lets the score at row `i+1` stay flat"
-<a href=#134 id=134 data-nosnippet>134</a>//! is exactly carry propagation. The DP boundary `D[0][j] = j` is one
-<a href=#135 id=135 data-nosnippet>135</a>//! bit shifted into `Ph` (global) or not (semi-global search). Shipped
-<a href=#136 id=136 data-nosnippet>136</a>//! as [`crate::myers`], written against [`crate::Word`] so that
-<a href=#137 id=137 data-nosnippet>137</a>//! [`crate::wide::Wide`] runs it unchanged for long patterns.
-<a href=#138 id=138 data-nosnippet>138</a>//!
-<a href=#139 id=139 data-nosnippet>139</a>//! ```
-<a href=#140 id=140 data-nosnippet>140</a>//! use hakmem::myers::{edit_distance, search};
-<a href=#141 id=141 data-nosnippet>141</a>//!
-<a href=#142 id=142 data-nosnippet>142</a>//! assert_eq!(edit_distance::&lt;u64&gt;(b"kitten", b"sitting"), Some(3));
-<a href=#143 id=143 data-nosnippet>143</a>//! let ends: Vec&lt;_&gt; = search::&lt;u64&gt;(b"lo", b"hello lo", 0).unwrap().collect();
-<a href=#144 id=144 data-nosnippet>144</a>//! assert_eq!(ends, [(5, 0), (8, 0)]);
-<a href=#145 id=145 data-nosnippet>145</a>//! ```
-<a href=#146 id=146 data-nosnippet>146</a>//!
-<a href=#147 id=147 data-nosnippet>147</a>//! **Laws.** None of the exported ones, the kernel is verified against
-<a href=#148 id=148 data-nosnippet>148</a>//! the textbook DP by property tests on `u8`, `u64`, `u128` and
-<a href=#149 id=149 data-nosnippet>149</a>//! `Wide&lt;4&gt;` (`tests/myers.rs`). That is the honest way to say "this
-<a href=#150 id=150 data-nosnippet>150</a>//! sentence has no local algebraic proof, only a global one".
-<a href=#151 id=151 data-nosnippet>151</a>//!
-<a href=#152 id=152 data-nosnippet>152</a>//! **Cost.** ~12 operations per text byte, independent of pattern
-<a href=#153 id=153 data-nosnippet>153</a>//! length up to the word width; `N` limbs for `Wide&lt;N&gt;`.
+<a href=#113 id=113 data-nosnippet>113</a>//! **Problem.** Levenshtein distance is a dynamic-programming table;
+<a href=#114 id=114 data-nosnippet>114</a>//! compute it without touching cells one at a time.
+<a href=#115 id=115 data-nosnippet>115</a>//!
+<a href=#116 id=116 data-nosnippet>116</a>//! **Decomposition.** Adjacent cells in a DP column differ by −1, 0 or
+<a href=#117 id=117 data-nosnippet>117</a>//! +1, so a column of `m` cells is two `m`-bit words: `Pv` (delta +1)
+<a href=#118 id=118 data-nosnippet>118</a>//! and `Mv` (delta −1). Matches of the next text character are a mask
+<a href=#119 id=119 data-nosnippet>119</a>//! `Eq`. The step is
+<a href=#120 id=120 data-nosnippet>120</a>//!
+<a href=#121 id=121 data-nosnippet>121</a>//! ```text
+<a href=#122 id=122 data-nosnippet>122</a>//! Xh = ((Eq &amp; Pv) + Pv) ^ Pv | Eq     // matches propagate down the column
+<a href=#123 id=123 data-nosnippet>123</a>//! Ph = Mv | !(Xh | Pv)                // horizontal deltas out
+<a href=#124 id=124 data-nosnippet>124</a>//! Mh = Pv &amp; Xh
+<a href=#125 id=125 data-nosnippet>125</a>//! score += top bit of Ph, −= top bit of Mh
+<a href=#126 id=126 data-nosnippet>126</a>//! Pv = (Mh &lt;&lt; 1) | !(Xv | (Ph &lt;&lt; 1))  // shift deltas one row down
+<a href=#127 id=127 data-nosnippet>127</a>//! Mv = (Ph &lt;&lt; 1) &amp; Xv
+<a href=#128 id=128 data-nosnippet>128</a>//! ```
+<a href=#129 id=129 data-nosnippet>129</a>//!
+<a href=#130 id=130 data-nosnippet>130</a>//! The addition is the whole trick: a carry chain is a scan, and the
+<a href=#131 id=131 data-nosnippet>131</a>//! DP's "a match at row `i` lets the score at row `i+1` stay flat"
+<a href=#132 id=132 data-nosnippet>132</a>//! is exactly carry propagation. The DP boundary `D[0][j] = j` is one
+<a href=#133 id=133 data-nosnippet>133</a>//! bit shifted into `Ph` (global) or not (semi-global search). Shipped
+<a href=#134 id=134 data-nosnippet>134</a>//! as [`crate::myers`], written against [`crate::Word`] so that
+<a href=#135 id=135 data-nosnippet>135</a>//! [`crate::wide::Wide`] runs it unchanged for long patterns.
+<a href=#136 id=136 data-nosnippet>136</a>//!
+<a href=#137 id=137 data-nosnippet>137</a>//! ```
+<a href=#138 id=138 data-nosnippet>138</a>//! use hakmem::myers::{distance_in, search};
+<a href=#139 id=139 data-nosnippet>139</a>//!
+<a href=#140 id=140 data-nosnippet>140</a>//! assert_eq!(distance_in::&lt;u64&gt;(b"kitten", b"sitting"), Some(3));
+<a href=#141 id=141 data-nosnippet>141</a>//! let ends: Vec&lt;_&gt; = search::&lt;u64&gt;(b"lo", b"hello lo", 0).unwrap().collect();
+<a href=#142 id=142 data-nosnippet>142</a>//! assert_eq!(ends, [(5, 0), (8, 0)]);
+<a href=#143 id=143 data-nosnippet>143</a>//! ```
+<a href=#144 id=144 data-nosnippet>144</a>//!
+<a href=#145 id=145 data-nosnippet>145</a>//! **Laws.** None of the exported ones, the kernel is verified against
+<a href=#146 id=146 data-nosnippet>146</a>//! the textbook DP by property tests on `u8`, `u64`, `u128` and
+<a href=#147 id=147 data-nosnippet>147</a>//! `Wide&lt;4&gt;` (`tests/myers.rs`). That is the honest way to say "this
+<a href=#148 id=148 data-nosnippet>148</a>//! sentence has no local algebraic proof, only a global one".
+<a href=#149 id=149 data-nosnippet>149</a>//!
+<a href=#150 id=150 data-nosnippet>150</a>//! **Cost.** ~12 operations per text byte, independent of pattern
+<a href=#151 id=151 data-nosnippet>151</a>//! length up to the word width; `N` limbs for `Wide&lt;N&gt;`.
+<a href=#152 id=152 data-nosnippet>152</a>//!
+<a href=#153 id=153 data-nosnippet>153</a>//! # 4. Morton neighbours without decoding
 <a href=#154 id=154 data-nosnippet>154</a>//!
-<a href=#155 id=155 data-nosnippet>155</a>//! # 4. Morton neighbours without decoding
-<a href=#156 id=156 data-nosnippet>156</a>//!
-<a href=#157 id=157 data-nosnippet>157</a>//! **Problem.** Cells of a 2D grid are stored in Z-order (Morton
-<a href=#158 id=158 data-nosnippet>158</a>//! codes). Step to the east neighbour without splitting the code into
-<a href=#159 id=159 data-nosnippet>159</a>//! `(x, y)` and back.
-<a href=#160 id=160 data-nosnippet>160</a>//!
-<a href=#161 id=161 data-nosnippet>161</a>//! **Decomposition.** A Morton code interleaves `x` and `y`, so `x`
-<a href=#162 id=162 data-nosnippet>162</a>//! lives in the even bits, a *dilated* integer. Adding one to a
-<a href=#163 id=163 data-nosnippet>163</a>//! dilated integer must carry across the zero gaps: fill the gaps with
-<a href=#164 id=164 data-nosnippet>164</a>//! ones first, add, mask back. [`crate::Dilated::incr`] does exactly that,
-<a href=#165 id=165 data-nosnippet>165</a>//! and [`crate::Dilated`] has no `+` on purpose, plain integer addition on
-<a href=#166 id=166 data-nosnippet>166</a>//! a dilated value is the bug this type makes uncompilable.
-<a href=#167 id=167 data-nosnippet>167</a>//!
-<a href=#168 id=168 data-nosnippet>168</a>//! ```
-<a href=#169 id=169 data-nosnippet>169</a>//! use hakmem::Morton2;
-<a href=#170 id=170 data-nosnippet>170</a>//!
-<a href=#171 id=171 data-nosnippet>171</a>//! let m = Morton2::&lt;u32&gt;::encode(3, 5);
-<a href=#172 id=172 data-nosnippet>172</a>//! assert_eq!(m.step_x().decode(), (4, 5));
-<a href=#173 id=173 data-nosnippet>173</a>//! assert_eq!(m.step_y().decode(), (3, 6));
-<a href=#174 id=174 data-nosnippet>174</a>//! ```
-<a href=#175 id=175 data-nosnippet>175</a>//!
-<a href=#176 id=176 data-nosnippet>176</a>//! **Laws.** `dilated_incr_is_add_one`, `dilated_add_is_add`
-<a href=#177 id=177 data-nosnippet>177</a>//! (dilation is a homomorphism of addition modulo the width),
-<a href=#178 id=178 data-nosnippet>178</a>//! `morton_steps_are_unit_moves`, `morton_aligned_block_is_contiguous`
-<a href=#179 id=179 data-nosnippet>179</a>//! (aligned power-of-two blocks are contiguous code ranges, the
-<a href=#180 id=180 data-nosnippet>180</a>//! reason a 1D allocator can run over a 2D texture).
-<a href=#181 id=181 data-nosnippet>181</a>//!
-<a href=#182 id=182 data-nosnippet>182</a>//! **Cost.** `incr` is three operations; `encode` / `decode` are two
-<a href=#183 id=183 data-nosnippet>183</a>//! PDEP / PEXT, or a five-step spread without BMI2.
+<a href=#155 id=155 data-nosnippet>155</a>//! **Problem.** Cells of a 2D grid are stored in Z-order (Morton
+<a href=#156 id=156 data-nosnippet>156</a>//! codes). Step to the east neighbour without splitting the code into
+<a href=#157 id=157 data-nosnippet>157</a>//! `(x, y)` and back.
+<a href=#158 id=158 data-nosnippet>158</a>//!
+<a href=#159 id=159 data-nosnippet>159</a>//! **Decomposition.** A Morton code interleaves `x` and `y`, so `x`
+<a href=#160 id=160 data-nosnippet>160</a>//! lives in the even bits, a *dilated* integer. Adding one to a
+<a href=#161 id=161 data-nosnippet>161</a>//! dilated integer must carry across the zero gaps: fill the gaps with
+<a href=#162 id=162 data-nosnippet>162</a>//! ones first, add, mask back. [`crate::Dilated::incr`] does exactly that,
+<a href=#163 id=163 data-nosnippet>163</a>//! and [`crate::Dilated`] has no `+` on purpose, plain integer addition on
+<a href=#164 id=164 data-nosnippet>164</a>//! a dilated value is the bug this type makes uncompilable.
+<a href=#165 id=165 data-nosnippet>165</a>//!
+<a href=#166 id=166 data-nosnippet>166</a>//! ```
+<a href=#167 id=167 data-nosnippet>167</a>//! use hakmem::Morton2;
+<a href=#168 id=168 data-nosnippet>168</a>//!
+<a href=#169 id=169 data-nosnippet>169</a>//! let m = Morton2::&lt;u32&gt;::encode(3, 5);
+<a href=#170 id=170 data-nosnippet>170</a>//! assert_eq!(m.step_x().decode(), (4, 5));
+<a href=#171 id=171 data-nosnippet>171</a>//! assert_eq!(m.step_y().decode(), (3, 6));
+<a href=#172 id=172 data-nosnippet>172</a>//! ```
+<a href=#173 id=173 data-nosnippet>173</a>//!
+<a href=#174 id=174 data-nosnippet>174</a>//! **Laws.** `dilated_incr_is_add_one`, `dilated_add_is_add`
+<a href=#175 id=175 data-nosnippet>175</a>//! (dilation is a homomorphism of addition modulo the width),
+<a href=#176 id=176 data-nosnippet>176</a>//! `morton_steps_are_unit_moves`, `morton_aligned_block_is_contiguous`
+<a href=#177 id=177 data-nosnippet>177</a>//! (aligned power-of-two blocks are contiguous code ranges, the
+<a href=#178 id=178 data-nosnippet>178</a>//! reason a 1D allocator can run over a 2D texture).
+<a href=#179 id=179 data-nosnippet>179</a>//!
+<a href=#180 id=180 data-nosnippet>180</a>//! **Cost.** `incr` is three operations; `encode` / `decode` are two
+<a href=#181 id=181 data-nosnippet>181</a>//! PDEP / PEXT, or a five-step spread without BMI2.
+<a href=#182 id=182 data-nosnippet>182</a>//!
+<a href=#183 id=183 data-nosnippet>183</a>//! # 5. `strlen` in one word
 <a href=#184 id=184 data-nosnippet>184</a>//!
-<a href=#185 id=185 data-nosnippet>185</a>//! # 5. `strlen` in one word
-<a href=#186 id=186 data-nosnippet>186</a>//!
-<a href=#187 id=187 data-nosnippet>187</a>//! **Problem.** Find the first zero byte of a word, the inner loop of
-<a href=#188 id=188 data-nosnippet>188</a>//! `strlen`, `memchr` and every delimiter scan.
-<a href=#189 id=189 data-nosnippet>189</a>//!
-<a href=#190 id=190 data-nosnippet>190</a>//! **Decomposition.** [`crate::Bits::zero_bytes`] sets the high bit of every
-<a href=#191 id=191 data-nosnippet>191</a>//! zero lane, exactly: `!((x &amp; 0x7f…) + 0x7f… | x | 0x7f…)`. The
-<a href=#192 id=192 data-nosnippet>192</a>//! classic `(x − 0x01…) &amp; !x &amp; 0x80…` is one operation shorter and
-<a href=#193 id=193 data-nosnippet>193</a>//! *wrong* above the first zero byte (a borrow leaks into the next
-<a href=#194 id=194 data-nosnippet>194</a>//! lane); it is fine for "is there any", not for "which". Then
-<a href=#195 id=195 data-nosnippet>195</a>//! `trailing_zeros / 8` names the lane. [`crate::Bits::bytes_eq`] is the
-<a href=#196 id=196 data-nosnippet>196</a>//! same sentence after `x ^ splat(b)`.
-<a href=#197 id=197 data-nosnippet>197</a>//!
-<a href=#198 id=198 data-nosnippet>198</a>//! ```
-<a href=#199 id=199 data-nosnippet>199</a>//! use hakmem::Bits;
-<a href=#200 id=200 data-nosnippet>200</a>//!
-<a href=#201 id=201 data-nosnippet>201</a>//! let word = u64::from_le_bytes(*b"hello\0!!");
-<a href=#202 id=202 data-nosnippet>202</a>//! assert_eq!(word.first_zero_byte(), Some(5));
-<a href=#203 id=203 data-nosnippet>203</a>//! assert_eq!(word.bytes_eq(b'l').count_ones(), 2);
-<a href=#204 id=204 data-nosnippet>204</a>//! ```
-<a href=#205 id=205 data-nosnippet>205</a>//!
-<a href=#206 id=206 data-nosnippet>206</a>//! **Laws.** `swar_lanes_match_reference` (every lane predicate against
-<a href=#207 id=207 data-nosnippet>207</a>//! a byte loop, exhaustive over all bytes for `u8`/`u16`);
-<a href=#208 id=208 data-nosnippet>208</a>//! `zero_bytes_turns_or_into_and` (a lane is zero in `x | y` iff zero
-<a href=#209 id=209 data-nosnippet>209</a>//! in both), the De Morgan shape that lets you test two words with
-<a href=#210 id=210 data-nosnippet>210</a>//! one scan.
-<a href=#211 id=211 data-nosnippet>211</a>//!
-<a href=#212 id=212 data-nosnippet>212</a>//! **Cost.** Four operations for the mask, one `trailing_zeros` for
-<a href=#213 id=213 data-nosnippet>213</a>//! the index; eight bytes per iteration instead of one.
+<a href=#185 id=185 data-nosnippet>185</a>//! **Problem.** Find the first zero byte of a word, the inner loop of
+<a href=#186 id=186 data-nosnippet>186</a>//! `strlen`, `memchr` and every delimiter scan.
+<a href=#187 id=187 data-nosnippet>187</a>//!
+<a href=#188 id=188 data-nosnippet>188</a>//! **Decomposition.** [`crate::Bits::zero_bytes`] sets the high bit of every
+<a href=#189 id=189 data-nosnippet>189</a>//! zero lane, exactly: `!((x &amp; 0x7f…) + 0x7f… | x | 0x7f…)`. The
+<a href=#190 id=190 data-nosnippet>190</a>//! classic `(x − 0x01…) &amp; !x &amp; 0x80…` is one operation shorter and
+<a href=#191 id=191 data-nosnippet>191</a>//! *wrong* above the first zero byte (a borrow leaks into the next
+<a href=#192 id=192 data-nosnippet>192</a>//! lane); it is fine for "is there any", not for "which". Then
+<a href=#193 id=193 data-nosnippet>193</a>//! `trailing_zeros / 8` names the lane. [`crate::Bits::bytes_eq`] is the
+<a href=#194 id=194 data-nosnippet>194</a>//! same sentence after `x ^ splat(b)`.
+<a href=#195 id=195 data-nosnippet>195</a>//!
+<a href=#196 id=196 data-nosnippet>196</a>//! ```
+<a href=#197 id=197 data-nosnippet>197</a>//! use hakmem::Bits;
+<a href=#198 id=198 data-nosnippet>198</a>//!
+<a href=#199 id=199 data-nosnippet>199</a>//! let word = u64::from_le_bytes(*b"hello\0!!");
+<a href=#200 id=200 data-nosnippet>200</a>//! assert_eq!(word.first_zero_byte(), Some(5));
+<a href=#201 id=201 data-nosnippet>201</a>//! assert_eq!(word.bytes_eq(b'l').count_ones(), 2);
+<a href=#202 id=202 data-nosnippet>202</a>//! ```
+<a href=#203 id=203 data-nosnippet>203</a>//!
+<a href=#204 id=204 data-nosnippet>204</a>//! **Laws.** `swar_lanes_match_reference` (every lane predicate against
+<a href=#205 id=205 data-nosnippet>205</a>//! a byte loop, exhaustive over all bytes for `u8`/`u16`);
+<a href=#206 id=206 data-nosnippet>206</a>//! `zero_bytes_turns_or_into_and` (a lane is zero in `x | y` iff zero
+<a href=#207 id=207 data-nosnippet>207</a>//! in both), the De Morgan shape that lets you test two words with
+<a href=#208 id=208 data-nosnippet>208</a>//! one scan.
+<a href=#209 id=209 data-nosnippet>209</a>//!
+<a href=#210 id=210 data-nosnippet>210</a>//! **Cost.** Four operations for the mask, one `trailing_zeros` for
+<a href=#211 id=211 data-nosnippet>211</a>//! the index; eight bytes per iteration instead of one.
+<a href=#212 id=212 data-nosnippet>212</a>//!
+<a href=#213 id=213 data-nosnippet>213</a>//! # 6. Sliding-piece attacks (Kogge–Stone)
 <a href=#214 id=214 data-nosnippet>214</a>//!
-<a href=#215 id=215 data-nosnippet>215</a>//! # 6. Sliding-piece attacks (Kogge–Stone)
-<a href=#216 id=216 data-nosnippet>216</a>//!
-<a href=#217 id=217 data-nosnippet>217</a>//! **Problem.** On an 8×8 bitboard, which squares does a rook attack
-<a href=#218 id=218 data-nosnippet>218</a>//! northward, given the occupied squares?
-<a href=#219 id=219 data-nosnippet>219</a>//!
-<a href=#220 id=220 data-nosnippet>220</a>//! **Decomposition.** "Slide until blocked" is a prefix OR along a
-<a href=#221 id=221 data-nosnippet>221</a>//! stride of 8 through a propagation mask (the empty squares):
-<a href=#222 id=222 data-nosnippet>222</a>//! [`crate::Bits::fill_up`]. Kogge–Stone doubles the stride each round
-<a href=#223 id=223 data-nosnippet>223</a>//! (`gen |= prop &amp; gen &lt;&lt; s; prop &amp;= prop &lt;&lt; s`), three rounds for
-<a href=#224 id=224 data-nosnippet>224</a>//! eight ranks. The attacked set includes the blocker: shift the fill
-<a href=#225 id=225 data-nosnippet>225</a>//! once more.
-<a href=#226 id=226 data-nosnippet>226</a>//!
-<a href=#227 id=227 data-nosnippet>227</a>//! ```
-<a href=#228 id=228 data-nosnippet>228</a>//! use hakmem::Bits;
-<a href=#229 id=229 data-nosnippet>229</a>//!
-<a href=#230 id=230 data-nosnippet>230</a>//! let rook = 1u64; // a1
-<a href=#231 id=231 data-nosnippet>231</a>//! let occupied = 1u64 &lt;&lt; 32; // a5
-<a href=#232 id=232 data-nosnippet>232</a>//! let attacks = rook.fill_up(!occupied, 8) &lt;&lt; 8;
-<a href=#233 id=233 data-nosnippet>233</a>//! assert_eq!(attacks &amp; 0x0101_0101_0101_0101, 0x0000_0001_0101_0100); // a2..a5
-<a href=#234 id=234 data-nosnippet>234</a>//! ```
-<a href=#235 id=235 data-nosnippet>235</a>//!
-<a href=#236 id=236 data-nosnippet>236</a>//! **Laws.** `fills_match_reference` (the doubling rounds equal
-<a href=#237 id=237 data-nosnippet>237</a>//! iterating single steps), `fills_are_closure_operators` (idempotent
-<a href=#238 id=238 data-nosnippet>238</a>//! and extensive, filling twice is filling once, which is what makes
-<a href=#239 id=239 data-nosnippet>239</a>//! "occupancy changed only here" updates safe). With a full mask and
-<a href=#240 id=240 data-nosnippet>240</a>//! stride 1, `fill_up` *is* `prefix_or`.
-<a href=#241 id=241 data-nosnippet>241</a>//!
-<a href=#242 id=242 data-nosnippet>242</a>//! **Cost.** Three rounds of three operations per direction; the
-<a href=#243 id=243 data-nosnippet>243</a>//! eight directions of a queen are 72 operations, no table.
+<a href=#215 id=215 data-nosnippet>215</a>//! **Problem.** On an 8×8 bitboard, which squares does a rook attack
+<a href=#216 id=216 data-nosnippet>216</a>//! northward, given the occupied squares?
+<a href=#217 id=217 data-nosnippet>217</a>//!
+<a href=#218 id=218 data-nosnippet>218</a>//! **Decomposition.** "Slide until blocked" is a prefix OR along a
+<a href=#219 id=219 data-nosnippet>219</a>//! stride of 8 through a propagation mask (the empty squares):
+<a href=#220 id=220 data-nosnippet>220</a>//! [`crate::Bits::fill_up`]. Kogge–Stone doubles the stride each round
+<a href=#221 id=221 data-nosnippet>221</a>//! (`gen |= prop &amp; gen &lt;&lt; s; prop &amp;= prop &lt;&lt; s`), three rounds for
+<a href=#222 id=222 data-nosnippet>222</a>//! eight ranks. The attacked set includes the blocker: shift the fill
+<a href=#223 id=223 data-nosnippet>223</a>//! once more.
+<a href=#224 id=224 data-nosnippet>224</a>//!
+<a href=#225 id=225 data-nosnippet>225</a>//! ```
+<a href=#226 id=226 data-nosnippet>226</a>//! use hakmem::Bits;
+<a href=#227 id=227 data-nosnippet>227</a>//!
+<a href=#228 id=228 data-nosnippet>228</a>//! let rook = 1u64; // a1
+<a href=#229 id=229 data-nosnippet>229</a>//! let occupied = 1u64 &lt;&lt; 32; // a5
+<a href=#230 id=230 data-nosnippet>230</a>//! let attacks = rook.fill_up(!occupied, 8) &lt;&lt; 8;
+<a href=#231 id=231 data-nosnippet>231</a>//! assert_eq!(attacks &amp; 0x0101_0101_0101_0101, 0x0000_0001_0101_0100); // a2..a5
+<a href=#232 id=232 data-nosnippet>232</a>//! ```
+<a href=#233 id=233 data-nosnippet>233</a>//!
+<a href=#234 id=234 data-nosnippet>234</a>//! **Laws.** `fills_match_reference` (the doubling rounds equal
+<a href=#235 id=235 data-nosnippet>235</a>//! iterating single steps), `fills_are_closure_operators` (idempotent
+<a href=#236 id=236 data-nosnippet>236</a>//! and extensive, filling twice is filling once, which is what makes
+<a href=#237 id=237 data-nosnippet>237</a>//! "occupancy changed only here" updates safe). With a full mask and
+<a href=#238 id=238 data-nosnippet>238</a>//! stride 1, `fill_up` *is* `prefix_or`.
+<a href=#239 id=239 data-nosnippet>239</a>//!
+<a href=#240 id=240 data-nosnippet>240</a>//! **Cost.** Three rounds of three operations per direction; the
+<a href=#241 id=241 data-nosnippet>241</a>//! eight directions of a queen are 72 operations, no table.
+<a href=#242 id=242 data-nosnippet>242</a>//!
+<a href=#243 id=243 data-nosnippet>243</a>//! # 7. Not built here: banded Myers over `Wide&lt;N&gt;`
 <a href=#244 id=244 data-nosnippet>244</a>//!
-<a href=#245 id=245 data-nosnippet>245</a>//! # 7. Not built here: banded Myers over `Wide&lt;N&gt;`
-<a href=#246 id=246 data-nosnippet>246</a>//!
-<a href=#247 id=247 data-nosnippet>247</a>//! For two long strings that differ in few edits, `triple_accel`
-<a href=#248 id=248 data-nosnippet>248</a>//! beats recipe 3 on `Wide&lt;8&gt;` by about 2× (see the README table),
-<a href=#249 id=249 data-nosnippet>249</a>//! because it only computes a diagonal band. This crate does not ship
-<a href=#250 id=250 data-nosnippet>250</a>//! that variant, deliberately. Everything needed is here.
-<a href=#251 id=251 data-nosnippet>251</a>//!
-<a href=#252 id=252 data-nosnippet>252</a>//! A `Wide&lt;N&gt;` column is `N` limbs. Run the step of recipe 3 per limb
-<a href=#253 id=253 data-nosnippet>253</a>//! with an explicit horizontal delta between limbs: the top bit of
-<a href=#254 id=254 data-nosnippet>254</a>//! `Ph` / `Mh` leaving limb `i` is the bit shifted into limb `i + 1`
-<a href=#255 id=255 data-nosnippet>255</a>//! (this is exactly what [`crate::Word::wrapping_add`] does across limbs
-<a href=#256 id=256 data-nosnippet>256</a>//! implicitly, the banded version makes the carry explicit so it can
-<a href=#257 id=257 data-nosnippet>257</a>//! stop). Keep the score of the last active limb's bottom cell; while
-<a href=#258 id=258 data-nosnippet>258</a>//! it exceeds `k + (limbs left) × 64`, the limbs below it cannot come
-<a href=#259 id=259 data-nosnippet>259</a>//! back under `k` and need not be updated (Ukkonen's cut-off, Hyyrö's
-<a href=#260 id=260 data-nosnippet>260</a>//! block formulation). Cost drops from `N` limbs per text byte to the
-<a href=#261 id=261 data-nosnippet>261</a>//! active band, typically one or two. The laws you would write:
-<a href=#262 id=262 data-nosnippet>262</a>//! agreement with recipe 3 on the same inputs when `k` is large, and
-<a href=#263 id=263 data-nosnippet>263</a>//! `None`-agreement with the DP when it is small. Both are one
-<a href=#264 id=264 data-nosnippet>264</a>//! proptest each against `tests/myers.rs`'s reference. Do that and you
-<a href=#265 id=265 data-nosnippet>265</a>//! have your microkernel; it will be shorter than this paragraph.
+<a href=#245 id=245 data-nosnippet>245</a>//! For two long strings that differ in few edits, `triple_accel`
+<a href=#246 id=246 data-nosnippet>246</a>//! beats recipe 3 on `Wide&lt;8&gt;` by about 2× (see the README table),
+<a href=#247 id=247 data-nosnippet>247</a>//! because it only computes a diagonal band. This crate does not ship
+<a href=#248 id=248 data-nosnippet>248</a>//! that variant, deliberately. Everything needed is here.
+<a href=#249 id=249 data-nosnippet>249</a>//!
+<a href=#250 id=250 data-nosnippet>250</a>//! A `Wide&lt;N&gt;` column is `N` limbs. Run the step of recipe 3 per limb
+<a href=#251 id=251 data-nosnippet>251</a>//! with an explicit horizontal delta between limbs: the top bit of
+<a href=#252 id=252 data-nosnippet>252</a>//! `Ph` / `Mh` leaving limb `i` is the bit shifted into limb `i + 1`
+<a href=#253 id=253 data-nosnippet>253</a>//! (this is exactly what [`crate::Word::wrapping_add`] does across limbs
+<a href=#254 id=254 data-nosnippet>254</a>//! implicitly, the banded version makes the carry explicit so it can
+<a href=#255 id=255 data-nosnippet>255</a>//! stop). Keep the score of the last active limb's bottom cell; while
+<a href=#256 id=256 data-nosnippet>256</a>//! it exceeds `k + (limbs left) × 64`, the limbs below it cannot come
+<a href=#257 id=257 data-nosnippet>257</a>//! back under `k` and need not be updated (Ukkonen's cut-off, Hyyrö's
+<a href=#258 id=258 data-nosnippet>258</a>//! block formulation). Cost drops from `N` limbs per text byte to the
+<a href=#259 id=259 data-nosnippet>259</a>//! active band, typically one or two. The laws you would write:
+<a href=#260 id=260 data-nosnippet>260</a>//! agreement with recipe 3 on the same inputs when `k` is large, and
+<a href=#261 id=261 data-nosnippet>261</a>//! `None`-agreement with the DP when it is small. Both are one
+<a href=#262 id=262 data-nosnippet>262</a>//! proptest each against `tests/myers.rs`'s reference. Do that and you
+<a href=#263 id=263 data-nosnippet>263</a>//! have your microkernel; it will be shorter than this paragraph.
+<a href=#264 id=264 data-nosnippet>264</a>//!
+<a href=#265 id=265 data-nosnippet>265</a>//! # 8. Every byte map is one instruction, or two lookups
+<a href=#266 id=266 data-nosnippet>266</a>//!
+<a href=#267 id=267 data-nosnippet>267</a>//! **Problem.** Shift, rotate or reverse the bits of every byte in a
+<a href=#268 id=268 data-nosnippet>268</a>//! register. SSE has no 8-bit shift at all; NEON has the shifts and
+<a href=#269 id=269 data-nosnippet>269</a>//! `rbit` but no rotate; and a kernel usually wants three of these in
+<a href=#270 id=270 data-nosnippet>270</a>//! a row.
+<a href=#271 id=271 data-nosnippet>271</a>//!
+<a href=#272 id=272 data-nosnippet>272</a>//! **Decomposition.** Each of those is XOR-linear in the bits of the
+<a href=#273 id=273 data-nosnippet>273</a>//! byte, so each is an 8×8 matrix over GF(2), an
+<a href=#274 id=274 data-nosnippet>274</a>//! [`Affine8`](crate::affine::Affine8); NOT adds a constant. GFNI's
+<a href=#275 id=275 data-nosnippet>275</a>//! `gf2p8affineqb` applies one to sixteen bytes in one instruction,
+<a href=#276 id=276 data-nosnippet>276</a>//! and matrix multiplication ([`then`](crate::affine::Affine8::then))
+<a href=#277 id=277 data-nosnippet>277</a>//! composes them, so a chain of byte tricks is one constant and one
+<a href=#278 id=278 data-nosnippet>278</a>//! instruction. Without GFNI, linearity gives `A·x = A·hi ⊕ A·lo`: two
+<a href=#279 id=279 data-nosnippet>279</a>//! nibble lookups ([`lut16`](crate::lanes::Lanes::lut16)) and an XOR,
+<a href=#280 id=280 data-nosnippet>280</a>//! the tables folded at compile time. The named maps are the identity
+<a href=#281 id=281 data-nosnippet>281</a>//! matrix moved: a left shift by `n` is the identity shifted right by
+<a href=#282 id=282 data-nosnippet>282</a>//! `8 n` bits, the arithmetic shift adds `0x80` rows for the vacated
+<a href=#283 id=283 data-nosnippet>283</a>//! bits, the reversal reverses the rows (Wunkolo, 2020).
+<a href=#284 id=284 data-nosnippet>284</a>//!
+<a href=#285 id=285 data-nosnippet>285</a>//! ```
+<a href=#286 id=286 data-nosnippet>286</a>//! use hakmem::affine::Affine8;
+<a href=#287 id=287 data-nosnippet>287</a>//! use hakmem::lanes::{Lanes, U8x16};
+<a href=#288 id=288 data-nosnippet>288</a>//!
+<a href=#289 id=289 data-nosnippet>289</a>//! let x = U8x16::load(b"0123456789abcdef");
+<a href=#290 id=290 data-nosnippet>290</a>//! // Reverse the bits, then shift left by one, as one map.
+<a href=#291 id=291 data-nosnippet>291</a>//! let map = Affine8::REVERSE.then(Affine8::shl(1));
+<a href=#292 id=292 data-nosnippet>292</a>//! assert_eq!(x.affine(map), x.reverse_bits().shl(1));
+<a href=#293 id=293 data-nosnippet>293</a>//! // The matrices are the ones in Wunkolo's posts.
+<a href=#294 id=294 data-nosnippet>294</a>//! assert_eq!(Affine8::shl(1).matrix(), 0x0001_0204_0810_2040);
+<a href=#295 id=295 data-nosnippet>295</a>//! assert_eq!(Affine8::sra(2).matrix(), 0x0408_1020_4080_8080);
+<a href=#296 id=296 data-nosnippet>296</a>//! ```
+<a href=#297 id=297 data-nosnippet>297</a>//!
+<a href=#298 id=298 data-nosnippet>298</a>//! **Laws.** `affine_matches_reference` (the scalar, the SWAR word,
+<a href=#299 id=299 data-nosnippet>299</a>//! the nibble tables and the lanes against the bit-by-bit definition),
+<a href=#300 id=300 data-nosnippet>300</a>//! `affine_composes` (`then` is `apply` after `apply`; the identity is
+<a href=#301 id=301 data-nosnippet>301</a>//! neutral), `affine_named_maps_match_ops` (each named map is the `u8`
+<a href=#302 id=302 data-nosnippet>302</a>//! operation, for every shift count), `lane_maps_match_reference`.
+<a href=#303 id=303 data-nosnippet>303</a>//!
+<a href=#304 id=304 data-nosnippet>304</a>//! **Cost.** One instruction with GFNI (latency 3, one every other
+<a href=#305 id=305 data-nosnippet>305</a>//! cycle on Ice Lake, per uops.info); five without (two PSHUFB, a
+<a href=#306 id=306 data-nosnippet>306</a>//! shift, an AND, an XOR); on the SWAR carrier eight rounds of seven
+<a href=#307 id=307 data-nosnippet>307</a>//! operations.
+<a href=#308 id=308 data-nosnippet>308</a>//!
+<a href=#309 id=309 data-nosnippet>309</a>//! # 9. The truth table is the function at `(0xF0, 0xCC, 0xAA)`
+<a href=#310 id=310 data-nosnippet>310</a>//!
+<a href=#311 id=311 data-nosnippet>311</a>//! **Problem.** VPTERNLOG computes any Boolean function of three
+<a href=#312 id=312 data-nosnippet>312</a>//! registers from an 8-bit immediate. Which immediate? And the
+<a href=#313 id=313 data-nosnippet>313</a>//! question it is usually asked for: signed saturation on lanes that
+<a href=#314 id=314 data-nosnippet>314</a>//! have no signed saturating add.
+<a href=#315 id=315 data-nosnippet>315</a>//!
+<a href=#316 id=316 data-nosnippet>316</a>//! **Decomposition.** Bit `k` of `0xF0`, `0xCC`, `0xAA` is bit 2, 1, 0
+<a href=#317 id=317 data-nosnippet>317</a>//! of `k`, so across their bit positions the three bytes enumerate
+<a href=#318 id=318 data-nosnippet>318</a>//! the eight inputs; the function evaluated once on them is its table
+<a href=#319 id=319 data-nosnippet>319</a>//! ([`truth_table`](crate::bits::truth_table)), and
+<a href=#320 id=320 data-nosnippet>320</a>//! [`ternary`](crate::Bits::ternary) reads the table back. Signed
+<a href=#321 id=321 data-nosnippet>321</a>//! overflow needs only sign bits (Hacker's Delight 2-13): the operands
+<a href=#322 id=322 data-nosnippet>322</a>//! agree and the sum disagrees, `!(x ^ y) &amp; (x ^ s)`. Its table is
+<a href=#323 id=323 data-nosnippet>323</a>//! `0x42`; the subtraction's, `(x ^ y) &amp; (x ^ d)`, is `0x18`. Those are
+<a href=#324 id=324 data-nosnippet>324</a>//! the immediates in Wunkolo's saturation kernel, derived instead of
+<a href=#325 id=325 data-nosnippet>325</a>//! looked up. [`signed_add_overflows`](crate::Bits::signed_add_overflows)
+<a href=#326 id=326 data-nosnippet>326</a>//! is the scalar form.
+<a href=#327 id=327 data-nosnippet>327</a>//!
+<a href=#328 id=328 data-nosnippet>328</a>//! ```
+<a href=#329 id=329 data-nosnippet>329</a>//! use hakmem::Bits;
+<a href=#330 id=330 data-nosnippet>330</a>//! use hakmem::bits::truth_table;
+<a href=#331 id=331 data-nosnippet>331</a>//!
+<a href=#332 id=332 data-nosnippet>332</a>//! assert_eq!(truth_table(|a, b, s| !(a ^ b) &amp; (a ^ s)), 0x42);
+<a href=#333 id=333 data-nosnippet>333</a>//! assert_eq!(truth_table(|a, b, d| (a ^ b) &amp; (a ^ d)), 0x18);
+<a href=#334 id=334 data-nosnippet>334</a>//! let (a, b) = (100u8, 100u8);
+<a href=#335 id=335 data-nosnippet>335</a>//! let sum = a.wrapping_add(b);
+<a href=#336 id=336 data-nosnippet>336</a>//! assert_eq!(
+<a href=#337 id=337 data-nosnippet>337</a>//!     a.ternary(b, sum, 0x42) &amp; 0x80 != 0,
+<a href=#338 id=338 data-nosnippet>338</a>//!     a.signed_add_overflows(b)
+<a href=#339 id=339 data-nosnippet>339</a>//! );
+<a href=#340 id=340 data-nosnippet>340</a>//! assert!(a.signed_add_overflows(b)); // 100 + 100 does not fit an i8
+<a href=#341 id=341 data-nosnippet>341</a>//! ```
+<a href=#342 id=342 data-nosnippet>342</a>//!
+<a href=#343 id=343 data-nosnippet>343</a>//! **Laws.** `ternary_is_truth_table` (against the bit-by-bit reading
+<a href=#344 id=344 data-nosnippet>344</a>//! of the table), `truth_table_names_the_function` (mux, majority,
+<a href=#345 id=345 data-nosnippet>345</a>//! XOR3 and the two overflow tests come back as themselves, with
+<a href=#346 id=346 data-nosnippet>346</a>//! `0x42` and `0x18`), `signed_overflow_matches_sign_test`; and
+<a href=#347 id=347 data-nosnippet>347</a>//! `i8::checked_add` on every pair of bytes as the outside witness.
+<a href=#348 id=348 data-nosnippet>348</a>//!
+<a href=#349 id=349 data-nosnippet>349</a>//! **Cost.** One VPTERNLOG per register with AVX-512; the provided
+<a href=#350 id=350 data-nosnippet>350</a>//! expansion is at most ten operations, fewer once a constant table
+<a href=#351 id=351 data-nosnippet>351</a>//! folds.
+<a href=#352 id=352 data-nosnippet>352</a>//!
+<a href=#353 id=353 data-nosnippet>353</a>//! # 10. Constants from registers
+<a href=#354 id=354 data-nosnippet>354</a>//!
+<a href=#355 id=355 data-nosnippet>355</a>//! **Problem.** `splat(0x80)`, the sign mask, is a load, like every
+<a href=#356 id=356 data-nosnippet>356</a>//! lane constant. In a loop that is a port and a cache line; and SSE
+<a href=#357 id=357 data-nosnippet>357</a>//! cannot build `0x80` from all-ones in registers, having no byte
+<a href=#358 id=358 data-nosnippet>358</a>//! shift.
+<a href=#359 id=359 data-nosnippet>359</a>//!
+<a href=#360 id=360 data-nosnippet>360</a>//! **Decomposition.** All-ones is a compare of a register with itself.
+<a href=#361 id=361 data-nosnippet>361</a>//! The rounding average of `0x00` and `0xFF` is `(0 + 255 + 1) &gt;&gt; 1 =
+<a href=#362 id=362 data-nosnippet>362</a>//! 0x80` (PAVGB; Wunkolo, 2022), and
+<a href=#363 id=363 data-nosnippet>363</a>//! [`avg_round`](crate::lanes::Lanes::avg_round) is that instruction,
+<a href=#364 id=364 data-nosnippet>364</a>//! with Hacker's Delight 2-5 as the definition where there is none:
+<a href=#365 id=365 data-nosnippet>365</a>//! `(x | y) − ((x ^ y) &gt;&gt; 1)` cannot overflow.
+<a href=#366 id=366 data-nosnippet>366</a>//!
+<a href=#367 id=367 data-nosnippet>367</a>//! ```
+<a href=#368 id=368 data-nosnippet>368</a>//! use hakmem::lanes::{Lanes, U8x16};
+<a href=#369 id=369 data-nosnippet>369</a>//!
+<a href=#370 id=370 data-nosnippet>370</a>//! let ones = U8x16::zero().not(); // pcmpeqb x, x
+<a href=#371 id=371 data-nosnippet>371</a>//! assert_eq!(U8x16::zero().avg_round(ones), U8x16::splat(0x80)); // pavgb
+<a href=#372 id=372 data-nosnippet>372</a>//! assert_eq!(U8x16::splat(7).avg_round(U8x16::splat(8)), U8x16::splat(8));
+<a href=#373 id=373 data-nosnippet>373</a>//! assert_eq!(U8x16::splat(7).avg_floor(U8x16::splat(8)), U8x16::splat(7));
+<a href=#374 id=374 data-nosnippet>374</a>//! ```
+<a href=#375 id=375 data-nosnippet>375</a>//!
+<a href=#376 id=376 data-nosnippet>376</a>//! **Laws.** `lane_maps_match_reference`: both averages against 16-bit
+<a href=#377 id=377 data-nosnippet>377</a>//! arithmetic on every lane, and the sign mask from the average.
+<a href=#378 id=378 data-nosnippet>378</a>//!
+<a href=#379 id=379 data-nosnippet>379</a>//! **Cost.** Two instructions, no memory.
+<a href=#380 id=380 data-nosnippet>380</a>//!
+<a href=#381 id=381 data-nosnippet>381</a>//! # 11. Every occupancy of a mask, in order
+<a href=#382 id=382 data-nosnippet>382</a>//!
+<a href=#383 id=383 data-nosnippet>383</a>//! **Problem.** Fill a table indexed by the occupancy of a set of
+<a href=#384 id=384 data-nosnippet>384</a>//! squares (a magic-bitboard table, a Kindergarten row), or search
+<a href=#385 id=385 data-nosnippet>385</a>//! every subset of a mask for a constant that works. Walking `0..2^k`
+<a href=#386 id=386 data-nosnippet>386</a>//! and depositing each with PDEP is one way; the carry-rippler is
+<a href=#387 id=387 data-nosnippet>387</a>//! the way without PDEP.
+<a href=#388 id=388 data-nosnippet>388</a>//!
+<a href=#389 id=389 data-nosnippet>389</a>//! **Decomposition.** `(x − mask) &amp; mask` is the next subset of `mask`
+<a href=#390 id=390 data-nosnippet>390</a>//! after `x`: subtracting the mask borrows through the selected bits
+<a href=#391 id=391 data-nosnippet>391</a>//! the way adding one carries through contiguous ones, so the step
+<a href=#392 id=392 data-nosnippet>392</a>//! is `+ 1` in the compacted domain without ever compacting.
+<a href=#393 id=393 data-nosnippet>393</a>//! [`next_subset`](crate::Bits::next_subset) is the step,
+<a href=#394 id=394 data-nosnippet>394</a>//! [`subsets`](crate::Bits::subsets) the iterator from zero to the mask.
+<a href=#395 id=395 data-nosnippet>395</a>//!
+<a href=#396 id=396 data-nosnippet>396</a>//! ```
+<a href=#397 id=397 data-nosnippet>397</a>//! use hakmem::prelude::*;
+<a href=#398 id=398 data-nosnippet>398</a>//!
+<a href=#399 id=399 data-nosnippet>399</a>//! let relevant = 0b1010_0100u8;
+<a href=#400 id=400 data-nosnippet>400</a>//! let occupancies: Vec&lt;u8&gt; = relevant.subsets().collect();
+<a href=#401 id=401 data-nosnippet>401</a>//! assert_eq!(occupancies.len(), 8);
+<a href=#402 id=402 data-nosnippet>402</a>//! assert_eq!(occupancies[..4], [0, 0b100, 0b10_0000, 0b10_0100]);
+<a href=#403 id=403 data-nosnippet>403</a>//! // The same walk through PEXT / PDEP.
+<a href=#404 id=404 data-nosnippet>404</a>//! for (i, s) in relevant.subsets().enumerate() {
+<a href=#405 id=405 data-nosnippet>405</a>//!     assert_eq!(u8::try_from(i).unwrap().expand(relevant), s);
+<a href=#406 id=406 data-nosnippet>406</a>//! }
+<a href=#407 id=407 data-nosnippet>407</a>//! ```
+<a href=#408 id=408 data-nosnippet>408</a>//!
+<a href=#409 id=409 data-nosnippet>409</a>//! **Laws.** `next_subset_is_increment_in_mask` (the step is
+<a href=#410 id=410 data-nosnippet>410</a>//! `expand(compact(x) + 1)`), `subsets_enumerate_each_once` (`2^k`
+<a href=#411 id=411 data-nosnippet>411</a>//! items, consecutive in the compacted domain, all inside the mask).
+<a href=#412 id=412 data-nosnippet>412</a>//!
+<a href=#413 id=413 data-nosnippet>413</a>//! **Cost.** Two operations per subset, no table, no PDEP.
+<a href=#414 id=414 data-nosnippet>414</a>//!
+<a href=#415 id=415 data-nosnippet>415</a>//! # 12. A column as a byte, by one multiply (Kindergarten)
+<a href=#416 id=416 data-nosnippet>416</a>//!
+<a href=#417 id=417 data-nosnippet>417</a>//! **Problem.** The occupancy of a file, a diagonal or an antidiagonal
+<a href=#418 id=418 data-nosnippet>418</a>//! of a bitboard as a small integer, to index a table: the bits are
+<a href=#419 id=419 data-nosnippet>419</a>//! eight or nine apart and a table wants them adjacent.
+<a href=#420 id=420 data-nosnippet>420</a>//!
+<a href=#421 id=421 data-nosnippet>421</a>//! **Decomposition.** A multiply by a constant is the sum of the
+<a href=#422 id=422 data-nosnippet>422</a>//! operand shifted left by each set bit of the constant. Choose one
+<a href=#423 id=423 data-nosnippet>423</a>//! shift per selected bit, the distance from where it is to where it
+<a href=#424 id=424 data-nosnippet>424</a>//! should land, and if no two of the shifted copies ever put a bit on
+<a href=#425 id=425 data-nosnippet>425</a>//! the same position the sum is an OR and the product holds the
+<a href=#426 id=426 data-nosnippet>426</a>//! gathered bits: PEXT by arithmetic. [`gather`](crate::Bits::gather)
+<a href=#427 id=427 data-nosnippet>427</a>//! is the multiply, mask and shift; [`gather_factor`](crate::Bits::gather_factor)
+<a href=#428 id=428 data-nosnippet>428</a>//! derives the constant, and it derives the ones in the literature: a
+<a href=#429 id=429 data-nosnippet>429</a>//! file's factor is the identity matrix of recipe 8, a diagonal's
+<a href=#430 id=430 data-nosnippet>430</a>//! read by column is the a-file `0x0101…01`. For bits `stride` apart
+<a href=#431 id=431 data-nosnippet>431</a>//! with `stride ≥ k` the copies cannot meet
+<a href=#432 id=432 data-nosnippet>432</a>//! (`strided_gather_is_exact`), which covers files and diagonals;
+<a href=#433 id=433 data-nosnippet>433</a>//! anything else is one brute-force run of `gather_is_exact` over the
+<a href=#434 id=434 data-nosnippet>434</a>//! `2^k` occupancies of recipe 11.
+<a href=#435 id=435 data-nosnippet>435</a>//!
+<a href=#436 id=436 data-nosnippet>436</a>//! ```
+<a href=#437 id=437 data-nosnippet>437</a>//! use hakmem::prelude::*;
+<a href=#438 id=438 data-nosnippet>438</a>//!
+<a href=#439 id=439 data-nosnippet>439</a>//! // The a1-h8 diagonal, read by column onto the top rank.
+<a href=#440 id=440 data-nosnippet>440</a>//! let diagonal = 0x8040_2010_0804_0201u64;
+<a href=#441 id=441 data-nosnippet>441</a>//! let factor = u64::gather_factor(diagonal, 56).unwrap();
+<a href=#442 id=442 data-nosnippet>442</a>//! assert_eq!(factor, 0x0101_0101_0101_0101);
+<a href=#443 id=443 data-nosnippet>443</a>//! let occupied = diagonal &amp; 0xFFFFu64; // ranks 1 and 2
+<a href=#444 id=444 data-nosnippet>444</a>//! assert_eq!(occupied.gather(diagonal, factor, 56), 0b11);
+<a href=#445 id=445 data-nosnippet>445</a>//! assert!(hakmem::laws::gather_is_exact(diagonal, factor, 56));
+<a href=#446 id=446 data-nosnippet>446</a>//! ```
+<a href=#447 id=447 data-nosnippet>447</a>//!
+<a href=#448 id=448 data-nosnippet>448</a>//! **Laws.** `gather_is_exact_by` (agreement with `compact` on every
+<a href=#449 id=449 data-nosnippet>449</a>//! occupancy, for any placement), `strided_gather_is_exact` (the
+<a href=#450 id=450 data-nosnippet>450</a>//! theorem that makes files and diagonals safe without the sweep),
+<a href=#451 id=451 data-nosnippet>451</a>//! and `kindergarten_gathers_are_exact` in `tests/laws.rs`, every
+<a href=#452 id=452 data-nosnippet>452</a>//! file, diagonal and antidiagonal of the board.
+<a href=#453 id=453 data-nosnippet>453</a>//!
+<a href=#454 id=454 data-nosnippet>454</a>//! **Cost.** One multiply, one shift, one AND; a 64-entry table per
+<a href=#455 id=455 data-nosnippet>455</a>//! line instead of a magic-bitboard's per-square tables.
+<a href=#456 id=456 data-nosnippet>456</a>//!
+<a href=#457 id=457 data-nosnippet>457</a>//! # 13. Hilbert: parities one way, the carry chain two bits wide the other
+<a href=#458 id=458 data-nosnippet>458</a>//!
+<a href=#459 id=459 data-nosnippet>459</a>//! **Problem.** A 2D Hilbert index to and from `(x, y)`, for the
+<a href=#460 id=460 data-nosnippet>460</a>//! locality a Z-order does not give: consecutive indices are always
+<a href=#461 id=461 data-nosnippet>461</a>//! neighbouring cells.
+<a href=#462 id=462 data-nosnippet>462</a>//!
+<a href=#463 id=463 data-nosnippet>463</a>//! **Decomposition.** A Hilbert index has the shape of a Morton code,
+<a href=#464 id=464 data-nosnippet>464</a>//! one pair of bits per level, top level first, and each level is read
+<a href=#465 id=465 data-nosnippet>465</a>//! in one of four frames (base, transposed, reflected, both) that the
+<a href=#466 id=466 data-nosnippet>466</a>//! levels above it chose. Which frame is a parity of what the pairs
+<a href=#467 id=467 data-nosnippet>467</a>//! above did: transpose when the pair is `0` or `3`, reflect when it
+<a href=#468 id=468 data-nosnippet>468</a>//! is `3`. Parities from the top are [`suffix_xor`](crate::Bits::suffix_xor),
+<a href=#469 id=469 data-nosnippet>469</a>//! one per flag, over the even lane of the index word; the odd lane of
+<a href=#470 id=470 data-nosnippet>470</a>//! the same scan holds the parity over the levels *strictly* above,
+<a href=#471 id=471 data-nosnippet>471</a>//! the exclusive scan for free. Two scans, a handful of lane
+<a href=#472 id=472 data-nosnippet>472</a>//! operations, then [`Morton2::decode`](crate::Morton2::decode).
+<a href=#473 id=473 data-nosnippet>473</a>//!
+<a href=#474 id=474 data-nosnippet>474</a>//! ```
+<a href=#475 id=475 data-nosnippet>475</a>//! use hakmem::prelude::*;
+<a href=#476 id=476 data-nosnippet>476</a>//!
+<a href=#477 id=477 data-nosnippet>477</a>//! // Order 2, the 4 × 4 curve: 0 1 2 3 climb the left column's
+<a href=#478 id=478 data-nosnippet>478</a>//! // first quadrant, 15 sits at (3, 0).
+<a href=#479 id=479 data-nosnippet>479</a>//! let cells: Vec&lt;(u8, u8)&gt; = (0..16u8)
+<a href=#480 id=480 data-nosnippet>480</a>//!     .map(|h| Hilbert2::from_index(h).decode_order(2))
+<a href=#481 id=481 data-nosnippet>481</a>//!     .collect();
+<a href=#482 id=482 data-nosnippet>482</a>//! assert_eq!(cells[..4], [(0, 0), (1, 0), (1, 1), (0, 1)]);
+<a href=#483 id=483 data-nosnippet>483</a>//! assert_eq!(cells[15], (3, 0));
+<a href=#484 id=484 data-nosnippet>484</a>//! // Every step is one cell.
+<a href=#485 id=485 data-nosnippet>485</a>//! for w in cells.windows(2) {
+<a href=#486 id=486 data-nosnippet>486</a>//!     let ((x0, y0), (x1, y1)) = (w[0], w[1]);
+<a href=#487 id=487 data-nosnippet>487</a>//!     assert_eq!(x0.abs_diff(x1) + y0.abs_diff(y1), 1);
+<a href=#488 id=488 data-nosnippet>488</a>//! }
+<a href=#489 id=489 data-nosnippet>489</a>//! assert_eq!(Hilbert2::&lt;u8&gt;::encode_order(3, 0, 2).index(), 15);
+<a href=#490 id=490 data-nosnippet>490</a>//! ```
+<a href=#491 id=491 data-nosnippet>491</a>//!
+<a href=#492 id=492 data-nosnippet>492</a>//! **The encode, and why it costs more.** With the coordinates as
+<a href=#493 id=493 data-nosnippet>493</a>//! input the frame at each level is an affine map of the frame above
+<a href=#494 id=494 data-nosnippet>494</a>//! it, `(a, c) ↦ (a ^ ¬(c ^ x), c)` when `x = y` and
+<a href=#495 id=495 data-nosnippet>495</a>//! `(a, c) ↦ (c ^ x, a ^ x)` when `x ≠ y`. The two linear parts do
+<a href=#496 id=496 data-nosnippet>496</a>//! not commute; they generate `GL(2, 2) ≅ S₃`, and with the
+<a href=#497 id=497 data-nosnippet>497</a>//! translations `AGL(2, 2) ≅ S₄`. So no parity computes the frames
+<a href=#498 id=498 data-nosnippet>498</a>//! and no adder does either. But the maps themselves depend only on
+<a href=#499 id=499 data-nosnippet>499</a>//! the input, and affine maps compose associatively, which is all a
+<a href=#500 id=500 data-nosnippet>500</a>//! Kogge–Stone scan needs: [`Hilbert2::from_morton`](crate::Hilbert2::from_morton)
+<a href=#501 id=501 data-nosnippet>501</a>//! keeps each level's map bit-sliced in six words (`M ^ I` and `b`,
+<a href=#502 id=502 data-nosnippet>502</a>//! one bit per level), composes every window with the window `s`
+<a href=#503 id=503 data-nosnippet>503</a>//! levels above it for `s = 1, 2, 4, …`, and reads the frames off the
+<a href=#504 id=504 data-nosnippet>504</a>//! vector parts, since the top frame is zero. This is exactly the
+<a href=#505 id=505 data-nosnippet>505</a>//! adder's carry chain, whose maps are the affine maps of one bit
+<a href=#506 id=506 data-nosnippet>506</a>//! (`kill`, `propagate`, `generate`, composed as `(g, p)` in three
+<a href=#507 id=507 data-nosnippet>507</a>//! operations), one bit wider: `Aff(2, 2)` instead of `Aff(1, 2)`,
+<a href=#508 id=508 data-nosnippet>508</a>//! thirty-six operations a round instead of three, and no
+<a href=#509 id=509 data-nosnippet>509</a>//! instruction for it. The decode gets away with two parities because
+<a href=#510 id=510 data-nosnippet>510</a>//! its transitions are functions of the *output* pairs, which the scan
+<a href=#511 id=511 data-nosnippet>511</a>//! has in hand from the start; the encode's are functions of the
+<a href=#512 id=512 data-nosnippet>512</a>//! output it is computing, and the affine product is what solving that
+<a href=#513 id=513 data-nosnippet>513</a>//! recurrence in log depth looks like.
+<a href=#514 id=514 data-nosnippet>514</a>//!
+<a href=#515 id=515 data-nosnippet>515</a>//! The representation is what decides the cost. Six words for a
+<a href=#516 id=516 data-nosnippet>516</a>//! general element of `Aff(2, 2)` cost 36 operations a round. But the
+<a href=#517 id=517 data-nosnippet>517</a>//! two frame maps are involutions, and a product of two involutions
+<a href=#518 id=518 data-nosnippet>518</a>//! from a group of order six has order one or three: pair the levels
+<a href=#519 id=519 data-nosnippet>519</a>//! and every window's linear part lies in the cyclic group of order
+<a href=#520 id=520 data-nosnippet>520</a>//! three, which is GF(4)*, with the translations in GF(4). Four words,
+<a href=#521 id=521 data-nosnippet>521</a>//! a GF(4) multiplication per word pair, about 24 operations a round,
+<a href=#522 id=522 data-nosnippet>522</a>//! one round fewer. This is rawrunprotected's construction (2016);
+<a href=#523 id=523 data-nosnippet>523</a>//! the six-word form is the same scan before anyone noticed the
+<a href=#524 id=524 data-nosnippet>524</a>//! pairing.
+<a href=#525 id=525 data-nosnippet>525</a>//!
+<a href=#526 id=526 data-nosnippet>526</a>//! The general pattern: a finite-state machine over a word is a prefix
+<a href=#527 id=527 data-nosnippet>527</a>//! over its transition monoid; it is a broadword kernel when the
+<a href=#528 id=528 data-nosnippet>528</a>//! monoid has a low-dimensional representation with a cheap
+<a href=#529 id=529 data-nosnippet>529</a>//! composition. `{K, P, G}` is the adder (`Aff(1, GF(2))`), this
+<a href=#530 id=530 data-nosnippet>530</a>//! recipe is `Aff(1, GF(4))`, a permutation of sixteen states is
+<a href=#531 id=531 data-nosnippet>531</a>//! [`Lanes::shuffle`](crate::lanes::Lanes::shuffle) composing tables.
+<a href=#532 id=532 data-nosnippet>532</a>//! The four-state loop this replaces is kept as
+<a href=#533 id=533 data-nosnippet>533</a>//! `laws::reference::hilbert_index_machine`. The rule is a theorem for
+<a href=#534 id=534 data-nosnippet>534</a>//! the aperiodic and modular cases (Serre 2004; Paperman, Salvati and
+<a href=#535 id=535 data-nosnippet>535</a>//! Soyez-Martin 2023) and open for groups.
+<a href=#536 id=536 data-nosnippet>536</a>//!
+<a href=#537 id=537 data-nosnippet>537</a>//! **Laws.** `hilbert_matches_reference` (both directions against the
+<a href=#538 id=538 data-nosnippet>538</a>//! textbook `xy2d` / `d2xy` loops, every cell of every order up to 8
+<a href=#539 id=539 data-nosnippet>539</a>//! on `u16`), `hilbert_roundtrip`, `hilbert_consecutive_are_adjacent`
+<a href=#540 id=540 data-nosnippet>540</a>//! (the path property, every index of the 256 × 256 curve),
+<a href=#541 id=541 data-nosnippet>541</a>//! `hilbert_order_laws` (the order-`n` curve is the first quadrant of
+<a href=#542 id=542 data-nosnippet>542</a>//! the order-`n + 1` curve transposed, and runs corner to corner).
+<a href=#543 id=543 data-nosnippet>543</a>//!
+<a href=#544 id=544 data-nosnippet>544</a>//! **Cost.** Decode: two suffix XORs (one CLMUL each with
+<a href=#545 id=545 data-nosnippet>545</a>//! `+pclmulqdq`, six operations each without) and about ten lane
+<a href=#546 id=546 data-nosnippet>546</a>//! operations, then a Morton decode; 1.6 ns per `u64` with CLMUL,
+<a href=#547 id=547 data-nosnippet>547</a>//! 3 ns without, against 50 to 80 ns for the `d2xy` loop. Encode:
+<a href=#548 id=548 data-nosnippet>548</a>//! a pairing round and four rounds of about 24 operations for a
+<a href=#549 id=549 data-nosnippet>549</a>//! `u64`, all independent within a round; 11 ns per word portable,
+<a href=#550 id=550 data-nosnippet>550</a>//! 5 ns with `+bmi2`, against 40 ns for the four-state loop and 33 ns
+<a href=#551 id=551 data-nosnippet>551</a>//! for `xy2d`. The loop is
+<a href=#552 id=552 data-nosnippet>552</a>//! bound by a three-operation carried chain per level; the scan is
+<a href=#553 id=553 data-nosnippet>553</a>//! bound by how many independent operations the core retires. Against
+<a href=#554 id=554 data-nosnippet>554</a>//! the crates people use (`benches/hilbert.rs`): `fast_hilbert`, a
+<a href=#555 id=555 data-nosnippet>555</a>//! 512-byte transition table walked three levels a step, decodes in
+<a href=#556 id=556 data-nosnippet>556</a>//! 12.5 ns and encodes in 11 ns; `lindel` (Skilling, one bit a step)
+<a href=#557 id=557 data-nosnippet>557</a>//! takes about 70 ns either way. The decode here wins by four to
+<a href=#558 id=558 data-nosnippet>558</a>//! eight times, the encode by 5 % portable and twice with `+bmi2`;
+<a href=#559 id=559 data-nosnippet>559</a>//! the table is a chain of eleven dependent loads, the scan is about
+<a href=#560 id=560 data-nosnippet>560</a>//! 120 independent operations.
+<a href=#561 id=561 data-nosnippet>561</a>//!
+<a href=#562 id=562 data-nosnippet>562</a>//! # 13. Hilbert decode is two scans; Hilbert encode is not
+<a href=#563 id=563 data-nosnippet>563</a>//!
+<a href=#564 id=564 data-nosnippet>564</a>//! **Problem.** A 2D Hilbert index to and from `(x, y)`, for the
+<a href=#565 id=565 data-nosnippet>565</a>//! locality a Z-order does not give: consecutive indices are always
+<a href=#566 id=566 data-nosnippet>566</a>//! neighbouring cells.
+<a href=#567 id=567 data-nosnippet>567</a>//!
+<a href=#568 id=568 data-nosnippet>568</a>//! **Decomposition.** A Hilbert index has the shape of a Morton code,
+<a href=#569 id=569 data-nosnippet>569</a>//! one pair of bits per level, top level first, and each level is read
+<a href=#570 id=570 data-nosnippet>570</a>//! in one of four frames (base, transposed, reflected, both) that the
+<a href=#571 id=571 data-nosnippet>571</a>//! levels above it chose. Which frame is a parity of what the pairs
+<a href=#572 id=572 data-nosnippet>572</a>//! above did: transpose when the pair is `0` or `3`, reflect when it
+<a href=#573 id=573 data-nosnippet>573</a>//! is `3`. Parities from the top are [`suffix_xor`](crate::Bits::suffix_xor),
+<a href=#574 id=574 data-nosnippet>574</a>//! one per flag, over the even lane of the index word; the odd lane of
+<a href=#575 id=575 data-nosnippet>575</a>//! the same scan holds the parity over the levels *strictly* above,
+<a href=#576 id=576 data-nosnippet>576</a>//! the exclusive scan for free. Two scans, a handful of lane
+<a href=#577 id=577 data-nosnippet>577</a>//! operations, then [`Morton2::decode`](crate::Morton2::decode).
+<a href=#578 id=578 data-nosnippet>578</a>//!
+<a href=#579 id=579 data-nosnippet>579</a>//! ```
+<a href=#580 id=580 data-nosnippet>580</a>//! use hakmem::prelude::*;
+<a href=#581 id=581 data-nosnippet>581</a>//!
+<a href=#582 id=582 data-nosnippet>582</a>//! // Order 2, the 4 × 4 curve: 0 1 2 3 fill the lower-left quadrant,
+<a href=#583 id=583 data-nosnippet>583</a>//! // 15 sits at (3, 0).
+<a href=#584 id=584 data-nosnippet>584</a>//! let cells: Vec&lt;(u8, u8)&gt; = (0..16u8)
+<a href=#585 id=585 data-nosnippet>585</a>//!     .map(|h| Hilbert2::from_index(h).decode_order(2))
+<a href=#586 id=586 data-nosnippet>586</a>//!     .collect();
+<a href=#587 id=587 data-nosnippet>587</a>//! assert_eq!(cells[..4], [(0, 0), (1, 0), (1, 1), (0, 1)]);
+<a href=#588 id=588 data-nosnippet>588</a>//! assert_eq!(cells[15], (3, 0));
+<a href=#589 id=589 data-nosnippet>589</a>//! // Every step is one cell.
+<a href=#590 id=590 data-nosnippet>590</a>//! for w in cells.windows(2) {
+<a href=#591 id=591 data-nosnippet>591</a>//!     let ((x0, y0), (x1, y1)) = (w[0], w[1]);
+<a href=#592 id=592 data-nosnippet>592</a>//!     assert_eq!(x0.abs_diff(x1) + y0.abs_diff(y1), 1);
+<a href=#593 id=593 data-nosnippet>593</a>//! }
+<a href=#594 id=594 data-nosnippet>594</a>//! assert_eq!(Hilbert2::&lt;u8&gt;::encode_order(3, 0, 2).index(), 15);
+<a href=#595 id=595 data-nosnippet>595</a>//! ```
+<a href=#596 id=596 data-nosnippet>596</a>//!
+<a href=#597 id=597 data-nosnippet>597</a>//! **Why the encode is a loop.** With the coordinates as input the
+<a href=#598 id=598 data-nosnippet>598</a>//! frame at each level is an affine map of the frame above it,
+<a href=#599 id=599 data-nosnippet>599</a>//! `(a, c) ↦ (a ^ ¬(c ^ x), c)` when `x = y` and
+<a href=#600 id=600 data-nosnippet>600</a>//! `(a, c) ↦ (c ^ x, a ^ x)` when `x ≠ y`. The two linear parts do
+<a href=#601 id=601 data-nosnippet>601</a>//! not commute; they generate `GL(2, 2) ≅ S₃`, and with the
+<a href=#602 id=602 data-nosnippet>602</a>//! translations `AGL(2, 2) ≅ S₄`. A prefix over a non-abelian group is
+<a href=#603 id=603 data-nosnippet>603</a>//! not a parity and not a carry chain, so
+<a href=#604 id=604 data-nosnippet>604</a>//! [`Hilbert2::from_morton`](crate::Hilbert2::from_morton) is
+<a href=#605 id=605 data-nosnippet>605</a>//! `BITS / 2` steps of a four-state machine, branch-free, three
+<a href=#606 id=606 data-nosnippet>606</a>//! operations on the loop-carried chain per level. The decode escapes
+<a href=#607 id=607 data-nosnippet>607</a>//! because its transitions are functions of the *output* pairs, which
+<a href=#608 id=608 data-nosnippet>608</a>//! are known before the scan starts; the encode's are functions of the
+<a href=#609 id=609 data-nosnippet>609</a>//! output it is still computing. A log-depth encode exists in
+<a href=#610 id=610 data-nosnippet>610</a>//! principle: a prefix over `S₄` as a composition of 4-entry tables,
+<a href=#611 id=611 data-nosnippet>611</a>//! which is what [`Lanes::shuffle`](crate::lanes::Lanes::shuffle)
+<a href=#612 id=612 data-nosnippet>612</a>//! does to sixteen of them at once. It is not built here.
+<a href=#613 id=613 data-nosnippet>613</a>//!
+<a href=#614 id=614 data-nosnippet>614</a>//! **Laws.** `hilbert_matches_reference` (both directions against the
+<a href=#615 id=615 data-nosnippet>615</a>//! textbook `xy2d` / `d2xy` loops, every cell of every order up to 8
+<a href=#616 id=616 data-nosnippet>616</a>//! on `u16`), `hilbert_roundtrip`, `hilbert_consecutive_are_adjacent`
+<a href=#617 id=617 data-nosnippet>617</a>//! (the path property, every index of the 256 × 256 curve),
+<a href=#618 id=618 data-nosnippet>618</a>//! `hilbert_order_laws` (the order-`n` curve is the first quadrant of
+<a href=#619 id=619 data-nosnippet>619</a>//! the order-`n + 1` curve transposed, and runs corner to corner).
+<a href=#620 id=620 data-nosnippet>620</a>//!
+<a href=#621 id=621 data-nosnippet>621</a>//! **Cost.** Decode: two suffix XORs (one CLMUL each with
+<a href=#622 id=622 data-nosnippet>622</a>//! `+pclmulqdq`, six operations each without) and about ten lane
+<a href=#623 id=623 data-nosnippet>623</a>//! operations, then a Morton decode; 1.6 ns per `u64` with CLMUL,
+<a href=#624 id=624 data-nosnippet>624</a>//! 3 ns without, against 50 to 80 ns for the `d2xy` loop. Encode:
+<a href=#625 id=625 data-nosnippet>625</a>//! 32 steps for a `u64`, about 40 ns, within 20 % of the `xy2d` loop
+<a href=#626 id=626 data-nosnippet>626</a>//! it is checked against; the Morton encode it starts from is 1.6 ns.
+<a href=#627 id=627 data-nosnippet>627</a>//!
+<a href=#628 id=628 data-nosnippet>628</a>//! # 14. Hilbert in 3D: the group is `A₄`, which is `AGL(1, 4)`
+<a href=#629 id=629 data-nosnippet>629</a>//!
+<a href=#630 id=630 data-nosnippet>630</a>//! **Problem.** The 3D Hilbert index to and from `(x, y, z)`; the
+<a href=#631 id=631 data-nosnippet>631</a>//! curve of rawrunprotected's tables (2016), which is the one people
+<a href=#632 id=632 data-nosnippet>632</a>//! use.
+<a href=#633 id=633 data-nosnippet>633</a>//!
+<a href=#634 id=634 data-nosnippet>634</a>//! **Decomposition.** Three bits per level, an octant `q(i) = i ^ (i &gt;&gt; 1)`
+<a href=#635 id=635 data-nosnippet>635</a>//! in a frame, and the frame below is the frame above composed with a
+<a href=#636 id=636 data-nosnippet>636</a>//! map `g(i)`. The frames form `A₄`, acting on octants as a cyclic
+<a href=#637 id=637 data-nosnippet>637</a>//! rotation of the axes and an even number of reflections,
+<a href=#638 id=638 data-nosnippet>638</a>//! `o ↦ rot_r(o) ^ c`. Split an octant into its parity and its even
+<a href=#639 id=639 data-nosnippet>639</a>//! part: the even octants `{000, 011, 110, 101}` are GF(4), rotation
+<a href=#640 id=640 data-nosnippet>640</a>//! is multiplication by `ω`, and a frame is `e ↦ m·e + t`, the parity
+<a href=#641 id=641 data-nosnippet>641</a>//! untouched. That is the group of the 2D encode again, so the 2D
+<a href=#642 id=642 data-nosnippet>642</a>//! encode's round, one GF(4) multiplication per word pair, is the 3D
+<a href=#643 id=643 data-nosnippet>643</a>//! decode's round: the maps `g(i)` are read off the index, composed
+<a href=#644 id=644 data-nosnippet>644</a>//! by suffix product, and each octant is placed in its frame. The
+<a href=#645 id=645 data-nosnippet>645</a>//! formulas for `g(i)` and the identification of even octants with
+<a href=#646 id=646 data-nosnippet>646</a>//! GF(4) were read off the tables by a script and are checked against
+<a href=#647 id=647 data-nosnippet>647</a>//! them on every cell of every order up to 5 (`tests/hilbert3.rs`).
+<a href=#648 id=648 data-nosnippet>648</a>//!
+<a href=#649 id=649 data-nosnippet>649</a>//! ```
+<a href=#650 id=650 data-nosnippet>650</a>//! use hakmem::prelude::*;
+<a href=#651 id=651 data-nosnippet>651</a>//!
+<a href=#652 id=652 data-nosnippet>652</a>//! let h = Hilbert3::&lt;u64&gt;::encode(1000, 2000, 3000);
+<a href=#653 id=653 data-nosnippet>653</a>//! assert_eq!(h.decode(), (1000, 2000, 3000));
+<a href=#654 id=654 data-nosnippet>654</a>//! // The first octant of the order-3 curve is the order-2 curve with
+<a href=#655 id=655 data-nosnippet>655</a>//! // the axes rotated once.
+<a href=#656 id=656 data-nosnippet>656</a>//! assert_eq!(
+<a href=#657 id=657 data-nosnippet>657</a>//!     Hilbert3::&lt;u16&gt;::encode_order(1, 2, 3, 3),
+<a href=#658 id=658 data-nosnippet>658</a>//!     Hilbert3::&lt;u16&gt;::encode_order(2, 3, 1, 2)
+<a href=#659 id=659 data-nosnippet>659</a>//! );
+<a href=#660 id=660 data-nosnippet>660</a>//! ```
+<a href=#661 id=661 data-nosnippet>661</a>//!
+<a href=#662 id=662 data-nosnippet>662</a>//! **Why the encode is a table.** With the coordinates as input the
+<a href=#663 id=663 data-nosnippet>663</a>//! maps on the twelve frames are not permutations (eight images
+<a href=#664 id=664 data-nosnippet>664</a>//! each), the monoid they generate passes a million elements at word
+<a href=#665 id=665 data-nosnippet>665</a>//! length seven, and the all-zero word never resets it: no group
+<a href=#666 id=666 data-nosnippet>666</a>//! representation, no window. That is the enumerative regime, and its
+<a href=#667 id=667 data-nosnippet>667</a>//! representation is the machine itself. [`Hilbert3::from_morton`](crate::Hilbert3::from_morton)
+<a href=#668 id=668 data-nosnippet>668</a>//! walks it through a table of 96 bytes, which a
+<a href=#669 id=669 data-nosnippet>669</a>//! `const fn` builds at compile time from the same GF(4) step the
+<a href=#670 id=670 data-nosnippet>670</a>//! reference machine runs; the table is a memo of the algebra, not a
+<a href=#671 id=671 data-nosnippet>671</a>//! constant anyone typed. The algebraic loop costs three to four times
+<a href=#672 id=672 data-nosnippet>672</a>//! the table: its chain is ten operations a level and a level cannot
+<a href=#673 id=673 data-nosnippet>673</a>//! start before the frame above it is known, while a lookup is one
+<a href=#674 id=674 data-nosnippet>674</a>//! load from L1. The monoid lacks composition, not symmetry: a step
+<a href=#675 id=675 data-nosnippet>675</a>//! commutes with the translations of `V₄ ⊲ A₄`, which move an octant
+<a href=#676 id=676 data-nosnippet>676</a>//! by a XOR, so the 96 entries are 24 between two XORs, small enough
+<a href=#677 id=677 data-nosnippet>677</a>//! for two 16-entry shuffles.
+<a href=#678 id=678 data-nosnippet>678</a>//!
+<a href=#679 id=679 data-nosnippet>679</a>//! **Laws.** `hilbert3_matches_reference` (the scan and the table
+<a href=#680 id=680 data-nosnippet>680</a>//! against the machine in GF(4), both directions),
+<a href=#681 id=681 data-nosnippet>681</a>//! `hilbert3_roundtrip`, `hilbert3_consecutive_are_adjacent` (every
+<a href=#682 id=682 data-nosnippet>682</a>//! index of the 32³ curve on `u16`), `hilbert3_order_laws` (the
+<a href=#683 id=683 data-nosnippet>683</a>//! order-`n` curve is the first octant of order `n + 1` with the axes
+<a href=#684 id=684 data-nosnippet>684</a>//! rotated, `(x, y, z) ↦ (y, z, x)`).
+<a href=#685 id=685 data-nosnippet>685</a>//!
+<a href=#686 id=686 data-nosnippet>686</a>//! **Cost.** Decode: five rounds of about 20 operations for a `u64`
+<a href=#687 id=687 data-nosnippet>687</a>//! (21 levels), 10 ns per point portable and 9 ns with `+bmi2`,
+<a href=#688 id=688 data-nosnippet>688</a>//! against 16 ns for the table loop. Encode: 21 dependent loads,
+<a href=#689 id=689 data-nosnippet>689</a>//! 19 ns, the same as the table loop it memoises; the algebraic loop
+<a href=#690 id=690 data-nosnippet>690</a>//! is 70 ns.
 </span></code></pre></div></section></main></body></html>

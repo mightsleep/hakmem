@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["distance","edit_distance","min_distance","search"],"struct":["Search"]};
+window.SIDEBAR_ITEMS = {"fn":["distance","distance_in","search","substring_distance"],"struct":["Occurrence","Occurrences","Search"]};

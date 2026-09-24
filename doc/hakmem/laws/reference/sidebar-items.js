@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["next_same_popcount","pdep","pext","prefix_xor","prefix_xor_from_top","round_up_pow2","run_starts","select","suffix_or"]};
+window.SIDEBAR_ITEMS = {"fn":["affine","hilbert3_index_machine","hilbert3_morton_machine","hilbert_coords","hilbert_index","hilbert_index_machine","next_same_popcount","pdep","pext","prefix_xor","prefix_xor_from_top","reverse_bits","round_up_pow2","run_starts","select","suffix_or","ternary"]};

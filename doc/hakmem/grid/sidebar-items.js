@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"fn":["block_starts","find_block","set_block"]};
+window.SIDEBAR_ITEMS = {"fn":["block_starts","clear_block","fill_block","find_block"]};

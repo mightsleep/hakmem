@@ -1,0 +1,37 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Affine maps on the bits of a byte: `x ↦ A·x ⊕ b` over GF(2)."><title>hakmem::affine - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (feaadeeac 2026-09-19)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module affine</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../hakmem/index.html">hakmem</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module affine</a></h2><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate hakmem</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">hakmem</a></div><h1>Module <span>affine</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/hakmem/affine.rs.html#1-272">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Affine maps on the bits of a byte: <code>x ↦ A·x ⊕ b</code> over GF(2).</p>
+<p>Eight rows of eight bits are a matrix <code>A</code>; with a constant <code>b</code> the
+pair names every function of a byte that is XOR-linear in the bits
+plus a constant: shifts, rotates, bit reversal, parity, NOT, and any
+composition of those. Two things make the name worth having. GFNI’s
+<code>gf2p8affineqb</code> applies one such map to every byte of a register in
+one instruction, which is where the matrices below come from
+(Wunkolo’s posts on bit reversal and on 8-bit shifts, 2020; SSE has
+no byte shift, the matrix is one). And composition is matrix
+multiplication, <a href="struct.Affine8.html#method.then" title="method hakmem::affine::Affine8::then"><code>Affine8::then</code></a>, so a chain of byte tricks folds
+into one map at compile time and one instruction at run time.</p>
+<p><a href="../lanes/trait.Lanes.html#method.affine" title="method hakmem::lanes::Lanes::affine"><code>Lanes::affine</code></a> applies a map to every
+lane. Without GFNI, linearity splits it into two nibble lookups
+(<code>A·x = A·hi ⊕ A·lo</code>, so two <code>lut16</code> and an XOR); the SWAR carrier
+folds eight parities instead (<a href="struct.Affine8.html#method.apply8" title="method hakmem::affine::Affine8::apply8"><code>Affine8::apply8</code></a>).</p>
+<p>The layout is the instruction’s: byte <code>7 - i</code> of the matrix is the
+row that builds output bit <code>i</code>, so byte 0 builds bit 7 and the
+identity is <code>0x0102_0408_1020_4080</code>. <a href="struct.Affine8.html#method.from_rows" title="associated function hakmem::affine::Affine8::from_rows"><code>Affine8::from_rows</code></a> and
+<a href="struct.Affine8.html#method.row" title="method hakmem::affine::Affine8::row"><code>Affine8::row</code></a> take rows in bit order if you would rather not
+think about it.</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::affine::Affine8;
+
+<span class="comment">// Wunkolo's constants fall out of the identity.
+</span><span class="macro">assert_eq!</span>(Affine8::IDENTITY.matrix(), <span class="number">0x0102_0408_1020_4080</span>);
+<span class="macro">assert_eq!</span>(Affine8::shl(<span class="number">1</span>).matrix(), <span class="number">0x0001_0204_0810_2040</span>);
+<span class="macro">assert_eq!</span>(Affine8::shr(<span class="number">2</span>).matrix(), <span class="number">0x0408_1020_4080_0000</span>);
+<span class="macro">assert_eq!</span>(Affine8::sra(<span class="number">2</span>).matrix(), <span class="number">0x0408_1020_4080_8080</span>);
+<span class="macro">assert_eq!</span>(Affine8::REVERSE.matrix(), <span class="number">0x8040_2010_0804_0201</span>);
+
+<span class="comment">// Reversing then shifting left is shifting right then reversing.
+</span><span class="kw">let </span>a = Affine8::REVERSE.then(Affine8::shl(<span class="number">3</span>));
+<span class="kw">let </span>b = Affine8::shr(<span class="number">3</span>).then(Affine8::REVERSE);
+<span class="macro">assert_eq!</span>(a, b);
+<span class="kw">for </span>x <span class="kw">in </span><span class="number">0</span>..=<span class="number">255u8 </span>{
+    <span class="macro">assert_eq!</span>(a.apply(x), x.reverse_bits() &lt;&lt; <span class="number">3</span>);
+}</code></pre></div></div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Affine8.html" title="struct hakmem::affine::Affine8">Affine8</a></dt><dd>An affine map on the bits of a byte: <code>x ↦ A·x ⊕ b</code> over GF(2).</dd></dl></section></div></main></body></html>

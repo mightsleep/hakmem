@@ -1,0 +1,47 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0"><meta name="generator" content="rustdoc"><meta name="description" content="Hilbert curves as two scans over the Morton code: parities one way, the carry chain two bits wide the other."><title>hakmem::hilbert - Rust</title><script>if(window.location.protocol!=="file:")document.head.insertAdjacentHTML("beforeend","SourceSerif4-Regular-6b053e98.ttf.woff2,FiraSans-Italic-81dc35de.woff2,FiraSans-Regular-0fe48ade.woff2,FiraSans-MediumItalic-ccf7e434.woff2,FiraSans-Medium-e1aa3f0a.woff2,SourceCodePro-Regular-8badfe75.ttf.woff2,SourceCodePro-Semibold-aa29a496.ttf.woff2".split(",").map(f=>`<link rel="preload" as="font" type="font/woff2"href="../../static.files/${f}">`).join(""))</script><link rel="stylesheet" href="../../static.files/normalize-9960930a.css"><link rel="stylesheet" href="../../static.files/rustdoc-203241e4.css"><meta name="rustdoc-vars" data-root-path="../../" data-static-root-path="../../static.files/" data-current-crate="hakmem" data-themes="" data-resource-suffix="" data-rustdoc-version="1.100.0-nightly (feaadeeac 2026-09-19)" data-channel="nightly" data-search-js="search-b167f383.js" data-stringdex-js="stringdex-b5109af9.js" data-settings-js="settings-170eb4bf.js" ><script src="../../static.files/storage-41dd4d93.js"></script><script defer src="../sidebar-items.js"></script><script defer src="../../static.files/main-1814ead3.js"></script><noscript><link rel="stylesheet" href="../../static.files/noscript-9f56287d.css"></noscript><link rel="alternate icon" type="image/png" href="../../static.files/favicon-32x32-eab170b8.png"><link rel="icon" type="image/svg+xml" href="../../static.files/favicon-044be391.svg"></head><body class="rustdoc mod"><a class="skip-main-content" href="#main-content">Skip to main content</a><!--[if lte IE 11]><div class="warning">This old browser is unsupported and will most likely display funky things.</div><![endif]--><rustdoc-topbar><h2><a href="#">Module hilbert</a></h2></rustdoc-topbar><nav class="sidebar"><div class="sidebar-crate"><h2><a href="../../hakmem/index.html">hakmem</a><span class="version">0.2.0</span></h2></div><div class="sidebar-elems"><section id="rustdoc-toc"><h2 class="location"><a href="#">Module hilbert</a></h2><h3><a href="#structs">Module Items</a></h3><ul class="block"><li><a href="#structs" title="Structs">Structs</a></li></ul></section><div id="rustdoc-modnav"><h2 class="in-crate"><a href="../index.html">In crate hakmem</a></h2></div></div></nav><div class="sidebar-resizer" title="Drag to resize sidebar"></div><main><div class="width-limiter"><section id="main-content" class="content" tabindex="-1"><div class="main-heading"><div class="rustdoc-breadcrumbs"><a href="../index.html">hakmem</a></div><h1>Module <span>hilbert</span>&nbsp;<button id="copy-path" title="Copy item path to clipboard">Copy item path</button></h1><rustdoc-toolbar></rustdoc-toolbar><span class="sub-heading"><a class="src" href="../../src/hakmem/hilbert.rs.html#1-1088">Source</a> </span></div><details class="toggle top-doc" open><summary class="hideme"><span>Expand description</span></summary><div class="docblock"><p>Hilbert curves as two scans over the Morton code: parities one way,
+the carry chain two bits wide the other.</p>
+<p>A 2D Hilbert index has the shape of a Morton code: one pair of bits
+per level, most significant level first. The difference is that
+each level is read in a frame the levels above it chose, one of
+four: the base curve, transposed, point-reflected, or both. Which
+frame is a function of the pairs above, and of nothing else, so
+decoding is two suffix XORs over the levels
+(<a href="../bits/trait.Bits.html#method.suffix_xor" title="method hakmem::bits::Bits::suffix_xor"><code>Bits::suffix_xor</code></a>; Hacker’s Delight 16-2 in its parallel-prefix
+form) and then a Morton decode: straight-line, about a dozen
+operations, on any <a href="../word/trait.Word.html" title="trait hakmem::word::Word"><code>Word</code></a>.</p>
+<p>Encoding is a scan too, of a heavier kind. Read with the coordinates
+as input, the frame at each level is an affine map of the frame
+above it, <code>(a, c) ↦ (a ^ ¬(c ^ x), c)</code> when <code>x = y</code> and
+<code>(a, c) ↦ (c ^ x, a ^ x)</code> when <code>x ≠ y</code>. The linear parts do not
+commute (they generate <code>GL(2, 2) ≅ S₃</code>), so no parity and no adder
+computes the product, but every map is known before any frame is,
+and affine maps compose associatively, so Kogge–Stone does. Two
+involutions multiply to an element of order three, so once levels
+are paired every window is <code>v ↦ m·v + t</code> over GF(4) with <code>m</code> in
+GF(4)*: four bit-sliced words, one GF(4) multiplication per word
+pair per round, <code>⌈log₂(BITS / 2)⌉ − 1</code> rounds after the pairing.
+That is the adder’s carry chain, whose maps are <code>c ↦ p·c + g</code> over
+GF(2), with GF(4) in place of GF(2). The construction is
+rawrunprotected’s (<em>2D Hilbert curves in O(log n)</em>,
+threadlocalmutex.com, 2016, public domain); <a href="struct.Hilbert2.html#method.from_morton" title="associated function hakmem::hilbert::Hilbert2::from_morton"><code>Hilbert2::from_morton</code></a>
+is it on any <a href="../word/trait.Word.html" title="trait hakmem::word::Word"><code>Word</code></a>, in the Morton layout, with laws. Both
+directions are checked against the textbook <code>xy2d</code> / <code>d2xy</code> loops
+and the four-state machine in <a href="../laws/reference/index.html" title="mod hakmem::laws::reference"><code>crate::laws::reference</code></a>.</p>
+<p>The curve of order <code>n</code> starts at <code>(0, 0)</code>, ends at <code>(2^n − 1, 0)</code>,
+and visits the quadrants lower-left, upper-left, upper-right,
+lower-right, the order of Hacker’s Delight figure 16-1 and of the
+<code>xy2d</code> / <code>d2xy</code> loops everyone copies. Consecutive indices are
+adjacent cells (<code>hilbert_consecutive_are_adjacent</code> in
+<a href="../laws/index.html" title="mod hakmem::laws"><code>crate::laws</code></a>).</p>
+
+<div class="example-wrap"><pre class="rust rust-example-rendered"><code><span class="kw">use </span>hakmem::prelude::<span class="kw-2">*</span>;
+
+<span class="comment">// Order 2: the 4 × 4 curve, index 12 is the cell (3, 1).
+</span><span class="kw">let </span>h = Hilbert2::&lt;u8&gt;::encode_order(<span class="number">3</span>, <span class="number">1</span>, <span class="number">2</span>);
+<span class="macro">assert_eq!</span>(h.index(), <span class="number">12</span>);
+<span class="macro">assert_eq!</span>(h.decode_order(<span class="number">2</span>), (<span class="number">3</span>, <span class="number">1</span>));
+<span class="comment">// The full-width curve of a u32 has 16 levels: a 65536 × 65536 grid.
+</span><span class="kw">let </span>h = Hilbert2::&lt;u32&gt;::encode(<span class="number">40_000</span>, <span class="number">7</span>);
+<span class="macro">assert_eq!</span>(h.decode(), (<span class="number">40_000</span>, <span class="number">7</span>));</code></pre></div></div></details><h2 id="structs" class="section-header">Structs<a href="#structs" class="anchor">§</a></h2><dl class="item-table"><dt><a class="struct" href="struct.Hilbert2.html" title="struct hakmem::hilbert::Hilbert2">Hilbert2</a></dt><dd>A 2D Hilbert index over the full width of <code>W</code>: <code>BITS / 2</code> levels,
+a <code>2^(BITS/2)</code> square. Ordered as an integer, which is the curve
+order.</dd></dl></section></div></main></body></html>
