@@ -643,12 +643,13 @@ mod batch {
         use core::arch::x86_64::{
             _mm512_and_si512, _mm512_loadu_si512, _mm512_permutex2var_epi8, _mm512_set1_epi32,
             _mm512_setzero_si512, _mm512_slli_epi32, _mm512_srlv_epi32, _mm512_storeu_si512,
-            _mm512_ternarylogic_epi64,
+            _mm512_ternarylogic_epi32,
         };
 
         use super::super::{DECODE_PADDED, ENCODE_PADDED};
 
         // `vpternlog` truth tables over `(a, b, c) = (0xF0, 0xCC, 0xAA)`.
+        // The `d` form: unmasked it is the same bits as `q`, and Miri knows it.
         /// `(a & c) | b`
         const AND_OR: i32 = 0xEC;
         /// `a | (b & c)`
@@ -685,13 +686,13 @@ mod batch {
                                 level -= 1;
                                 let shift = $set1((3 * level).into());
                                 for r in 0..REGS {
-                                    let index = _mm512_ternarylogic_epi64::<AND_OR>(
+                                    let index = _mm512_ternarylogic_epi32::<AND_OR>(
                                         $srlv(code[r], shift),
                                         state[r],
                                         octant,
                                     );
                                     let entry = _mm512_permutex2var_epi8(lo, index, hi);
-                                    acc[r] = _mm512_ternarylogic_epi64::<OR_AND>(
+                                    acc[r] = _mm512_ternarylogic_epi32::<OR_AND>(
                                         $slli::<3>(acc[r]),
                                         entry,
                                         octant,
@@ -748,13 +749,46 @@ mod batch {
     mod planes {
         use core::arch::x86_64::{
             __m512i, _mm512_and_si512, _mm512_gf2p8affine_epi64_epi8, _mm512_loadu_si512,
-            _mm512_madd_epi16, _mm512_maddubs_epi16, _mm512_multishift_epi64_epi8,
-            _mm512_permutex2var_epi8, _mm512_set1_epi8, _mm512_set1_epi16, _mm512_set1_epi32,
-            _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi64, _mm512_srli_epi64,
-            _mm512_storeu_si512, _mm512_ternarylogic_epi64,
+            _mm512_madd_epi16, _mm512_maddubs_epi16, _mm512_permutex2var_epi8, _mm512_set1_epi8,
+            _mm512_set1_epi16, _mm512_set1_epi32, _mm512_set1_epi64, _mm512_setzero_si512,
+            _mm512_slli_epi64, _mm512_srli_epi64, _mm512_storeu_si512, _mm512_ternarylogic_epi32,
         };
 
         use super::super::{DECODE_PADDED, ENCODE_PADDED};
+
+        /// `_mm512_multishift_epi64_epi8(ctrl, data)`: byte `j` of each
+        /// qword is the 8 bits of `data` from bit `ctrl.byte[j] % 64` on,
+        /// wrapping. Miri learns it in rust-lang/miri#5345; until that
+        /// lands, Miri gets the loop, the processor the instruction, and a
+        /// test the two.
+        #[inline(always)]
+        unsafe fn multishift(ctrl: __m512i, data: __m512i) -> __m512i {
+            #[cfg(not(miri))]
+            // SAFETY: the callers run with VBMI enabled.
+            unsafe {
+                core::arch::x86_64::_mm512_multishift_epi64_epi8(ctrl, data)
+            }
+            #[cfg(miri)]
+            // SAFETY: 64 bytes of integers either way.
+            unsafe {
+                use core::mem::transmute;
+                transmute::<[u64; 8], __m512i>(multishift_loop(
+                    transmute::<__m512i, [u64; 8]>(ctrl),
+                    transmute::<__m512i, [u64; 8]>(data),
+                ))
+            }
+        }
+
+        // Miri and the test call it; a normal build never does.
+        #[cfg_attr(not(any(miri, test)), allow(dead_code))]
+        fn multishift_loop(ctrl: [u64; 8], data: [u64; 8]) -> [u64; 8] {
+            core::array::from_fn(|i| {
+                let at = ctrl[i].to_le_bytes();
+                u64::from_le_bytes(
+                    at.map(|c| data[i].rotate_right(u32::from(c % 64)).to_le_bytes()[0]),
+                )
+            })
+        }
 
         /// A byte of the transpose is tagged `key · 8 + level`, key and
         /// level within one group of 64 keys and one block of 8 levels.
@@ -918,8 +952,7 @@ mod batch {
                     }
                     #[allow(clippy::cast_possible_wrap)]
                     let c = _mm512_set1_epi64(u64::from_le_bytes(offsets) as i64);
-                    let mut x: [__m512i; 8] =
-                        core::array::from_fn(|g| _mm512_multishift_epi64_epi8(c, a[g]));
+                    let mut x: [__m512i; 8] = core::array::from_fn(|g| multishift(c, a[g]));
                     transpose(&mut x, &TO_PLANES);
                     *block = x;
                 }
@@ -953,17 +986,16 @@ mod batch {
                     for (g, x) in x.iter().enumerate() {
                         let w = _mm512_maddubs_epi16(_mm512_and_si512(*x, seven), pairs);
                         let d = _mm512_madd_epi16(w, quads);
-                        // `(d & 0xFFF) | (d >> 32) << 12`
-                        part[j][g] = _mm512_ternarylogic_epi64::<0xEC>(
-                            d,
-                            _mm512_slli_epi64::<12>(_mm512_srli_epi64::<32>(d)),
-                            low12,
-                        );
+                        // `(d & 0xFFF) | (d >> 32) << 12`, where `(d >> 32) << 12`
+                        // is `d >> 20`: the low dword is below 2^12 and none of it
+                        // survives the shift.
+                        part[j][g] =
+                            _mm512_ternarylogic_epi32::<0xEC>(d, _mm512_srli_epi64::<20>(d), low12);
                     }
                 }
                 for g in 0..8 {
                     // `a | b << 24 | c << 48`
-                    let v = _mm512_ternarylogic_epi64::<0xFE>(
+                    let v = _mm512_ternarylogic_epi32::<0xFE>(
                         part[0][g],
                         _mm512_slli_epi64::<24>(part[1][g]),
                         _mm512_slli_epi64::<48>(part[2][g]),
@@ -990,7 +1022,7 @@ mod batch {
                     for b in 0..B {
                         // `(input & 7) | state`
                         let index =
-                            _mm512_ternarylogic_epi64::<0xEC>(planes[b][j][i], state[b], seven);
+                            _mm512_ternarylogic_epi32::<0xEC>(planes[b][j][i], state[b], seven);
                         let entry = _mm512_permutex2var_epi8(lo, index, hi);
                         planes[b][j][i] = entry;
                         state[b] = _mm512_and_si512(entry, state_bits);
@@ -1079,12 +1111,12 @@ mod batch {
                     let cy = _mm512_set1_epi64(column_offsets(j, 1));
                     let cz = _mm512_set1_epi64(column_offsets(j, 2));
                     let mut x: [__m512i; 8] = core::array::from_fn(|g| {
-                        let bx = _mm512_multishift_epi64_epi8(cx, load(xs, g));
-                        let by = _mm512_multishift_epi64_epi8(cy, load(ys, g));
-                        let bz = _mm512_multishift_epi64_epi8(cz, load(zs, g));
+                        let bx = multishift(cx, load(xs, g));
+                        let by = multishift(cy, load(ys, g));
+                        let bz = multishift(cz, load(zs, g));
                         // `c ? a : b`, twice
-                        let xy = _mm512_ternarylogic_epi64::<0xCA>(bit0, bx, by);
-                        _mm512_ternarylogic_epi64::<0xCA>(bits01, xy, bz)
+                        let xy = _mm512_ternarylogic_epi32::<0xCA>(bit0, bx, by);
+                        _mm512_ternarylogic_epi32::<0xCA>(bits01, xy, bz)
                     });
                     transpose(&mut x, &TO_PLANES);
                     *block = x;
@@ -1124,19 +1156,19 @@ mod batch {
                     let (b0, b1, b2) = (bits[0][g], bits[1][g], bits[2][g]);
                     // Axis `a` is byte `a` of every block, moved to byte `j`;
                     // `c ? a : b` twice, then levels 21 to 23 off.
-                    let x = _mm512_ternarylogic_epi64::<0xCA>(
+                    let x = _mm512_ternarylogic_epi32::<0xCA>(
                         bytes01,
-                        _mm512_ternarylogic_epi64::<0xCA>(byte0, b0, _mm512_slli_epi64::<8>(b1)),
+                        _mm512_ternarylogic_epi32::<0xCA>(byte0, b0, _mm512_slli_epi64::<8>(b1)),
                         _mm512_slli_epi64::<16>(b2),
                     );
-                    let y = _mm512_ternarylogic_epi64::<0xCA>(
+                    let y = _mm512_ternarylogic_epi32::<0xCA>(
                         bytes01,
-                        _mm512_ternarylogic_epi64::<0xCA>(byte0, _mm512_srli_epi64::<8>(b0), b1),
+                        _mm512_ternarylogic_epi32::<0xCA>(byte0, _mm512_srli_epi64::<8>(b0), b1),
                         _mm512_slli_epi64::<8>(b2),
                     );
-                    let z = _mm512_ternarylogic_epi64::<0xCA>(
+                    let z = _mm512_ternarylogic_epi32::<0xCA>(
                         bytes01,
-                        _mm512_ternarylogic_epi64::<0xCA>(
+                        _mm512_ternarylogic_epi32::<0xCA>(
                             byte0,
                             _mm512_srli_epi64::<16>(b0),
                             _mm512_srli_epi64::<8>(b1),
@@ -1267,6 +1299,41 @@ mod batch {
                 }
             }
             done
+        }
+
+        #[cfg(test)]
+        mod tests {
+            use core::arch::x86_64::__m512i;
+
+            use super::{multishift, multishift_loop};
+
+            #[test]
+            fn multishift_loop_is_the_instruction() {
+                if !crate::cpu::avx512vbmi() {
+                    return;
+                }
+                // xorshift64: controls past 63 and every rotation, cheaply.
+                let mut s = 0x9E37_79B9_7F4A_7C15_u64;
+                let mut next = || {
+                    s ^= s << 13;
+                    s ^= s >> 7;
+                    s ^= s << 17;
+                    s
+                };
+                for _ in 0..256 {
+                    let ctrl: [u64; 8] = core::array::from_fn(|_| next());
+                    let data: [u64; 8] = core::array::from_fn(|_| next());
+                    // SAFETY: VBMI detected above; 64 bytes of integers.
+                    let got: [u64; 8] = unsafe {
+                        use core::mem::transmute;
+                        transmute::<__m512i, [u64; 8]>(multishift(
+                            transmute::<[u64; 8], __m512i>(ctrl),
+                            transmute::<[u64; 8], __m512i>(data),
+                        ))
+                    };
+                    assert_eq!(got, multishift_loop(ctrl, data));
+                }
+            }
         }
     }
 

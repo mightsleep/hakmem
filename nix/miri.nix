@@ -33,10 +33,11 @@
             RUSTFLAGS="$1" cargo miri test --test miri
           }
           # Portable paths first, then the intrinsics; Miri has shims for
-          # BMI2, PCLMULQDQ, SSSE3, GFNI and AVX-512 VBMI. The GFNI and VBMI
-          # cells are Miri-only: the GitHub runners are a mix of Zen 3 (no
-          # GFNI, no AVX-512) and Ice Lake, so a native cell would SIGILL at
-          # random; the interpreter does not care.
+          # BMI2, PCLMULQDQ, SSSE3, GFNI and AVX-512 VBMI but vpmultishiftqb,
+          # which Miri gets as a loop until rust-lang/miri#5345 (hilbert3.rs).
+          # The GFNI and VBMI cells are Miri-only: the GitHub runners are a
+          # mix of Zen 3 (no GFNI, no AVX-512) and Ice Lake, so a native
+          # cell would SIGILL at random; the interpreter does not care.
           run ""
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3"
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+gfni"

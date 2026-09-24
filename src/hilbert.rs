@@ -795,12 +795,13 @@ mod batch {
             _mm512_loadu_si512, _mm512_permutex2var_epi8, _mm512_set1_epi8, _mm512_set1_epi32,
             _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi32, _mm512_slli_epi64,
             _mm512_srli_epi32, _mm512_srli_epi64, _mm512_srlv_epi32, _mm512_srlv_epi64,
-            _mm512_storeu_si512, _mm512_ternarylogic_epi64,
+            _mm512_storeu_si512, _mm512_ternarylogic_epi32,
         };
 
         use super::super::TABLE6;
 
         // `vpternlog` truth tables over `(a, b, c) = (0xF0, 0xCC, 0xAA)`.
+        // The `d` form: unmasked it is the same bits as `q`, and Miri knows it.
         /// `a ^ (b & c)`
         const XOR_AND: i32 = 0x78;
         /// `(a & c) ^ b`
@@ -847,25 +848,25 @@ mod batch {
                             for (r, c) in code.iter_mut().enumerate() {
                                 let m = _mm512_loadu_si512(chunk.as_ptr().add($lanes * r).cast());
                                 // Each level's `(x, y)` to `(x, x ^ y)`.
-                                *c = _mm512_ternarylogic_epi64::<XOR_AND>(m, $slli::<1>(m), odd);
+                                *c = _mm512_ternarylogic_epi32::<XOR_AND>(m, $slli::<1>(m), odd);
                             }
                             let mut step = STEPS;
                             while step > 0 {
                                 step -= 1;
                                 let shift = $set1((6 * step).into());
                                 for r in 0..REGS {
-                                    let index = _mm512_ternarylogic_epi64::<AND_XOR>(
+                                    let index = _mm512_ternarylogic_epi32::<AND_XOR>(
                                         $srlv(code[r], shift),
                                         state[r],
                                         cells,
                                     );
                                     let entry = _mm512_permutex2var_epi8(lo, index, hi);
-                                    acc[r] = _mm512_ternarylogic_epi64::<OR_AND>(
+                                    acc[r] = _mm512_ternarylogic_epi32::<OR_AND>(
                                         $slli::<6>(acc[r]),
                                         entry,
                                         high_digits,
                                     );
-                                    state[r] = _mm512_ternarylogic_epi64::<XOR_THEN_AND>(
+                                    state[r] = _mm512_ternarylogic_epi32::<XOR_THEN_AND>(
                                         state[r], entry, state_bits,
                                     );
                                 }
@@ -873,7 +874,7 @@ mod batch {
                             for (r, a) in acc.iter().enumerate() {
                                 // The low digit bits: `x ^ y`, the odd bits
                                 // of the rewritten code.
-                                let a = _mm512_ternarylogic_epi64::<OR_AND>(
+                                let a = _mm512_ternarylogic_epi32::<OR_AND>(
                                     *a,
                                     $srli::<1>(code[r]),
                                     even,
