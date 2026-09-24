@@ -437,6 +437,28 @@ mod hilbert2_in_place {
     }
 
     #[test]
+    fn morton2_columns() {
+        // Every length to 200 and past the batches of 16 and 32 points;
+        // coordinates full width, so the high halves must drop.
+        for n in (0..=200).chain([255, 256, 257, 1024 + 7]) {
+            let seed = 0x2545_F491_4F6C_DD1D ^ n as u64;
+            let (xs, ys) = (xorshift(n, seed), xorshift(n, seed ^ 1));
+            let (mut codes, mut out) = (vec![0; n], vec![0; 2 * n]);
+            assert!(
+                laws::morton2_columns_match_per_point_u64(&xs, &ys, &mut codes, &mut out),
+                "n={n}"
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let (xs, ys): (Vec<u32>, Vec<u32>) = (xs.iter().map(|&v| v as u32).collect(), ys.iter().map(|&v| v as u32).collect());
+            let (mut codes, mut out) = (vec![0; n], vec![0; 2 * n]);
+            assert!(
+                laws::morton2_columns_match_per_point_u32(&xs, &ys, &mut codes, &mut out),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
     fn group_boundaries_3d() {
         // The `u64` plane kernel takes 512 keys at a time, then whole
         // groups of 64, then leaves the rest to the per-key form; 200
@@ -553,6 +575,14 @@ mod hilbert2_in_place {
         fn u32_codes(codes in prop::collection::vec(any::<u32>(), 0..=300)) {
             let mut scratch = vec![0; codes.len()];
             prop_assert!(laws::hilbert2_in_place_matches_per_key_u32(&codes, &mut scratch));
+        }
+
+        #[test]
+        fn morton2_columns_any(points in prop::collection::vec((any::<u64>(), any::<u64>()), 0..=300)) {
+            let xs: Vec<u64> = points.iter().map(|p| p.0).collect();
+            let ys: Vec<u64> = points.iter().map(|p| p.1).collect();
+            let (mut codes, mut out) = (vec![0; xs.len()], vec![0; 2 * xs.len()]);
+            prop_assert!(laws::morton2_columns_match_per_point_u64(&xs, &ys, &mut codes, &mut out));
         }
 
         #[test]

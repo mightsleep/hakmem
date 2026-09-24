@@ -217,6 +217,7 @@ machine read as a table and applied to a register of keys at a time:
 | `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step, per register of keys (`u32`) or per plane of 64 keys (`u64`: `vpmultishiftqb` and three rounds of `vpermt2b` in, the same rounds and a `vpmaddubsw` / `vpmaddwd` pack out, the transposes checked at compile time); NEON: `tbl` over four registers and `tbx` over two; AVX2 alone: the machine modulo its translations, 24 entries in two PSHUFB of 16 a level, the second read through `index ^ 0x80` | `from_morton` per key |
 | `Hilbert3::into_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time); AVX2 the factored inverse, the translation in index bits 4 and 5, which PSHUFB ignores | `into_morton` per key, the algebraic scan |
 | `Hilbert3::<u64>::encode_columns` / `decode_columns` | AVX-512 VBMI and GFNI: the `u64` planes fed from three columns by `vpmultishiftqb` at offsets `l`, `l - 1`, `l - 2`, and emptied into them by the way back with the levels reversed and one `gf2p8affineqb` bit transpose a register | Morton code and the batch above |
+| `Morton2::encode_columns` / `decode_columns` (`u32`, `u64`) | AVX2: a coordinate's bytes widened to 16 bits and a nibble a byte, one PSHUFB through 16 entries spreads it over the even (odd) bits; back, two PSHUFB per axis and a pack | `encode` / `decode` per point |
 
 Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 1024 keys, `benches/hilbert.rs`), from coordinates to keys and back, ns a key:
@@ -229,6 +230,8 @@ Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 | 3D decode, `u64` keys, 21 levels | 1.8 | 8.8 | rawrunprotected's tables 15.1 |
 | 3D encode from three columns, 21 levels | 1.2 | 13.1 | rawrunprotected's tables 15.2 |
 | 3D decode to three columns, 21 levels | 1.0 | 8.8 | rawrunprotected's tables 15.1 |
+| 2D Morton encode from two columns, `u64` | 0.14 | 0.47 (PDEP) | |
+| 2D Morton decode to two columns, `u64` | 0.22 | 0.73 (PEXT) | |
 
 Without VBMI the batch is still faster than the per-key form (7.0
 against 12.3 µs for the 2D `u64` case on the same core): Morton first

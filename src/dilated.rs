@@ -239,3 +239,264 @@ impl<W: Word> Morton3<W> {
         self.0
     }
 }
+
+macro_rules! morton2_columns {
+    ($($w:ty => $encode:ident, $decode:ident),* $(,)?) => {$(
+        impl Morton2<$w> {
+            /// [`encode`](Self::encode) over two columns of coordinates:
+            /// `out[i]` is the code of `(xs[i], ys[i])`. Coordinates above
+            /// `BITS / 2` bits are dropped, as in `encode`.
+            ///
+            /// On `x86_64` with AVX2, chosen at run time, 32 bytes of
+            /// points a step without PDEP: the coordinate's bytes widen
+            /// to 16 bits, each nibble lands in a byte, and one PSHUFB
+            /// through a 16-entry table spreads it over the even bits
+            /// (the odd ones for `y`). Otherwise, and past the last
+            /// batch, `encode` per point.
+            ///
+            /// # Panics
+            ///
+            /// If the three slices differ in length.
+            pub fn encode_columns(xs: &[$w], ys: &[$w], out: &mut [$w]) {
+                let n = out.len();
+                assert!(
+                    xs.len() == n && ys.len() == n,
+                    "columns of {} and {} for {n} codes",
+                    xs.len(),
+                    ys.len()
+                );
+                let done = batch::$encode(xs, ys, out);
+                for ((o, &x), &y) in out[done..].iter_mut().zip(&xs[done..]).zip(&ys[done..]) {
+                    *o = Self::encode(x, y).code();
+                }
+            }
+
+            /// [`decode`](Self::decode) of a column of codes into two
+            /// columns of coordinates, the inverse of
+            /// [`encode_columns`](Self::encode_columns). With AVX2 two
+            /// PSHUFB per axis compact a nibble's two bits of it, and a
+            /// shift inside 16 bits and a PSHUFB pack the nibbles back
+            /// into bytes.
+            ///
+            /// # Panics
+            ///
+            /// If the three slices differ in length.
+            pub fn decode_columns(codes: &[$w], xs: &mut [$w], ys: &mut [$w]) {
+                let n = codes.len();
+                assert!(
+                    xs.len() == n && ys.len() == n,
+                    "columns of {} and {} for {n} codes",
+                    xs.len(),
+                    ys.len()
+                );
+                let done = batch::$decode(codes, xs, ys);
+                for ((&c, x), y) in codes[done..].iter().zip(&mut xs[done..]).zip(&mut ys[done..]) {
+                    (*x, *y) = Self::from_code(c).decode();
+                }
+            }
+        }
+    )*};
+}
+
+morton2_columns!(
+    u32 => encode_u32, decode_u32,
+    u64 => encode_u64, decode_u64,
+);
+
+/// The Morton batch kernels; each returns how many points from the front
+/// it converted, a whole number of batches.
+mod batch {
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    // `inline(always)` on the table load: a helper without the kernel's
+    // `target_feature` must be inlined into it for the intrinsics to be.
+    #[allow(unsafe_code, clippy::inline_always)]
+    mod avx2 {
+        use core::arch::x86_64::{
+            __m256i, _mm_loadu_si128, _mm256_and_si256, _mm256_broadcastsi128_si256,
+            _mm256_loadu_si256, _mm256_or_si256, _mm256_set1_epi8, _mm256_shuffle_epi8,
+            _mm256_slli_epi64, _mm256_srli_epi16, _mm256_srli_epi64, _mm256_storeu_si256,
+        };
+
+        /// PSHUFB's zero: bit 7 of the index.
+        const Z: u8 = 0x80;
+
+        /// A nibble's four bits at the even bits of a byte, or the odd.
+        const fn spread(odd: bool) -> [u8; 16] {
+            let mut t = [0u8; 16];
+            let mut n = 0;
+            while n < 16 {
+                let s = (n & 1) | (n & 2) << 1 | (n & 4) << 2 | (n & 8) << 3;
+                t[n as usize] = if odd { s << 1 } else { s };
+                n += 1;
+            }
+            t
+        }
+
+        /// The two even (or odd) bits of a nibble, packed, at bits 0 and
+        /// 1 of the result (`high`: at 2 and 3).
+        const fn compact(odd: bool, high: bool) -> [u8; 16] {
+            let mut t = [0u8; 16];
+            let mut n = 0u8;
+            while n < 16 {
+                let m = if odd { n >> 1 } else { n };
+                let c = (m & 1) | (m >> 1 & 2);
+                t[n as usize] = if high { c << 2 } else { c };
+                n += 1;
+            }
+            t
+        }
+
+        const SPREAD_X: [u8; 16] = spread(false);
+        const SPREAD_Y: [u8; 16] = spread(true);
+        const X_LO: [u8; 16] = compact(false, false);
+        const X_HI: [u8; 16] = compact(false, true);
+        const Y_LO: [u8; 16] = compact(true, false);
+        const Y_HI: [u8; 16] = compact(true, true);
+
+        /// A 16-byte table in both halves of a register.
+        #[inline(always)]
+        unsafe fn table(t: &[u8; 16]) -> __m256i {
+            // SAFETY: AVX2 on the caller; the load reads the 16 bytes.
+            unsafe { _mm256_broadcastsi128_si256(_mm_loadu_si128(t.as_ptr().cast())) }
+        }
+
+        macro_rules! kernels {
+            ($encode:ident, $decode:ident, $w:ty, $widen:expr, $gather:expr) => {
+                /// Batches of four registers.
+                #[target_feature(enable = "avx2")]
+                pub(in crate::dilated) fn $encode(xs: &[$w], ys: &[$w], out: &mut [$w]) -> usize {
+                    const PER: usize = 32 / size_of::<$w>();
+                    let (out, _) = out.as_chunks_mut::<{ 4 * PER }>();
+                    let (xs, _) = xs.as_chunks::<{ 4 * PER }>();
+                    let (ys, _) = ys.as_chunks::<{ 4 * PER }>();
+                    let done = out.len() * 4 * PER;
+                    // SAFETY: AVX2 is enabled on this function; every load
+                    // and store stays inside a chunk or a 16-byte table.
+                    unsafe {
+                        let widen = table(&$widen);
+                        let (sx, sy) = (table(&SPREAD_X), table(&SPREAD_Y));
+                        let low = _mm256_set1_epi8(0x0F);
+                        // Byte `i` of the coordinate to byte `2i`, then its
+                        // high nibble to byte `2i + 1`: a nibble a byte.
+                        let nibbles = |v: __m256i| {
+                            let w = _mm256_shuffle_epi8(v, widen);
+                            _mm256_and_si256(_mm256_or_si256(w, _mm256_slli_epi64::<4>(w)), low)
+                        };
+                        for ((o, x), y) in out.iter_mut().zip(xs).zip(ys) {
+                            for r in 0..4 {
+                                let xv = _mm256_loadu_si256(x.as_ptr().add(PER * r).cast());
+                                let yv = _mm256_loadu_si256(y.as_ptr().add(PER * r).cast());
+                                let code = _mm256_or_si256(
+                                    _mm256_shuffle_epi8(sx, nibbles(xv)),
+                                    _mm256_shuffle_epi8(sy, nibbles(yv)),
+                                );
+                                _mm256_storeu_si256(o.as_mut_ptr().add(PER * r).cast(), code);
+                            }
+                        }
+                    }
+                    done
+                }
+
+                /// Batches of four registers.
+                #[target_feature(enable = "avx2")]
+                pub(in crate::dilated) fn $decode(codes: &[$w], xs: &mut [$w], ys: &mut [$w]) -> usize {
+                    const PER: usize = 32 / size_of::<$w>();
+                    let (codes, _) = codes.as_chunks::<{ 4 * PER }>();
+                    let (xs, _) = xs.as_chunks_mut::<{ 4 * PER }>();
+                    let (ys, _) = ys.as_chunks_mut::<{ 4 * PER }>();
+                    let done = codes.len() * 4 * PER;
+                    // SAFETY: as in the encode.
+                    unsafe {
+                        let gather = table(&$gather);
+                        let (xl, xh) = (table(&X_LO), table(&X_HI));
+                        let (yl, yh) = (table(&Y_LO), table(&Y_HI));
+                        let low = _mm256_set1_epi8(0x0F);
+                        // Nibbles `2i` and `2i + 1` into byte `i`: within a
+                        // 16-bit word `w | w >> 4`, then the even bytes.
+                        let pack = |n: __m256i| {
+                            _mm256_shuffle_epi8(_mm256_or_si256(n, _mm256_srli_epi16::<4>(n)), gather)
+                        };
+                        for ((c, x), y) in codes.iter().zip(xs).zip(ys) {
+                            for r in 0..4 {
+                                let v = _mm256_loadu_si256(c.as_ptr().add(PER * r).cast());
+                                let lo = _mm256_and_si256(v, low);
+                                let hi = _mm256_and_si256(_mm256_srli_epi64::<4>(v), low);
+                                let xn = _mm256_or_si256(_mm256_shuffle_epi8(xl, lo), _mm256_shuffle_epi8(xh, hi));
+                                let yn = _mm256_or_si256(_mm256_shuffle_epi8(yl, lo), _mm256_shuffle_epi8(yh, hi));
+                                _mm256_storeu_si256(x.as_mut_ptr().add(PER * r).cast(), pack(xn));
+                                _mm256_storeu_si256(y.as_mut_ptr().add(PER * r).cast(), pack(yn));
+                            }
+                        }
+                    }
+                    done
+                }
+            };
+        }
+
+        kernels!(
+            encode_u64,
+            decode_u64,
+            u64,
+            [0, Z, 1, Z, 2, Z, 3, Z, 8, Z, 9, Z, 10, Z, 11, Z],
+            [0, 2, 4, 6, Z, Z, Z, Z, 8, 10, 12, 14, Z, Z, Z, Z]
+        );
+        kernels!(
+            encode_u32,
+            decode_u32,
+            u32,
+            [0, Z, 1, Z, 4, Z, 5, Z, 8, Z, 9, Z, 12, Z, 13, Z],
+            [0, 2, Z, Z, 4, 6, Z, Z, 8, 10, Z, Z, 12, 14, Z, Z]
+        );
+    }
+
+    /// `x86_64` chooses once a call, as the Hilbert batches do.
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[allow(unsafe_code)]
+    mod dispatch {
+        use super::avx2;
+        use crate::cpu;
+
+        macro_rules! pick {
+            ($($name:ident($a:ident: $ta:ty, $b:ident: $tb:ty, $c:ident: $tc:ty);)*) => {$(
+                pub(in crate::dilated) fn $name($a: $ta, $b: $tb, $c: $tc) -> usize {
+                    if cpu::avx2() {
+                        // SAFETY: AVX2 is present.
+                        unsafe { avx2::$name($a, $b, $c) }
+                    } else {
+                        0
+                    }
+                }
+            )*};
+        }
+
+        pick! {
+            encode_u32(xs: &[u32], ys: &[u32], out: &mut [u32]);
+            encode_u64(xs: &[u64], ys: &[u64], out: &mut [u64]);
+            decode_u32(codes: &[u32], xs: &mut [u32], ys: &mut [u32]);
+            decode_u64(codes: &[u64], xs: &mut [u64], ys: &mut [u64]);
+        }
+    }
+
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    pub(super) use dispatch::{decode_u32, decode_u64, encode_u32, encode_u64};
+
+    /// No batch path: the caller converts every point.
+    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    mod none {
+        pub(in crate::dilated) const fn encode_u32(_: &[u32], _: &[u32], _: &mut [u32]) -> usize {
+            0
+        }
+        pub(in crate::dilated) const fn encode_u64(_: &[u64], _: &[u64], _: &mut [u64]) -> usize {
+            0
+        }
+        pub(in crate::dilated) const fn decode_u32(_: &[u32], _: &mut [u32], _: &mut [u32]) -> usize {
+            0
+        }
+        pub(in crate::dilated) const fn decode_u64(_: &[u64], _: &mut [u64], _: &mut [u64]) -> usize {
+            0
+        }
+    }
+
+    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    pub(super) use none::{decode_u32, decode_u64, encode_u32, encode_u64};
+}

@@ -422,6 +422,37 @@ pub fn hilbert3_columns_match_per_point(
     forward && (0..n).all(|i| (ox[i], oy[i], oz[i]) == (xs[i] & used, ys[i] & used, zs[i] & used))
 }
 
+macro_rules! morton2_columns_law {
+    ($($w:ty => $name:ident),* $(,)?) => {$(
+        /// The 2D Morton column conversions are the per-point ones, both
+        /// ways.
+        ///
+        /// [`Morton2::encode_columns`](crate::dilated::Morton2::encode_columns)
+        /// is [`Morton2::encode`](crate::dilated::Morton2::encode) per
+        /// point, and `decode_columns` gives the coordinates back, masked
+        /// to the `BITS / 2` bits a code holds. `codes` and `out` are
+        /// scratch of the columns' length and twice it (asserted).
+        #[must_use]
+        pub fn $name(xs: &[$w], ys: &[$w], codes: &mut [$w], out: &mut [$w]) -> bool {
+            use crate::dilated::Morton2;
+            let n = xs.len();
+            assert!(ys.len() == n, "columns must match");
+            assert!(codes.len() == n && out.len() == 2 * n, "scratch must match the columns");
+            Morton2::<$w>::encode_columns(xs, ys, codes);
+            let forward = (0..n).all(|i| codes[i] == Morton2::<$w>::encode(xs[i], ys[i]).code());
+            let (ox, oy) = out.split_at_mut(n);
+            Morton2::<$w>::decode_columns(codes, ox, oy);
+            let used = <$w>::MAX >> (<$w>::BITS / 2);
+            forward && (0..n).all(|i| (ox[i], oy[i]) == (xs[i] & used, ys[i] & used))
+        }
+    )*};
+}
+
+morton2_columns_law!(
+    u32 => morton2_columns_match_per_point_u32,
+    u64 => morton2_columns_match_per_point_u64,
+);
+
 macro_rules! hilbert_in_place_order_law {
     ($($w:ty => $name2:ident, $name3:ident),* $(,)?) => {$(
         /// The batch on the curve of `order` levels is

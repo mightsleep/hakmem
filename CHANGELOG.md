@@ -78,6 +78,14 @@ per-point conversion both ways, full-width coordinates whose bits
 above 21 must drop, every length to 200 and around the groups; a new
 Miri run with GFNI.
 
+`Morton2::encode_columns` and `decode_columns` on `u32` and `u64`: with
+AVX2 a coordinate's bytes widen to 16 bits, each nibble takes a byte,
+and one PSHUFB through 16 entries spreads it over the even bits (the
+odd for `y`); decoding, two PSHUFB per axis and a pack inside 16 bits.
+0.14 ns a point encoding and 0.22 decoding on `u64`, three times
+PDEP and PEXT and seven to nine times the portable form a build
+without flags had. Chosen at run time; per point elsewhere.
+
 The batch conversions dispatch at run time on `x86_64`: each kernel
 compiled under its own `#[target_feature]`, chosen once a call by
 CPUID and XCR0 (`cpu.rs`, `core::arch` and one atomic, so still

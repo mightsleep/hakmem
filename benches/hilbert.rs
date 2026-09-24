@@ -436,5 +436,50 @@ mod tables {
     }
 }
 
-criterion_group!(benches, bench, bench_batch, bench3, bench3_batch);
+/// 2D Morton over columns against the per-point form.
+fn bench_morton_batch(c: &mut Criterion) {
+    let w = words();
+    let xs: Vec<u64> = w.iter().map(|&v| v & 0xFFFF_FFFF).collect();
+    let ys: Vec<u64> = w.iter().map(|&v| v >> 32).collect();
+    let mut codes = vec![0u64; N];
+    {
+        let mut g = c.benchmark_group("morton2/encode batch");
+        g.bench_function("per point", |b| {
+            b.iter(|| {
+                for ((o, &x), &y) in codes.iter_mut().zip(&xs).zip(&ys) {
+                    *o = Morton2::<u64>::encode(black_box(x), black_box(y)).code();
+                }
+                black_box(&codes);
+            });
+        });
+        g.bench_function("columns", |b| {
+            b.iter(|| {
+                Morton2::<u64>::encode_columns(black_box(&xs), &ys, &mut codes);
+                black_box(&codes);
+            });
+        });
+        g.finish();
+    }
+    let (mut dx, mut dy) = (vec![0u64; N], vec![0u64; N]);
+    {
+        let mut g = c.benchmark_group("morton2/decode batch");
+        g.bench_function("per point", |b| {
+            b.iter(|| {
+                for ((&m, x), y) in codes.iter().zip(&mut dx).zip(&mut dy) {
+                    (*x, *y) = Morton2::<u64>::from_code(black_box(m)).decode();
+                }
+                black_box((&dx, &dy));
+            });
+        });
+        g.bench_function("columns", |b| {
+            b.iter(|| {
+                Morton2::<u64>::decode_columns(black_box(&codes), &mut dx, &mut dy);
+                black_box((&dx, &dy));
+            });
+        });
+        g.finish();
+    }
+}
+
+criterion_group!(benches, bench, bench_batch, bench3, bench3_batch, bench_morton_batch);
 criterion_main!(benches);

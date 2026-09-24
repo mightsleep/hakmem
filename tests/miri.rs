@@ -115,6 +115,18 @@ fn hilbert_batch_paths() {
             laws::hilbert3_columns_match_per_point(&codes, &rotated, &shifted, &mut keys, &mut out),
             "n={n}"
         );
+        let (mut z_codes, mut z_back) = (vec![0; n], vec![0; 2 * n]);
+        assert!(
+            laws::morton2_columns_match_per_point_u64(&codes, &shifted, &mut z_codes, &mut z_back),
+            "n={n}"
+        );
+        let (mut z_codes32, mut z_back32) = (vec![0; n], vec![0; 2 * n]);
+        #[allow(clippy::cast_possible_truncation)]
+        let shifted32: Vec<u32> = shifted.iter().map(|&c| c as u32).collect();
+        assert!(
+            laws::morton2_columns_match_per_point_u32(&codes32, &shifted32, &mut z_codes32, &mut z_back32),
+            "n={n}"
+        );
         assert!(
             laws::hilbert2_in_place_matches_per_key_u32(&codes32, &mut b),
             "n={n}"
