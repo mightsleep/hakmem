@@ -827,3 +827,78 @@ fn kindergarten_gathers_are_exact() {
         }
     }
 }
+
+mod cover {
+    use hakmem::laws;
+    use proptest::prelude::*;
+
+    /// Budgets from one range to more than any rectangle's exact cover.
+    const BUDGETS: [usize; 7] = [1, 2, 3, 5, 16, 64, 2048];
+
+    fn check(x: (u16, u16), y: (u16, u16)) {
+        for budget in BUDGETS {
+            let mut out = vec![(0u16, 0u16); budget];
+            assert!(laws::morton2_cover_matches_cells(x, y, &mut out), "Morton {x:?} {y:?} {budget}");
+            assert!(laws::hilbert2_cover_matches_cells(x, y, &mut out), "Hilbert {x:?} {y:?} {budget}");
+        }
+    }
+
+    #[test]
+    fn edges_and_corners() {
+        let cases = [
+            ((0, 255), (0, 255)),
+            ((0, 0), (0, 0)),
+            ((255, 255), (255, 255)),
+            ((1, 254), (1, 254)),
+            ((3, 200), (100, 101)),
+            ((17, 17), (0, 255)),
+            ((5, 4), (0, 9)),
+            ((0, 400), (250, 300)),
+            ((128, 127), (128, 127)),
+        ];
+        for (x, y) in cases {
+            check(x, y);
+        }
+    }
+
+    #[test]
+    fn ties_at_the_threshold() {
+        // A column one cell wide is 256 runs whose gaps repeat; budgets
+        // between one and two times fewer put the threshold among equal
+        // gaps, where only some of them may close.
+        for x in [0u16, 7, 200] {
+            for budget in (128..256).step_by(9) {
+                let mut out = vec![(0u16, 0u16); budget];
+                assert!(laws::morton2_cover_matches_cells((x, x), (0, 255), &mut out), "Morton {x} {budget}");
+                assert!(laws::hilbert2_cover_matches_cells((x, x), (0, 255), &mut out), "Hilbert {x} {budget}");
+            }
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+        #[test]
+        fn random_rectangles(a in 0u16..300, b in 0u16..300, c in 0u16..300, d in 0u16..300) {
+            check((a.min(b), a.max(b)), (c.min(d), c.max(d)));
+        }
+
+        #[test]
+        fn wide_rectangles(
+            a in any::<u32>(), b in any::<u32>(), c in any::<u32>(), d in any::<u32>(),
+            budget in 1usize..64,
+            points in prop::collection::vec((any::<u32>(), any::<u32>()), 64),
+        ) {
+            let (x, y) = ((u64::from(a.min(b)), u64::from(a.max(b))), (u64::from(c.min(d)), u64::from(c.max(d))));
+            // Corners, edges and the given points, clamped into the box
+            // half of the time so most are inside.
+            let mut pts: Vec<(u64, u64)> = vec![(x.0, y.0), (x.1, y.0), (x.0, y.1), (x.1, y.1)];
+            for (i, &(p, q)) in points.iter().enumerate() {
+                let (p, q) = (u64::from(p), u64::from(q));
+                pts.push(if i % 2 == 0 { (p.clamp(x.0, x.1), q.clamp(y.0, y.1)) } else { (p, q) });
+            }
+            let mut out = vec![(0u64, 0u64); budget];
+            prop_assert!(laws::morton2_cover_holds_points(x, y, &pts, &mut out));
+            prop_assert!(laws::hilbert2_cover_holds_points(x, y, &pts, &mut out));
+        }
+    }
+}

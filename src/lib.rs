@@ -9,6 +9,7 @@ extern crate alloc;
 pub mod affine;
 pub mod bits;
 pub mod cookbook;
+mod cover;
 #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
 mod cpu;
 pub mod dilated;

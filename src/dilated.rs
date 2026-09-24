@@ -298,6 +298,46 @@ macro_rules! morton2_columns {
     )*};
 }
 
+
+/// Z-order for [`crate::cover`]: digit `d` is `x` in bit 0, `y` in bit
+/// 1, one frame.
+struct ZQuadrants;
+
+impl crate::cover::Quadrants for ZQuadrants {
+    #[inline]
+    fn child(_: u8, digit: u8) -> (u8, u8, u8) {
+        (digit & 1, digit >> 1, 0)
+    }
+
+    #[inline]
+    fn digit(_: u8, dx: u8, dy: u8) -> (u8, u8) {
+        (dx | dy << 1, 0)
+    }
+}
+
+impl<W: Word + Ord> Morton2<W> {
+    /// The codes of the rectangle `x.0..=x.1` × `y.0..=y.1` as at most
+    /// `out.len()` ranges; returns how many it wrote. Inclusive, sorted,
+    /// disjoint, not touching, covering every cell, exact when the
+    /// budget allows, as [`Hilbert2::cover`](crate::hilbert::Hilbert2::cover).
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // Two columns of four cells: two quadrants, two ranges.
+    /// let mut out = [(0u8, 0u8); 8];
+    /// let n = Morton2::<u8>::cover((0, 1), (0, 3), &mut out);
+    /// assert_eq!(&out[..n], &[(0, 3), (8, 11)]);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the rectangle is not empty and `out` is.
+    pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
+        crate::cover::cover::<W, ZQuadrants>(W::BITS / 2, 0, x, y, out)
+    }
+}
+
 morton2_columns!(
     u32 => encode_u32, decode_u32,
     u64 => encode_u64, decode_u64,

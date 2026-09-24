@@ -488,5 +488,41 @@ fn bench_morton_batch(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench, bench_batch, bench3, bench3_batch, bench_morton_batch);
+/// Rectangles to key ranges on the full `u64` grid: 256 random
+/// rectangles of sides up to `2^k` cells, one call each.
+fn bench_cover(c: &mut Criterion) {
+    let w = words();
+    for side_bits in [8u32, 16, 24] {
+        let rects: Vec<((u64, u64), (u64, u64))> = w
+            .chunks(4)
+            .map(|q| {
+                let mask = (1u64 << side_bits) - 1;
+                let (x0, y0) = (q[0] & 0xFFFF_FFFF, q[1] & 0xFFFF_FFFF);
+                let (x1, y1) = ((x0 + (q[2] & mask)).min(0xFFFF_FFFF), (y0 + (q[3] & mask)).min(0xFFFF_FFFF));
+                ((x0, x1), (y0, y1))
+            })
+            .collect();
+        let mut g = c.benchmark_group(format!("cover/sides to 2^{side_bits}"));
+        for budget in [16usize, 64] {
+            let mut out = vec![(0u64, 0u64); budget];
+            g.bench_function(format!("Morton2, {budget} ranges"), |b| {
+                b.iter(|| {
+                    for &(x, y) in &rects {
+                        black_box(Morton2::<u64>::cover(black_box(x), y, &mut out));
+                    }
+                });
+            });
+            g.bench_function(format!("Hilbert2, {budget} ranges"), |b| {
+                b.iter(|| {
+                    for &(x, y) in &rects {
+                        black_box(Hilbert2::<u64>::cover(black_box(x), y, &mut out));
+                    }
+                });
+            });
+        }
+        g.finish();
+    }
+}
+
+criterion_group!(benches, bench, bench_batch, bench3, bench3_batch, bench_morton_batch, bench_cover);
 criterion_main!(benches);

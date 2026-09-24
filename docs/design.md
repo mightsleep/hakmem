@@ -235,6 +235,16 @@ Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 | 2D Morton decode to two columns, `u64` | 0.22 | 0.73 (PEXT) | |
 | 2D Hilbert encode from two columns, `u64`, any build | 1.3 | 5.9 | `fast_hilbert` 11.9 |
 
+The query side, `cover` (`cover.rs`): a rectangle on the full `u64`
+grid, sides up to `2^8`, `2^16` or `2^24` cells, turns into ranges in
+about the same time whatever its size, since the depth stops where the
+budget does: 3.5 µs for 16 Morton ranges and 12 for 64, 8.5 and 30 for
+Hilbert. The walks are most of it (several counting passes, each a
+little deeper, then the gaps and the write); a first depth guessed
+from the rectangle's side and the budget would drop most of the
+counting, and is the next thing to try if a query ever waits on it
+rather than on the scan.
+
 Without VBMI the batch is still faster than the per-key form (7.0
 against 12.3 µs for the 2D `u64` case on the same core): Morton first
 and the conversion second is two loops the compiler schedules better

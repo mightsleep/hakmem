@@ -212,17 +212,6 @@ impl<W: Word> Hilbert2<W> {
 /// One level of the encode machine of `crate::laws::reference`, for the
 /// batch table: frame `(swap, flip)` as bits 0 and 1, coordinate bits
 /// `x`, `y`; returns the digit and the frame below.
-#[cfg_attr(
-    not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
-        all(
-            target_arch = "aarch64",
-            target_feature = "neon",
-            not(feature = "portable")
-        )
-    )),
-    allow(dead_code)
-)]
 const fn level(frame: u8, x: u8, y: u8) -> (u8, u8) {
     let (swap, flip) = (frame & 1, (frame >> 1) & 1);
     let lo = x ^ y;
@@ -433,6 +422,70 @@ macro_rules! hilbert2_columns {
 }
 
 hilbert2_columns!(u32, u64);
+
+/// The Hilbert curve for [`crate::cover`]: [`level`] read backwards, the
+/// quadrant of each digit in each of the four frames.
+struct HilbertQuadrants;
+
+/// `CHILDREN[frame · 4 + digit]` is `(dx, dy, frame below)`.
+const CHILDREN: [(u8, u8, u8); 16] = {
+    let mut t = [(0, 0, 0); 16];
+    let mut frame = 0;
+    while frame < 4 {
+        let mut q = 0;
+        while q < 4 {
+            let (x, y) = (q & 1, q >> 1);
+            let (digit, below) = level(frame, x, y);
+            t[(frame * 4 + digit) as usize] = (x, y, below);
+            q += 1;
+        }
+        frame += 1;
+    }
+    t
+};
+
+impl crate::cover::Quadrants for HilbertQuadrants {
+    #[inline]
+    fn child(frame: u8, digit: u8) -> (u8, u8, u8) {
+        CHILDREN[(frame * 4 + digit) as usize]
+    }
+
+    #[inline]
+    fn digit(frame: u8, dx: u8, dy: u8) -> (u8, u8) {
+        level(frame, dx, dy)
+    }
+}
+
+impl<W: Word + Ord> Hilbert2<W> {
+    /// The keys of the rectangle `x.0..=x.1` × `y.0..=y.1` as at most
+    /// `out.len()` ranges of indices; returns how many it wrote.
+    ///
+    /// The ranges are inclusive, sorted, disjoint and not touching, and
+    /// every cell of the rectangle has its index in one of them. When
+    /// the budget allows the exact cover, the ranges hold those cells
+    /// and no others; otherwise they hold more, the least any budget's
+    /// worth of ranges of the deepest cover that fits can hold (see
+    /// `cover.rs`). A scan of keys sorted on the curve seeks once per
+    /// range. Coordinates past the grid are clipped; an empty rectangle
+    /// gives no ranges.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // The 2 × 2 block at the origin is the first quadrant of the
+    /// // bottom level: indices 0..=3, one range.
+    /// let mut out = [(0u8, 0u8); 4];
+    /// let n = Hilbert2::<u8>::cover((0, 1), (0, 1), &mut out);
+    /// assert_eq!(&out[..n], &[(0, 3)]);
+    /// ```
+    ///
+    /// # Panics
+    ///
+    /// If the rectangle is not empty and `out` is.
+    pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
+        crate::cover::cover::<W, HilbertQuadrants>(Self::LEVELS, 0, x, y, out)
+    }
+}
 
 /// The batch kernels. Each returns how many keys from the front it
 /// converted, a whole number of batches; the caller finishes the rest.

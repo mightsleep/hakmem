@@ -320,6 +320,34 @@ keys.sort_unstable(); // curve order, as a packed R-tree builds it
 | 3D encode, `u64` keys, 21 levels | **1.8 µs** | 13.1 µs | rawrunprotected's tables 15.2 µs |
 | 3D decode, `u64` keys, 21 levels | **1.8 µs** | 8.8 µs | rawrunprotected's tables 15.1 µs |
 
+The query side: `Hilbert2::cover` and `Morton2::cover` turn a rectangle
+into at most as many ranges of keys as the output slice holds, sorted
+and inclusive, every cell of the rectangle in one. With room for the
+exact cover they hold nothing else; with less they hold the least
+extra a budget of ranges of the deepest cover that fits can hold. A
+scan of the sorted keys seeks once per range. No allocation, the work
+a few times the budget per level: 3.5 µs a rectangle for 16 Morton
+ranges on the full `u64` grid, 9 µs for 16 Hilbert ranges.
+
+```rust
+use hakmem::prelude::*;
+
+let points = [(10u64, 10u64), (11, 12), (500, 500), (12, 11)];
+let mut keys: Vec<u64> = points
+    .iter()
+    .map(|&(x, y)| Hilbert2::<u64>::encode(x, y).index())
+    .collect();
+keys.sort_unstable();
+// The block 8..=15 × 8..=15 in at most four ranges, a seek each.
+let mut ranges = [(0u64, 0u64); 4];
+let n = Hilbert2::<u64>::cover((8, 15), (8, 15), &mut ranges);
+let hits: usize = ranges[..n]
+    .iter()
+    .map(|&(a, b)| keys.partition_point(|&k| k <= b) - keys.partition_point(|&k| k < a))
+    .sum();
+assert_eq!(hits, 3);
+```
+
 ## Cookbook
 
 `hakmem::cookbook` explains how the shipped kernels were composed:

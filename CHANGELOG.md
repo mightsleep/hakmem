@@ -94,6 +94,18 @@ them. Decoding goes per key to Morton codes in blocks of 256 on the
 stack and through the Morton columns. Skipping the Morton code as
 `Hilbert3` does would need 2D byte planes for a tenth of the time.
 
+`Hilbert2::cover` and `Morton2::cover`: a rectangle as at most
+`out.len()` sorted inclusive ranges of keys holding every cell of it,
+exact when the budget allows. A descent of the quadtree in curve
+order from the least node holding the rectangle; counting passes pick
+the deepest level whose cover has at most two budgets of runs, one
+pass writes its gaps into the output as scratch, a quickselect finds
+the threshold that leaves `budget` runs, and the last pass closes the
+gaps below it: the least over-cover that cover allows, no allocation.
+Laws cell by cell on the `u16` grid (coverage, exactness, the optimal
+merge) and by points on `u64`. 3.5 µs a rectangle for 16 Morton
+ranges, 9 for Hilbert, 12 and 30 for 64.
+
 The batch conversions dispatch at run time on `x86_64`: each kernel
 compiled under its own `#[target_feature]`, chosen once a call by
 CPUID and XCR0 (`cpu.rs`, `core::arch` and one atomic, so still

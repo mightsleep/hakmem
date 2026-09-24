@@ -484,6 +484,117 @@ hilbert2_columns_law!(
     u64 => hilbert2_columns_match_per_point_u64,
 );
 
+/// Room for the gaps of an exact cover in the `u16` cover laws.
+const GAPS: usize = 4096;
+
+macro_rules! cover_laws {
+    ($($curve:ident => $small:ident, $wide:ident, $encode:expr, $encode64:expr;)*) => {$(
+        /// The cover of a rectangle on the `u16` grid (256 × 256),
+        /// checked cell by cell against the curve's encode.
+        ///
+        /// The ranges are sorted, inclusive, disjoint and not touching,
+        /// at most `out.len()`, and hold every cell of the rectangle; when
+        /// the exact cover (the runs of the rectangle's keys) has at most
+        /// `out.len()` ranges, the result is that cover and nothing else.
+        #[must_use]
+        pub fn $small(x: (u16, u16), y: (u16, u16), out: &mut [(u16, u16)]) -> bool {
+            use crate::prelude::*;
+            let n = $curve::<u16>::cover(x, y, out);
+            if n > out.len() {
+                return false;
+            }
+            let ranges = &out[..n];
+            let ordered = ranges.iter().all(|r| r.0 <= r.1)
+                && ranges.windows(2).all(|w| u32::from(w[0].1) + 1 < u32::from(w[1].0));
+            // Keys held by the ranges, and keys of the rectangle's cells.
+            let mut held = [0u64; 1024];
+            let mut wanted = [0u64; 1024];
+            for &(a, b) in ranges {
+                for k in a..=b {
+                    held[usize::from(k) / 64] |= 1 << (k % 64);
+                }
+            }
+            let (x1, y1) = (x.1.min(255), y.1.min(255));
+            for cx in x.0..=x1 {
+                for cy in y.0..=y1 {
+                    let k: u16 = $encode(cx, cy);
+                    wanted[usize::from(k) / 64] |= 1 << (k % 64);
+                }
+            }
+            let covers = held.iter().zip(&wanted).all(|(h, w)| w & !h == 0);
+            // Runs of the wanted keys: rising edges of the bitmap.
+            let mut runs = 0;
+            let mut prev = false;
+            for k in 0..65_536usize {
+                let bit = wanted[k / 64] >> (k % 64) & 1 == 1;
+                runs += usize::from(bit && !prev);
+                prev = bit;
+            }
+            let exact = runs > out.len() || (held == wanted && n == runs);
+            // Between one and two budgets of runs the walk reaches the
+            // cells, and the merge must keep the largest gaps: the keys
+            // held are the cells and the `runs - budget` smallest gaps.
+            let optimal = if runs > out.len() && runs <= 2 * out.len() && runs <= GAPS {
+                let mut gaps = [0u32; GAPS];
+                let (mut g, mut last_end, mut prev) = (0, None::<u32>, false);
+                for k in 0..65_536u32 {
+                    let bit = wanted[k as usize / 64] >> (k % 64) & 1 == 1;
+                    if bit && !prev {
+                        if let Some(end) = last_end {
+                            gaps[g] = k - end - 1;
+                            g += 1;
+                        }
+                    }
+                    if !bit && prev {
+                        last_end = Some(k - 1);
+                    }
+                    prev = bit;
+                }
+                let gaps = &mut gaps[..g];
+                gaps.sort_unstable();
+                let extra: u32 = gaps[..runs - out.len()].iter().sum();
+                let ones = |m: &[u64; 1024]| m.iter().map(|w| w.count_ones()).sum::<u32>();
+                n == out.len() && ones(&held) == ones(&wanted) + extra
+            } else {
+                true
+            };
+            ordered && covers && exact && optimal
+        }
+
+        /// The cover on the full `u64` grid: well formed, within budget,
+        /// and holding each of `points` that lies in the rectangle (found
+        /// by binary search over the ranges).
+        #[must_use]
+        pub fn $wide(x: (u64, u64), y: (u64, u64), points: &[(u64, u64)], out: &mut [(u64, u64)]) -> bool {
+            use crate::prelude::*;
+            let n = $curve::<u64>::cover(x, y, out);
+            if n > out.len() {
+                return false;
+            }
+            let ranges = &out[..n];
+            let ordered = ranges.iter().all(|r| r.0 <= r.1)
+                && ranges.windows(2).all(|w| w[0].1 < w[1].0 && w[1].0 - w[0].1 > 1);
+            let side = u64::from(u32::MAX);
+            let inside = |p: &(u64, u64)| {
+                x.0 <= p.0 && p.0 <= x.1.min(side) && y.0 <= p.1 && p.1 <= y.1.min(side)
+            };
+            ordered
+                && points.iter().filter(|p| inside(p)).all(|&(px, py)| {
+                    let k: u64 = $encode64(px, py);
+                    let i = ranges.partition_point(|r| r.1 < k);
+                    i < n && ranges[i].0 <= k
+                })
+        }
+    )*};
+}
+
+cover_laws! {
+    Morton2 => morton2_cover_matches_cells, morton2_cover_holds_points,
+        |x, y| Morton2::<u16>::encode(x, y).code(), |x, y| Morton2::<u64>::encode(x, y).code();
+    Hilbert2 => hilbert2_cover_matches_cells, hilbert2_cover_holds_points,
+        |x, y| Hilbert2::<u16>::encode(x, y).index(), |x, y| Hilbert2::<u64>::encode(x, y).index();
+}
+
 macro_rules! hilbert_in_place_order_law {
     ($($w:ty => $name2:ident, $name3:ident),* $(,)?) => {$(
         /// The batch on the curve of `order` levels is
