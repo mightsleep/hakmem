@@ -1179,8 +1179,10 @@ mod x16 {
     use super::{Affine8, Lanes, U8x8};
 
     /// Sixteen lanes as two [`U8x8`] halves: the portable definition.
+    // One field, as on NEON: the public API may not depend on how many
+    // halves a target keeps (public-api.txt is diffed on both).
     #[derive(Clone, Copy)]
-    pub struct U8x16(U8x8, U8x8);
+    pub struct U8x16([U8x8; 2]);
 
     impl U8x16 {
         /// Lanes from two words: lanes `0..8` from `lo`, `8..16` from `hi`.
@@ -1190,7 +1192,7 @@ mod x16 {
         #[inline]
         #[must_use]
         pub fn from_halves(lo: u64, hi: u64) -> Self {
-            Self(U8x8::new(lo), U8x8::new(hi))
+            Self([U8x8::new(lo), U8x8::new(hi)])
         }
 
         /// The two words, lanes `0..8` and `8..16`.
@@ -1198,12 +1200,12 @@ mod x16 {
         #[inline]
         #[must_use]
         pub fn halves(self) -> (u64, u64) {
-            (self.0.bits(), self.1.bits())
+            (self.0[0].bits(), self.0[1].bits())
         }
 
         #[inline]
         fn map(self, other: Self, f: impl Fn(U8x8, U8x8) -> U8x8) -> Self {
-            Self(f(self.0, other.0), f(self.1, other.1))
+            Self([f(self.0[0], other.0[0]), f(self.0[1], other.0[1])])
         }
     }
 
@@ -1213,7 +1215,7 @@ mod x16 {
 
         #[inline]
         fn splat(b: u8) -> Self {
-            Self(U8x8::splat(b), U8x8::splat(b))
+            Self([U8x8::splat(b), U8x8::splat(b)])
         }
 
         #[inline]
@@ -1223,15 +1225,15 @@ mod x16 {
                 "U8x16::load needs 16 bytes, got {}",
                 bytes.len()
             );
-            Self(U8x8::load(&bytes[..8]), U8x8::load(&bytes[8..]))
+            Self([U8x8::load(&bytes[..8]), U8x8::load(&bytes[8..])])
         }
 
         #[inline]
         fn lane(self, i: usize) -> u8 {
             if i < 8 {
-                self.0.lane(i)
+                self.0[0].lane(i)
             } else {
-                self.1.lane(i - 8)
+                self.0[1].lane(i - 8)
             }
         }
 
@@ -1252,7 +1254,7 @@ mod x16 {
 
         #[inline]
         fn not(self) -> Self {
-            Self(self.0.not(), self.1.not())
+            Self([self.0[0].not(), self.0[1].not()])
         }
 
         #[inline]
@@ -1267,12 +1269,12 @@ mod x16 {
 
         #[inline]
         fn shl(self, n: u32) -> Self {
-            Self(self.0.shl(n), self.1.shl(n))
+            Self([self.0[0].shl(n), self.0[1].shl(n)])
         }
 
         #[inline]
         fn shr(self, n: u32) -> Self {
-            Self(self.0.shr(n), self.1.shr(n))
+            Self([self.0[0].shr(n), self.0[1].shr(n)])
         }
 
         #[inline]
@@ -1287,22 +1289,22 @@ mod x16 {
 
         #[inline]
         fn lut16(self, table: [u8; 16]) -> Self {
-            Self(self.0.lut16(table), self.1.lut16(table))
+            Self([self.0[0].lut16(table), self.0[1].lut16(table)])
         }
 
         #[inline]
         fn to_bitmask(self) -> u16 {
-            u16::from(self.0.to_bitmask()) | u16::from(self.1.to_bitmask()) << 8
+            u16::from(self.0[0].to_bitmask()) | u16::from(self.0[1].to_bitmask()) << 8
         }
 
         #[inline]
         fn affine(self, map: Affine8) -> Self {
-            Self(self.0.affine(map), self.1.affine(map))
+            Self([self.0[0].affine(map), self.0[1].affine(map)])
         }
 
         #[inline]
         fn reverse_bits(self) -> Self {
-            Self(self.0.reverse_bits(), self.1.reverse_bits())
+            Self([self.0[0].reverse_bits(), self.0[1].reverse_bits()])
         }
     }
 }
