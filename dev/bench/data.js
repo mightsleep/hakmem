@@ -1,5 +1,5 @@
 window.BENCHMARK_DATA = {
-  "lastUpdate": 1789965443922,
+  "lastUpdate": 1790289910023,
   "repoUrl": "https://github.com/mightsleep/hakmem",
   "entries": {
     "Benchmark": [
@@ -2721,6 +2721,618 @@ window.BENCHMARK_DATA = {
             "name": "select64/loop/sparse",
             "value": 2287,
             "range": "± 81",
+            "unit": "ns/iter"
+          }
+        ]
+      },
+      {
+        "commit": {
+          "author": {
+            "email": "acannix@proton.me",
+            "name": "mightsleep",
+            "username": "mightsleep"
+          },
+          "committer": {
+            "email": "noreply@github.com",
+            "name": "GitHub",
+            "username": "web-flow"
+          },
+          "distinct": true,
+          "id": "cdca6002c2f18edbab4848fd2977d02325371136",
+          "message": "Merge pull request #6 from mightsleep/hilbert\n\nmaybe 0.2.0: A Nocturne of Curves; lanes, affine, Hilbert 2D and 3D",
+          "timestamp": "2026-09-25T00:36:31+02:00",
+          "tree_id": "610e1b3ee64ad072b2ba92956b6132b645053955",
+          "url": "https://github.com/mightsleep/hakmem/commit/cdca6002c2f18edbab4848fd2977d02325371136"
+        },
+        "date": 1790289909097,
+        "tool": "cargo",
+        "benches": [
+          {
+            "name": "compact64/target/dense",
+            "value": 1805,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact64/broadword/dense",
+            "value": 9749,
+            "range": "± 417",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact64/loop/dense",
+            "value": 24704,
+            "range": "± 123",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact64/target/sparse",
+            "value": 1804,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact64/broadword/sparse",
+            "value": 9741,
+            "range": "± 131",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "compact64/loop/sparse",
+            "value": 6431,
+            "range": "± 187",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "expand64/target/dense",
+            "value": 1805,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "expand64/broadword/dense",
+            "value": 12964,
+            "range": "± 298",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "expand64/loop/dense",
+            "value": 25725,
+            "range": "± 79",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "expand64/target/sparse",
+            "value": 1804,
+            "range": "± 3",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "expand64/broadword/sparse",
+            "value": 12976,
+            "range": "± 38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "expand64/loop/sparse",
+            "value": 8284,
+            "range": "± 32",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select64_vs_broadword/hakmem",
+            "value": 710,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select64_vs_broadword/broadword::select1_raw",
+            "value": 3354,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u64/m16_n64",
+            "value": 290,
+            "range": "± 0",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u128/m16_n64",
+            "value": 432,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide4/m16_n64",
+            "value": 1525,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide8/m16_n64",
+            "value": 1908,
+            "range": "± 10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel/m16_n64",
+            "value": 1550,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel_exp/m16_n64",
+            "value": 1151,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/strsim/m16_n64",
+            "value": 1368,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u64/m32_n256",
+            "value": 1113,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u128/m32_n256",
+            "value": 1523,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide4/m32_n256",
+            "value": 5109,
+            "range": "± 55",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide8/m32_n256",
+            "value": 6655,
+            "range": "± 26",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel/m32_n256",
+            "value": 32100,
+            "range": "± 596",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel_exp/m32_n256",
+            "value": 12513,
+            "range": "± 31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/strsim/m32_n256",
+            "value": 10852,
+            "range": "± 73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u64/m64_n256",
+            "value": 1140,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u128/m64_n256",
+            "value": 1568,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide4/m64_n256",
+            "value": 5784,
+            "range": "± 62",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide8/m64_n256",
+            "value": 7047,
+            "range": "± 43",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel/m64_n256",
+            "value": 35926,
+            "range": "± 1484",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel_exp/m64_n256",
+            "value": 13932,
+            "range": "± 31",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/strsim/m64_n256",
+            "value": 21622,
+            "range": "± 224",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u64/m64_n1024",
+            "value": 4372,
+            "range": "± 9",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u128/m64_n1024",
+            "value": 5890,
+            "range": "± 73",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide4/m64_n1024",
+            "value": 18369,
+            "range": "± 397",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide8/m64_n1024",
+            "value": 25260,
+            "range": "± 99",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel/m64_n1024",
+            "value": 425837,
+            "range": "± 14246",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel_exp/m64_n1024",
+            "value": 415715,
+            "range": "± 6187",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/strsim/m64_n1024",
+            "value": 86050,
+            "range": "± 3841",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_u128/m128_n1024",
+            "value": 6097,
+            "range": "± 93",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide4/m128_n1024",
+            "value": 19987,
+            "range": "± 200",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide8/m128_n1024",
+            "value": 26023,
+            "range": "± 116",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel/m128_n1024",
+            "value": 457945,
+            "range": "± 16604",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel_exp/m128_n1024",
+            "value": 454530,
+            "range": "± 7087",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/strsim/m128_n1024",
+            "value": 173516,
+            "range": "± 7547",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide4/m256_n1024",
+            "value": 22943,
+            "range": "± 253",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide8/m256_n1024",
+            "value": 27518,
+            "range": "± 191",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel/m256_n1024",
+            "value": 496972,
+            "range": "± 3870",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel_exp/m256_n1024",
+            "value": 463677,
+            "range": "± 19150",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/strsim/m256_n1024",
+            "value": 344274,
+            "range": "± 8200",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/hakmem_wide8/m512_n1024",
+            "value": 30454,
+            "range": "± 295",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel/m512_n1024",
+            "value": 595062,
+            "range": "± 15651",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/triple_accel_exp/m512_n1024",
+            "value": 581532,
+            "range": "± 15490",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "edit_distance/strsim/m512_n1024",
+            "value": 691947,
+            "range": "± 16390",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/hakmem_u64/len64_edits4",
+            "value": 315,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/hakmem_u128/len64_edits4",
+            "value": 501,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/hakmem_wide8/len64_edits4",
+            "value": 2486,
+            "range": "± 45",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/triple_accel_simd_k/len64_edits4",
+            "value": 1623,
+            "range": "± 2",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/triple_accel_exp/len64_edits4",
+            "value": 1624,
+            "range": "± 16",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/strsim/len64_edits4",
+            "value": 5386,
+            "range": "± 38",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/hakmem_u128/len128_edits8",
+            "value": 948,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/hakmem_wide8/len128_edits8",
+            "value": 4766,
+            "range": "± 89",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/triple_accel_simd_k/len128_edits8",
+            "value": 2975,
+            "range": "± 4",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/triple_accel_exp/len128_edits8",
+            "value": 2975,
+            "range": "± 5",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/strsim/len128_edits8",
+            "value": 21306,
+            "range": "± 74",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/hakmem_wide8/len512_edits8",
+            "value": 18202,
+            "range": "± 266",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/triple_accel_simd_k/len512_edits8",
+            "value": 11084,
+            "range": "± 14",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/triple_accel_exp/len512_edits8",
+            "value": 11086,
+            "range": "± 21",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/strsim/len512_edits8",
+            "value": 345224,
+            "range": "± 834",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/hakmem_wide8/len512_edits32",
+            "value": 18297,
+            "range": "± 229",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/triple_accel_simd_k/len512_edits32",
+            "value": 19961,
+            "range": "± 40",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/triple_accel_exp/len512_edits32",
+            "value": 11085,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "similar_strings/strsim/len512_edits32",
+            "value": 344267,
+            "range": "± 5442",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rank/hakmem/dense",
+            "value": 2460,
+            "range": "± 63",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rank/sux/dense",
+            "value": 1933,
+            "range": "± 7",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rank/sucds/dense",
+            "value": 3675,
+            "range": "± 29",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rank/vers/dense",
+            "value": 5684,
+            "range": "± 17",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select/hakmem/dense",
+            "value": 10181,
+            "range": "± 33",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select/sux/dense",
+            "value": 12876,
+            "range": "± 361",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select/sucds/dense",
+            "value": 16979,
+            "range": "± 124",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select/vers/dense",
+            "value": 14974,
+            "range": "± 208",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rank/hakmem/sparse",
+            "value": 2463,
+            "range": "± 15",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rank/sux/sparse",
+            "value": 1940,
+            "range": "± 8",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rank/sucds/sparse",
+            "value": 3671,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "rank/vers/sparse",
+            "value": 5682,
+            "range": "± 12",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select/hakmem/sparse",
+            "value": 3796,
+            "range": "± 13",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select/sux/sparse",
+            "value": 4884,
+            "range": "± 83",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select/sucds/sparse",
+            "value": 22074,
+            "range": "± 82",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select/vers/sparse",
+            "value": 21169,
+            "range": "± 65",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select64/target/dense",
+            "value": 711,
+            "range": "± 10",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select64/broadword/dense",
+            "value": 6833,
+            "range": "± 146",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select64/loop/dense",
+            "value": 3735,
+            "range": "± 20",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select64/target/sparse",
+            "value": 711,
+            "range": "± 1",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select64/broadword/sparse",
+            "value": 6832,
+            "range": "± 24",
+            "unit": "ns/iter"
+          },
+          {
+            "name": "select64/loop/sparse",
+            "value": 2730,
+            "range": "± 59",
             "unit": "ns/iter"
           }
         ]
