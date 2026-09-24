@@ -1,11 +1,16 @@
 //! The algebra's laws as exported property functions.
 //!
 //! Each function returns `true` when the law holds for its inputs.
-//! The crate tests them against the `reference` module's bit-loop model for
-//! `u32`, `u64` and `u128`, with and without the BMI2 fast paths (see
-//! `tests/laws.rs`); downstream carriers and backends run the same
-//! functions over their own types. A law that fails is a bug in the
-//! backend, never a caveat in the docs.
+//! The crate tests them against the `reference` module's bit-loop model on
+//! every carrier from `u8` to `u128` and on `Wide`, on every hardware path
+//! the CI matrix builds (see `tests/laws.rs`); downstream carriers and
+//! backends run the same functions over their own types. A law that
+//! fails is a bug in the backend, never a caveat in the docs.
+//!
+//! The laws are API, under semver like the rest: a new law is a minor
+//! release, a law that changes its name, its arguments or its claim is a
+//! breaking one. A test suite built on them should not wake up to a
+//! different theorem.
 
 use crate::affine::Affine8;
 use crate::bits::truth_table;
@@ -115,6 +120,25 @@ pub fn select_matches_reference<W: Word>(x: W, k: u32) -> bool {
     x.select(k) == reference::select(x, k)
 }
 
+/// `Ord` is the order of unsigned integers: the highest bit where two
+/// words differ decides. A derived order on limbs gets this wrong, which
+/// is how the law came to be.
+#[must_use]
+pub fn order_is_unsigned<W: Word>(a: W, b: W) -> bool {
+    let mut want = core::cmp::Ordering::Equal;
+    for i in (0..W::BITS).rev() {
+        if a.bit(i) != b.bit(i) {
+            want = if a.bit(i) {
+                core::cmp::Ordering::Greater
+            } else {
+                core::cmp::Ordering::Less
+            };
+            break;
+        }
+    }
+    a.cmp(&b) == want
+}
+
 /// `select_lowest` is total: the `k`-th set bit, or `BITS` when there
 /// is none, for every `k` up to `u32::MAX`, on every build. It used to
 /// panic, return garbage or return 64, depending on the flags.
@@ -169,7 +193,7 @@ pub fn compact_composes<W: Word>(x: W, m: W, n: W) -> bool {
 #[must_use]
 pub fn dilated_roundtrip<W: Word, const D: u32>(x: W) -> bool {
     let x = x.and(W::low_ones(Dilated::<W, D>::width()));
-    Dilated::<W, D>::from_int(x).into_int() == x
+    Dilated::<W, D>::from_int(x).to_int() == x
 }
 
 /// `incr` in dilated space is `+ 1` modulo the dilated width.
@@ -177,7 +201,7 @@ pub fn dilated_roundtrip<W: Word, const D: u32>(x: W) -> bool {
 pub fn dilated_incr_is_add_one<W: Word, const D: u32>(x: W) -> bool {
     let width = W::low_ones(Dilated::<W, D>::width());
     let x = x.and(width);
-    Dilated::<W, D>::from_int(x).incr().into_int() == x.wrapping_add(W::ONE).and(width)
+    Dilated::<W, D>::from_int(x).incr().to_int() == x.wrapping_add(W::ONE).and(width)
 }
 
 /// `decr` undoes `incr`.
@@ -193,7 +217,7 @@ pub fn dilated_add_is_add<W: Word, const D: u32>(a: W, b: W) -> bool {
     let width = W::low_ones(Dilated::<W, D>::width());
     let (a, b) = (a.and(width), b.and(width));
     let (da, db) = (Dilated::<W, D>::from_int(a), Dilated::<W, D>::from_int(b));
-    da.wrapping_add(db).into_int() == a.wrapping_add(b).and(width)
+    da.wrapping_add(db).to_int() == a.wrapping_add(b).and(width)
 }
 
 /// Encoding then decoding a Morton code returns the coordinates.
@@ -238,7 +262,7 @@ pub fn morton_aligned_block_is_contiguous<W: Word>(x: W, y: W) -> bool {
 pub fn hilbert3_matches_reference<W: Word>(h: W) -> bool {
     let h = h.and(W::low_ones(3 * Hilbert3::<W>::LEVELS));
     let hi = Hilbert3::from_index(h);
-    let m = hi.into_morton();
+    let m = hi.to_morton();
     m == reference::hilbert3_morton_machine(hi)
         && Hilbert3::from_morton(m) == hi
         && reference::hilbert3_index_machine(m) == hi
@@ -251,7 +275,7 @@ pub fn hilbert3_roundtrip<W: Word>(x: W, y: W, z: W) -> bool {
     let side = W::low_ones(Hilbert3::<W>::LEVELS);
     let (x, y, z) = (x.and(side), y.and(side), z.and(side));
     let m = Morton3::encode(x, y, z);
-    Hilbert3::encode(x, y, z).decode() == (x, y, z) && Hilbert3::from_morton(m).into_morton() == m
+    Hilbert3::encode(x, y, z).decode() == (x, y, z) && Hilbert3::from_morton(m).to_morton() == m
 }
 
 /// The 3D curve is a path: indices `h` and `h + 1` are cells one step
@@ -309,8 +333,8 @@ pub fn hilbert_roundtrip<W: Word>(x: W, y: W) -> bool {
     let h = Hilbert2::encode(x, y);
     let m = Morton2::encode(x, y);
     h.decode() == (x, y)
-        && Hilbert2::from_morton(m).into_morton() == m
-        && Hilbert2::from_morton(Hilbert2::from_index(m.code()).into_morton()).index() == m.code()
+        && Hilbert2::from_morton(m).to_morton() == m
+        && Hilbert2::from_morton(Hilbert2::from_index(m.code()).to_morton()).index() == m.code()
 }
 
 /// The curve is a path: indices `h` and `h + 1` are cells one step
@@ -357,7 +381,7 @@ macro_rules! hilbert2_in_place_law {
             let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
                 h == Hilbert2::<$w>::from_morton(Morton2::from_code(c)).index()
             });
-            Hilbert2::<$w>::into_morton_in_place(scratch);
+            Hilbert2::<$w>::to_morton_in_place(scratch);
             forward && scratch == codes
         }
     )*};
@@ -390,7 +414,7 @@ macro_rules! hilbert3_in_place_law {
             let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
                 h == Hilbert3::<$w>::from_morton(Morton3::from_code(c & used)).index()
             });
-            Hilbert3::<$w>::into_morton_in_place(scratch);
+            Hilbert3::<$w>::to_morton_in_place(scratch);
             forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
         }
     )*};
@@ -515,7 +539,7 @@ macro_rules! cover_laws {
         #[must_use]
         pub fn $small(x: (u16, u16), y: (u16, u16), out: &mut [(u16, u16)]) -> bool {
             use crate::prelude::*;
-            let n = $curve::<u16>::cover(x, y, out);
+            let n = $curve::<u16>::cover(x.0..=x.1, y.0..=y.1, out).len();
             if n > out.len() {
                 return false;
             }
@@ -583,7 +607,7 @@ macro_rules! cover_laws {
         #[must_use]
         pub fn $wide(x: (u64, u64), y: (u64, u64), points: &[(u64, u64)], out: &mut [(u64, u64)]) -> bool {
             use crate::prelude::*;
-            let n = $curve::<u64>::cover(x, y, out);
+            let n = $curve::<u64>::cover(x.0..=x.1, y.0..=y.1, out).len();
             if n > out.len() {
                 return false;
             }
@@ -617,7 +641,7 @@ macro_rules! intersects_laws {
         /// when some cell of the rectangle has its key in `keys`. It
         /// visits every cell, so keep the rectangle small past `u16`.
         #[must_use]
-        pub fn $small<W: Word + Ord>(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
+        pub fn $small<W: Word>(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
             use crate::prelude::*;
             let side = W::low_ones(W::BITS / 2);
             let (x1, y1) = (x.1.min(side), y.1.min(side));
@@ -638,7 +662,7 @@ macro_rules! intersects_laws {
                 }
                 cx = cx.wrapping_add(W::ONE);
             }
-            $curve::<W>::intersects(keys, x, y) == any
+            $curve::<W>::intersects(keys.0..=keys.1, x.0..=x.1, y.0..=y.1) == any
         }
 
         /// `intersects` against `cover`, on any carrier and any grid.
@@ -648,10 +672,10 @@ macro_rules! intersects_laws {
         /// it meets it: the key alone, and a long run of keys before it.
         /// `out` is the cover's scratch.
         #[must_use]
-        pub fn $wide<W: Word + Ord>(x: (W, W), y: (W, W), points: &[(W, W)], out: &mut [(W, W)]) -> bool {
+        pub fn $wide<W: Word>(x: (W, W), y: (W, W), points: &[(W, W)], out: &mut [(W, W)]) -> bool {
             use crate::prelude::*;
-            let meets = |a: W, b: W| $curve::<W>::intersects((a, b), x, y);
-            let n = $curve::<W>::cover(x, y, out);
+            let meets = |a: W, b: W| $curve::<W>::intersects(a..=b, x.0..=x.1, y.0..=y.1);
+            let n = $curve::<W>::cover(x.0..=x.1, y.0..=y.1, out).len();
             let gaps_miss = out[..n]
                 .windows(2)
                 .all(|w| !meets(w[0].1.wrapping_add(W::ONE), w[1].0.wrapping_sub(W::ONE)));
@@ -687,7 +711,7 @@ macro_rules! hilbert_in_place_order_law {
         /// `codes` masked to `4^order`, copied into `scratch` (same
         /// length, asserted), converted with
         /// `from_morton_in_place_order`, compared per key, and converted
-        /// back with `into_morton_in_place_order`. `order` in
+        /// back with `to_morton_in_place_order`. `order` in
         /// `0..=LEVELS`.
         #[must_use]
         pub fn $name2(codes: &[$w], scratch: &mut [$w], order: u32) -> bool {
@@ -701,7 +725,7 @@ macro_rules! hilbert_in_place_order_law {
                 let (x, y) = Morton2::<$w>::from_code(c & used).decode();
                 h == Hilbert2::<$w>::encode_order(x, y, order).index()
             });
-            Hilbert2::<$w>::into_morton_in_place_order(scratch, order);
+            Hilbert2::<$w>::to_morton_in_place_order(scratch, order);
             forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
         }
 
@@ -723,7 +747,7 @@ macro_rules! hilbert_in_place_order_law {
                 let (x, y, z) = Morton3::<$w>::from_code(c & used).decode();
                 h == Hilbert3::<$w>::encode_order(x, y, z, order).index()
             });
-            Hilbert3::<$w>::into_morton_in_place_order(scratch, order);
+            Hilbert3::<$w>::to_morton_in_place_order(scratch, order);
             forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
         }
     )*};
@@ -929,7 +953,7 @@ pub mod reference {
     ///
     /// The frame `(m, t)` in GF(4), the octant `q(i) = i ^ (i >> 1)`
     /// placed in it, the frame below `(m·m_g, t + m·t_g)`. The loop the
-    /// scan in `Hilbert3::into_morton` replaces.
+    /// scan in `Hilbert3::to_morton` replaces.
     #[must_use]
     pub fn hilbert3_morton_machine<W: Word>(h: Hilbert3<W>) -> Morton3<W> {
         let h = h.index();
@@ -1171,18 +1195,13 @@ pub fn slice_ops_match_reference<W: Word>(words: &[W], i: usize, k: u32) -> bool
     // slots once, which held until a test handed it four `Wide<3>` of ones.
     let set = || (0..total).filter(|&p| bit(p));
 
-    let rank_ok = crate::slice::rank(words, i) == set().filter(|&p| p < i).count();
-    let select_ok = crate::slice::select(words, i) == set().nth(i);
-    let next_ok = crate::slice::next_set_from(words, i) == set().find(|&p| p >= i);
+    let rank_ok = words.rank(i) == set().filter(|&p| p < i).count();
+    let select_ok = words.select(i) == set().nth(i);
+    let next_ok = words.next_set_from(i) == set().find(|&p| p >= i);
     let run_ref = (0..total).find(|&s| s + k as usize <= total && (s..s + k as usize).all(bit));
-    let run_ok = crate::slice::find_run(words, k) == run_ref;
-    let positions_ok = crate::slice::positions(words).eq(set());
-    rank_ok
-        && select_ok
-        && next_ok
-        && run_ok
-        && positions_ok
-        && crate::slice::count_ones(words) == set().count()
+    let run_ok = words.find_run(k) == run_ref;
+    let positions_ok = words.positions().eq(set());
+    rank_ok && select_ok && next_ok && run_ok && positions_ok && words.count_ones() == set().count()
 }
 
 // --- permute --------------------------------------------------------------
@@ -1499,11 +1518,11 @@ pub fn block_starts_laws<W: Word>(rows: &[W], w1: u32, h1: u32, w2: u32, h2: u32
 #[must_use]
 pub fn rank9_matches_slice(dir: &Rank9<'_>, i: usize, k: usize) -> bool {
     let bits = dir.bits();
-    let rank = crate::slice::rank(bits, i);
+    let rank = bits.rank(i);
     dir.rank(i) == rank
         && dir.rank0(i) == i.min(dir.len()) - rank
-        && dir.select(k) == crate::slice::select(bits, k)
-        && dir.count_ones() == crate::slice::count_ones(bits)
+        && dir.select(k) == bits.select(k)
+        && dir.count_ones() == bits.count_ones()
 }
 
 /// `select` inverts `rank` on set bits: for `k < count_ones()`,

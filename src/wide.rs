@@ -7,7 +7,7 @@
 //! operations instead of one instruction, which is still bit-parallel.
 //!
 //! This is what lifts the "pattern ≤ 128 bytes" limit of
-//! [`crate::myers`]: `edit_distance::<Wide<8>>` handles 512-byte
+//! [`crate::myers`]: `distance_in::<Wide<8>>` handles 512-byte
 //! patterns with no change to the algorithm, because the algorithm was
 //! written against the carrier, not against `u64`. It is also the
 //! smallest instance of the carrier-over-carrier idea from the design
@@ -18,6 +18,67 @@ use crate::word::Word;
 /// `N` little-endian limbs of 64 bits: limb 0 holds bits `0..64`.
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
 pub struct Wide<const N: usize>([u64; N]);
+
+/// As an unsigned integer: the top limb decides first. The derived order
+/// would have compared limb 0 first, which is the order of nothing.
+impl<const N: usize> Ord for Wide<N> {
+    fn cmp(&self, other: &Self) -> core::cmp::Ordering {
+        self.0.iter().rev().cmp(other.0.iter().rev())
+    }
+}
+
+impl<const N: usize> PartialOrd for Wide<N> {
+    fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+// The number the limbs spell, top limb first and the rest padded to
+// full width. Width and fill flags are ignored: padding a 65536-bit
+// number needs a buffer this crate refuses to allocate.
+macro_rules! wide_fmt {
+    ($($trait:ident, $prefix:literal, $digits:literal, $top:literal, $rest:literal);*) => {$(
+        impl<const N: usize> core::fmt::$trait for Wide<N> {
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                if f.alternate() {
+                    f.write_str($prefix)?;
+                }
+                // The top limb that is not zero leads, unpadded; limb 0
+                // leads a zero.
+                let top = self.0.iter().rposition(|&l| l != 0).unwrap_or(0);
+                write!(f, $top, self.0[top])?;
+                for &limb in self.0[..top].iter().rev() {
+                    write!(f, $rest, limb, width = $digits)?;
+                }
+                Ok(())
+            }
+        }
+    )*};
+}
+
+wide_fmt!(
+    Binary, "0b", 64, "{:b}", "{:0width$b}";
+    LowerHex, "0x", 16, "{:x}", "{:0width$x}";
+    UpperHex, "0x", 16, "{:X}", "{:0width$X}"
+);
+
+impl<const N: usize> Default for Wide<N> {
+    fn default() -> Self {
+        Self([0; N])
+    }
+}
+
+impl<const N: usize> From<[u64; N]> for Wide<N> {
+    fn from(limbs: [u64; N]) -> Self {
+        Self(limbs)
+    }
+}
+
+impl<const N: usize> From<Wide<N>> for [u64; N] {
+    fn from(w: Wide<N>) -> Self {
+        w.0
+    }
+}
 
 impl<const N: usize> Wide<N> {
     /// Wraps limbs, least significant first.

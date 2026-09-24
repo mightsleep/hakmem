@@ -7,7 +7,7 @@
 //! matches down the column exactly where the DP would. Patterns up to
 //! `W::BITS` characters; one step is ~12 ops regardless of length.
 //!
-//! Two boundary conditions, one engine: [`edit_distance`] charges for
+//! Two boundary conditions, one engine: [`distance_in`] charges for
 //! every text character (global alignment), [`search`] lets a match
 //! start anywhere (semi-global, approximate string matching).
 
@@ -88,14 +88,14 @@ impl<W: Word> Column<W> {
 /// the pattern is longer than `W::BITS`.
 ///
 /// ```
-/// use hakmem::myers::edit_distance;
+/// use hakmem::myers::distance_in;
 ///
-/// assert_eq!(edit_distance::<u64>(b"kitten", b"sitting"), Some(3));
-/// assert_eq!(edit_distance::<u64>(b"", b"abc"), Some(3));
-/// assert_eq!(edit_distance::<u8>(b"123456789", b""), None);
+/// assert_eq!(distance_in::<u64>(b"kitten", b"sitting"), Some(3));
+/// assert_eq!(distance_in::<u64>(b"", b"abc"), Some(3));
+/// assert_eq!(distance_in::<u8>(b"123456789", b""), None);
 /// ```
 #[must_use]
-pub fn edit_distance<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
+pub fn distance_in<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
     let peq = Peq::<W>::new(pattern)?;
     if peq.m == 0 {
         return u32::try_from(text.len()).ok();
@@ -148,7 +148,7 @@ pub fn search<'t, W: Word>(pattern: &[u8], text: &'t [u8], max_dist: u32) -> Opt
 /// Smallest edit distance between `pattern` and any substring of
 /// `text` (including the empty one, so at most `pattern.len()`).
 #[must_use]
-pub fn min_distance<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
+pub fn substring_distance<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
     let peq = Peq::<W>::new(pattern)?;
     if peq.m == 0 {
         return Some(0);
@@ -164,6 +164,7 @@ pub fn min_distance<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
 }
 
 /// Iterator behind [`search`].
+#[must_use = "iterators are lazy; this one has not read a byte"]
 pub struct Search<'t, W: Word> {
     peq: Peq<W>,
     col: Column<W>,
@@ -171,6 +172,19 @@ pub struct Search<'t, W: Word> {
     text: &'t [u8],
     pos: usize,
     max_dist: i64,
+}
+
+// The pattern tables are 256 words of noise to a reader; where the
+// search stands is what a failing test wants to see.
+impl<W: Word> core::fmt::Debug for Search<'_, W> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Search")
+            .field("pos", &self.pos)
+            .field("text_len", &self.text.len())
+            .field("score", &self.score)
+            .field("max_dist", &self.max_dist)
+            .finish_non_exhaustive()
+    }
 }
 
 impl<W: Word> Iterator for Search<'_, W> {
@@ -190,7 +204,7 @@ impl<W: Word> Iterator for Search<'_, W> {
     }
 }
 
-/// [`edit_distance`] with the carrier chosen by the pattern's length.
+/// [`distance_in`] with the carrier chosen by the pattern's length.
 ///
 /// `u64` up to 64 bytes, `u128` to 128, [`Wide<4>`](crate::Wide) to
 /// 256, `Wide<8>` to 512, `None` beyond. The generic functions are for
@@ -207,10 +221,10 @@ impl<W: Word> Iterator for Search<'_, W> {
 #[must_use]
 pub fn distance(pattern: &[u8], text: &[u8]) -> Option<u32> {
     match pattern.len() {
-        0..=64 => edit_distance::<u64>(pattern, text),
-        65..=128 => edit_distance::<u128>(pattern, text),
-        129..=256 => edit_distance::<crate::Wide<4>>(pattern, text),
-        257..=512 => edit_distance::<crate::Wide<8>>(pattern, text),
+        0..=64 => distance_in::<u64>(pattern, text),
+        65..=128 => distance_in::<u128>(pattern, text),
+        129..=256 => distance_in::<crate::Wide<4>>(pattern, text),
+        257..=512 => distance_in::<crate::Wide<8>>(pattern, text),
         _ => None,
     }
 }

@@ -73,6 +73,11 @@ macro_rules! laws_for {
                     prop_assert!(laws::select_matches_reference(x, k));
                 }
                 #[test]
+                fn order_is_unsigned(a in $strategy, b in $strategy) {
+                    prop_assert!(laws::order_is_unsigned(a, b));
+                    prop_assert!(laws::order_is_unsigned(a, a));
+                }
+                #[test]
                 fn select_lowest_is_total(x in $strategy, k in prop_oneof![0..BITS + 2, any::<u32>()]) {
                     prop_assert!(laws::select_lowest_is_total(x, k));
                 }
@@ -658,8 +663,7 @@ mod rank9 {
     fn with_dir(words: &[u64], f: impl FnOnce(&Rank9<'_>)) {
         let mut counts = vec![0; Rank9::counts_len(words.len())];
         let mut select = vec![0; Rank9::select_len(words.len())];
-        Rank9::build(words, &mut counts, &mut select);
-        f(&Rank9::new(words, &counts, &select));
+        f(&Rank9::build(words, &mut counts, &mut select));
     }
 
     /// Mostly empty words, some full, some single bits: long empty
@@ -1031,4 +1035,22 @@ fn slice_law_on_dense_slices() {
     check::<u64>();
     check::<u128>();
     check::<Wide<3>>();
+}
+
+proptest! {
+    /// `Wide<2>` prints as the `u128` it spells, in every base and with
+    /// the prefix; the limbs used to print as an array of two numbers.
+    #[test]
+    fn wide_formats_as_u128(v in any::<u128>()) {
+        use hakmem::wide::Wide;
+        #[allow(clippy::cast_possible_truncation)]
+        let w = Wide::from_limbs([v as u64, (v >> 64) as u64]);
+        prop_assert_eq!(format!("{w:b}"), format!("{v:b}"));
+        prop_assert_eq!(format!("{w:x}"), format!("{v:x}"));
+        prop_assert_eq!(format!("{w:X}"), format!("{v:X}"));
+        prop_assert_eq!(format!("{w:#x}"), format!("{v:#x}"));
+        prop_assert_eq!(format!("{w:#b}"), format!("{v:#b}"));
+        let key = hakmem::Morton2::<u128>::from_code(v);
+        prop_assert_eq!(format!("{key:b}"), format!("{v:b}"));
+    }
 }

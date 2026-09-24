@@ -28,7 +28,7 @@ Named after [HAKMEM](https://en.wikipedia.org/wiki/HAKMEM) (MIT AI Memo
 sentences.
 
 ```rust
-use hakmem::{Bits, Hilbert2, Hilbert3, Morton2};
+use hakmem::{Bits, Hilbert2, Hilbert3, Morton2, Words};
 
 // Runs: bit p set iff bits p..p+3 are all set (Hacker's Delight 6-5).
 let x: u64 = 0b0111_0110;
@@ -79,8 +79,8 @@ let (escaped, _carry) = 0b01_1101_1010u16.find_escaped(false);
 assert_eq!(escaped, 0b10_0000_0100);
 
 // The carry chain as a dynamic-programming column (Myers 1999).
-use hakmem::myers::{distance, edit_distance, search};
-assert_eq!(edit_distance::<u64>(b"kitten", b"sitting"), Some(3));
+use hakmem::myers::{distance, distance_in, search};
+assert_eq!(distance_in::<u64>(b"kitten", b"sitting"), Some(3));
 assert_eq!(distance(b"kitten", b"sitting"), Some(3)); // carrier by length
 let hits: Vec<_> = search::<u64>(b"lo", b"hello lo", 0).unwrap().collect();
 assert_eq!(hits, [(5, 0), (8, 0)]);
@@ -89,7 +89,7 @@ assert_eq!(hits, [(5, 0), (8, 0)]);
 // and the same Myers code runs on it unchanged.
 use hakmem::Wide;
 let long = [b'a'; 200];
-assert_eq!(edit_distance::<Wide<4>>(&long, &long[..190]), Some(10));
+assert_eq!(distance_in::<Wide<4>>(&long, &long[..190]), Some(10));
 
 // 2D runs: a w×h block in a bitmap of rows, by two halving chains
 // (binary erosion by a rectangle; first-fit for tile allocators).
@@ -98,7 +98,7 @@ let mut scratch = [0u8; 4];
 assert_eq!(hakmem::grid::find_block(&rows, 2, 2, &mut scratch), Some((0, 3)));
 
 // Slices of words, no index needed.
-assert_eq!(hakmem::slice::find_run(&[0xFFu64 << 56, u64::MAX], 16), Some(56));
+assert_eq!([0xFFu64 << 56, u64::MAX].find_run(16), Some(56));
 
 // Byte lanes, the SIMD half: sixteen bytes to a mask, then back to `Bits`.
 use hakmem::lanes::{Lanes, U8x16};
@@ -112,8 +112,7 @@ use hakmem::rank9::Rank9;
 let bits = [0b1011u64, u64::MAX, 0];
 let mut counts = vec![0; Rank9::counts_len(bits.len())];
 let mut select = vec![0; Rank9::select_len(bits.len())];
-Rank9::build(&bits, &mut counts, &mut select);
-let dir = Rank9::new(&bits, &counts, &select);
+let dir = Rank9::build(&bits, &mut counts, &mut select);
 assert_eq!((dir.rank(64), dir.select(3)), (3, Some(64)));
 ```
 
@@ -288,7 +287,7 @@ direction.
 
 Batches of keys convert in place: fill a slice with Morton codes from
 whatever layout the points are in, then turn them into Hilbert indices
-in one call (`from_morton_in_place`, and `into_morton_in_place` back;
+in one call (`from_morton_in_place`, and `to_morton_in_place` back;
 the `_order` forms for a curve of fewer levels). With AVX-512 VBMI a
 step is one `vpermi2b` per register of keys (2D, three levels through
 128 entries, the frame modulo a reflection; 3D, the 96-byte encode or
@@ -329,7 +328,7 @@ extra a budget of ranges of the deepest cover that fits can hold. A
 scan of the sorted keys seeks once per range. No allocation, and the
 depth is counted rather than searched for: 0.3 µs a rectangle for 16
 Morton ranges on the full `u64` grid, 1.1 µs for 16 Hilbert ranges.
-The other way round, `intersects(keys, x, y)` says whether a block of
+The other way round, `intersects(keys, x, y)`, all three ranges, says whether a block of
 keys (a granule, a row group, a file, by its least and greatest key)
 can hold a point of the rectangle: one descent where a node is an
 interval of keys and a square of cells at once. 40 to 90 ns when the
@@ -347,8 +346,7 @@ let mut keys: Vec<u64> = points
 keys.sort_unstable();
 // The block 8..=15 × 8..=15 in at most four ranges, a seek each.
 let mut ranges = [(0u64, 0u64); 4];
-let n = Hilbert2::<u64>::cover((8, 15), (8, 15), &mut ranges);
-let hits: usize = ranges[..n]
+let hits: usize = Hilbert2::<u64>::cover(8..=15, 8..=15, &mut ranges)
     .iter()
     .map(|&(a, b)| keys.partition_point(|&k| k <= b) - keys.partition_point(|&k| k < a))
     .sum();
@@ -366,7 +364,7 @@ unbuilt (banded Myers over `Wide<N>`), sketched so you can.
 
 ## Hardware paths
 
-The batch conversions (`from_morton_in_place`, `into_morton_in_place`,
+The batch conversions (`from_morton_in_place`, `to_morton_in_place`,
 `encode_columns`, `decode_columns`, the last two on `Morton2` and
 `Hilbert2` too) choose their kernel at run time on
 `x86_64`: AVX-512 VBMI (and GFNI), else AVX2, else the per-key form,
@@ -401,7 +399,7 @@ starts everywhere and `run_starts(k)` above the width nowhere, a fill
 with a stride of zero or past the width is the identity, `low_ones` at
 the width is all ones. Where an argument has a domain the definition
 cannot absorb (shift amounts, run lengths above the width in
-`slice::find_run`, overlapping `delta_swap` masks, `bytes_ge` above
+`Words::find_run`, overlapping `delta_swap` masks, `bytes_ge` above
 128, grid sizes), the domain is in the method's docs, checked with
 `debug_assert!` in debug builds, and unspecified in release. Run your
 tests in debug once.

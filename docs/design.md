@@ -152,11 +152,27 @@ that have a kernel (`u32`, `u64`), not on every `Word`: dispatching on
 the width of a generic `W` would need an unsafe cast of the slice, and
 the crate's `unsafe` is intrinsic calls and the kernel dispatch.
 
-Free functions and types stay in their modules: `slice`, `grid`,
-`myers`, `permute::board8`, `dilated::{Dilated, Morton2}`,
-`set::Positions`. The README is the crate documentation
-(`#![doc = include_str!]`) and a doctest, so its examples cannot
-drift from the code.
+Free functions and types stay in their modules: `grid`, `myers`,
+`permute::board8`, `set::Positions`. The prelude holds what a caller
+names or whose methods it calls: the traits `Word`, `Bits`, `Words`
+(the slice operations, on `[W]` itself), `Lanes`, `Curve2` and
+`Curve3`, and the key and carrier types. The README is the crate
+documentation (`#![doc = include_str!]`) and a doctest, so its
+examples cannot drift from the code.
+
+The conventions, settled before 0.2 while breaking was free. A range
+of coordinates or keys is a `RangeBounds`, not a pair: three pairs of
+the same type in a row are two swaps waiting to happen, and `..` is a
+valid column. A function that fills a caller's buffer returns the
+part it filled, as `char::encode_utf8` does, not a count to slice by.
+Conversions of `Copy` values are `to_`, as `f64::to_bits`; between
+curves they are also `From`. A choice between two behaviours is two
+functions, not a `bool` (`fill_block`, `clear_block`). The curves share
+a trait so an index can change curve by changing a type; the inherent
+methods keep their own names (`code`, `index`) and win where both are
+in scope. `Word` is ordered, hashable and printable in binary because
+every carrier is, and asking later would break every carrier written
+meanwhile.
 
 ## 4. Carriers
 
@@ -167,7 +183,7 @@ sums. One operation costs `N` limb operations instead of one
 instruction, which is still bit-parallel.
 
 `Wide<N>` is the smallest test of a constraint the carrier trait was
-designed under: a word need not be one register. `myers::edit_distance`
+designed under: a word need not be one register. `myers::distance_in`
 was written against `Word`, not against `u64`, and it runs on
 `Wide<8>` for 512-byte patterns without a change to the algorithm.
 
@@ -215,10 +231,10 @@ machine read as a table and applied to a register of keys at a time:
 |---|---|---|
 | `Hilbert2::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through 128 entries a step, three levels a step, the frame modulo the reflection of both axes (a XOR mask on the cells, the swap bit in the index byte), three `vpternlog` around the lookup; NEON: the same reduction two levels a step, 32 entries in two registers for `tbl` | `from_morton` per key |
 | `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step, per register of keys (`u32`) or per plane of 64 keys (`u64`: `vpmultishiftqb` and three rounds of `vpermt2b` in, the same rounds and a `vpmaddubsw` / `vpmaddwd` pack out, the transposes checked at compile time); NEON: `tbl` over four registers and `tbx` over two; AVX2 alone: the machine modulo its translations, 24 entries in two PSHUFB of 16 a level, the second read through `index ^ 0x80` | `from_morton` per key |
-| `Hilbert3::into_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time); AVX2 the factored inverse, the translation in index bits 4 and 5, which PSHUFB ignores | `into_morton` per key, the algebraic scan |
+| `Hilbert3::to_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time); AVX2 the factored inverse, the translation in index bits 4 and 5, which PSHUFB ignores | `to_morton` per key, the algebraic scan |
 | `Hilbert3::<u64>::encode_columns` / `decode_columns` | AVX-512 VBMI and GFNI: the `u64` planes fed from three columns by `vpmultishiftqb` at offsets `l`, `l - 1`, `l - 2`, and emptied into them by the way back with the levels reversed and one `gf2p8affineqb` bit transpose a register | Morton code and the batch above |
 | `Morton2::encode_columns` / `decode_columns` (`u32`, `u64`) | AVX2: a coordinate's bytes widened to 16 bits and a nibble a byte, one PSHUFB through 16 entries spreads it over the even (odd) bits; back, two PSHUFB per axis and a pack | `encode` / `decode` per point |
-| `Hilbert2::encode_columns` / `decode_columns` (`u32`, `u64`) | the Morton columns and then `from_morton_in_place`; decoding, `into_morton` per key into 256 codes on the stack and the Morton columns | the same, per key where the parts are |
+| `Hilbert2::encode_columns` / `decode_columns` (`u32`, `u64`) | the Morton columns and then `from_morton_in_place`; decoding, `to_morton` per key into 256 codes on the stack and the Morton columns | the same, per key where the parts are |
 
 Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 1024 keys, `benches/hilbert.rs`), from coordinates to keys and back, ns a key:
@@ -473,10 +489,10 @@ every carrier.
 | `fill_up`, `fill_down` | Kogge and Stone, 1973, as used for sliding attacks on bitboards |
 | `Dilated`, `Morton2` | Morton, 1966; Raman and Wise, 2008 |
 | `suffix_xor` | Hacker's Delight chapter 13 (the Gray decode as a downward prefix); the CLMUL high half is the same product read the other way |
-| `Hilbert2::into_morton` | Hacker's Delight 16-2, the parallel-prefix form of Lam and Shapiro's state machine (1994); the quadrant order of figure 16-1 |
+| `Hilbert2::to_morton` | Hacker's Delight 16-2, the parallel-prefix form of Lam and Shapiro's state machine (1994); the quadrant order of figure 16-1 |
 | `Hilbert2::from_morton` | rawrunprotected, *2D Hilbert curves in O(log n)*, 2016: the frame maps of Lam and Shapiro composed by parallel prefix, linear parts in GF(4)*; here in the dilated layout on any carrier |
 | `Hilbert3` | the curve of rawrunprotected's 3D tables (2016, 2020); the frames as `A₄ ≅ AGL(1, 4)`, the decode as the 2D encode's scan, the encode as the machine memoised at compile time |
-| `myers::edit_distance`, `myers::search` | Myers, 1999; Hyyrö's formulation |
+| `myers::distance_in`, `myers::search` | Myers, 1999; Hyyrö's formulation |
 | `rank9::Rank9` | Vigna, 2008: rank9, and a select inventory in the shape of his select9, cases cut at block boundaries |
 | `lanes::U8x8` add and subtract | Hacker's Delight 2-18 (SWAR without inter-lane carry) |
 | `lanes::Lanes::cmp_le` on SWAR | Hacker's Delight 6-1, the lane compare with full lanes |

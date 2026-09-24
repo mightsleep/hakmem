@@ -29,7 +29,7 @@ the `Word::xor_scan_down` primitive behind it, with a PCLMULQDQ path
 scan by another name.
 
 Batch conversions, in place over a slice of keys the caller owns:
-`Hilbert2::from_morton_in_place` / `into_morton_in_place` and the same
+`Hilbert2::from_morton_in_place` / `to_morton_in_place` and the same
 for `Hilbert3`, on `u32` and `u64`. The caller fills the keys with
 Morton codes from any point layout; the kernel sees words only (design
 notes section 3). With AVX-512 VBMI a step is one `vpermi2b` per
@@ -174,18 +174,42 @@ a multiply as PEXT (Kindergarten bitboards), with `gather_is_exact_by`
 as the brute-force check and `strided_gather_is_exact` as the theorem
 that covers files and diagonals. Cookbook recipes 11 and 12.
 
+`hakmem::curve`: `Curve2` over `Morton2` and `Hilbert2`, `Curve3` over
+`Morton3` and `Hilbert3`, for an index that should change curve by
+changing a type: `encode`, `decode`, `key`, `from_key`, and in 2D
+`cover` and `intersects`. `From` between a Hilbert key and the Morton
+code of the same cell. Keys and `Wide` print as the numbers they are
+in `{:b}`, `{:x}` and `{:X}`, default to zero, and `Wide` orders as
+an unsigned integer. `cover` and `intersects` take any range, `..`
+included, and `cover` returns the part of the buffer it filled.
+
 ### Changed, for anyone on 0.1
 
-- `Word` asks for `Hash + Send + Sync + 'static` besides `Copy + Eq +
-  Debug`, and says out loud that `BITS` is a multiple of 8, at most
-  `2^16`. Every carrier in the crate already was; a carrier of your
-  own may need a derive.
+A clean break, no deprecated aliases: 0.2 is a new major for Cargo,
+and the old names were wrong in ways an alias would have kept.
+
+- `Word` asks for `Ord`, `Hash`, `Binary`, `LowerHex`, `UpperHex`,
+  `Send`, `Sync` and `'static` besides `Copy + Eq + Debug`, and says
+  out loud that `BITS` is a multiple of 8, at most `2^16`. Every
+  carrier in the crate already was all of it; a carrier of your own
+  may need derives, and an `Ord` that compares from the top.
 - `Word::select_lowest` returns `BITS` when there is no `k`-th set bit,
   on every build and every carrier; `word::select_broadword64` returns
   64. It used to panic, return garbage or return 64, by flags.
-- `slice::popcount` is `slice::count_ones` and `slice::next_set_after`
-  is `slice::next_set_from`, which is what it always did. The old names
-  remain, deprecated.
+- The `slice` functions are methods of the `Words` trait on `[W]`, in
+  the prelude: `slice::rank(&words, i)` is `words.rank(i)`, and so on.
+  `popcount` is `count_ones`; `next_set_after` is `next_set_from`,
+  which is what it always did.
+- `Rank9::build` returns the directory it built; `Rank9::new`, which
+  views directories built before, is `Rank9::from_parts`.
+- `grid::set_block(…, true)` and `(…, false)` are `fill_block` and
+  `clear_block`.
+- `myers::edit_distance::<W>` is `distance_in::<W>` and
+  `min_distance::<W>` is `substring_distance::<W>`; `distance` still
+  picks the width itself.
+- `Dilated::into_int` is `to_int`, as `Copy` types spell it.
+- The prelude trades `Positions` (name it from `hakmem::set`) for
+  `Words`, `Lanes`, `Curve2` and `Curve3`.
 
 ## 0.1.0, 2026-09-19
 

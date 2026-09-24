@@ -1,6 +1,6 @@
 //! Myers bit-parallel edit distance against the textbook DP.
 
-use hakmem::myers::edit_distance;
+use hakmem::myers::distance_in;
 use proptest::prelude::*;
 
 fn levenshtein_dp(a: &[u8], b: &[u8]) -> u32 {
@@ -19,22 +19,22 @@ fn levenshtein_dp(a: &[u8], b: &[u8]) -> u32 {
 proptest! {
     #[test]
     fn u64_matches_dp(a in prop::collection::vec(0u8..4, 0..=64), b in prop::collection::vec(0u8..4, 0..=80)) {
-        prop_assert_eq!(edit_distance::<u64>(&a, &b), Some(levenshtein_dp(&a, &b)));
+        prop_assert_eq!(distance_in::<u64>(&a, &b), Some(levenshtein_dp(&a, &b)));
     }
     #[test]
     fn u128_matches_dp(a in prop::collection::vec(any::<u8>(), 0..=128), b in prop::collection::vec(any::<u8>(), 0..=100)) {
-        prop_assert_eq!(edit_distance::<u128>(&a, &b), Some(levenshtein_dp(&a, &b)));
+        prop_assert_eq!(distance_in::<u128>(&a, &b), Some(levenshtein_dp(&a, &b)));
     }
     #[test]
     fn u8_full_width_matches_dp(a in prop::collection::vec(0u8..3, 8..=8), b in prop::collection::vec(0u8..3, 0..=20)) {
-        prop_assert_eq!(edit_distance::<u8>(&a, &b), Some(levenshtein_dp(&a, &b)));
+        prop_assert_eq!(distance_in::<u8>(&a, &b), Some(levenshtein_dp(&a, &b)));
     }
 }
 
 #[test]
 fn rejects_pattern_wider_than_word() {
-    assert_eq!(edit_distance::<u8>(&[0; 9], b"x"), None);
-    assert_eq!(edit_distance::<u8>(&[0; 8], b"x"), Some(8));
+    assert_eq!(distance_in::<u8>(&[0; 9], b"x"), None);
+    assert_eq!(distance_in::<u8>(&[0; 8], b"x"), Some(8));
 }
 
 /// Semi-global DP: `D[0][j] = 0`, distances of the pattern against the
@@ -60,14 +60,14 @@ proptest! {
         let got: Vec<(usize, u32)> = hakmem::myers::search::<u64>(&p, &t, k).unwrap().collect();
         prop_assert_eq!(got, want);
         let best = dp.iter().copied().min().unwrap();
-        prop_assert_eq!(hakmem::myers::min_distance::<u64>(&p, &t), Some(best));
+        prop_assert_eq!(hakmem::myers::substring_distance::<u64>(&p, &t), Some(best));
     }
 }
 
 proptest! {
     #[test]
     fn wide4_matches_dp(a in prop::collection::vec(any::<u8>(), 0..=256), b in prop::collection::vec(any::<u8>(), 0..=300)) {
-        prop_assert_eq!(edit_distance::<hakmem::Wide<4>>(&a, &b), Some(levenshtein_dp(&a, &b)));
+        prop_assert_eq!(distance_in::<hakmem::Wide<4>>(&a, &b), Some(levenshtein_dp(&a, &b)));
     }
     #[test]
     fn wide4_search_matches_dp(p in prop::collection::vec(0u8..4, 1..=200), t in prop::collection::vec(0u8..4, 0..=120), k in 0u32..4) {

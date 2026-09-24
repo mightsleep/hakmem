@@ -138,7 +138,7 @@ impl<W: Word> Hilbert3<W> {
     #[inline]
     #[must_use]
     pub fn decode(self) -> (W, W, W) {
-        self.into_morton().decode()
+        self.to_morton().decode()
     }
 
     /// The index on the curve of `order` levels, `order` in
@@ -204,7 +204,7 @@ impl<W: Word> Hilbert3<W> {
     /// ^ n·n'`, `t_c = t ^ t' ^ n'·t`. The frame at a level is the
     /// product of the maps above it, the top frame being the identity.
     #[must_use]
-    pub fn into_morton(self) -> Morton3<W> {
+    pub fn to_morton(self) -> Morton3<W> {
         let lane = Self::lane();
         let i0 = self.0.and(lane);
         let i1 = self.0.shr(1).and(lane);
@@ -504,7 +504,7 @@ macro_rules! hilbert3_batch {
                 }
             }
 
-            /// [`into_morton`](Self::into_morton) over a slice of keys, in
+            /// [`to_morton`](Self::to_morton) over a slice of keys, in
             /// place: each Hilbert index becomes the Morton code of the
             /// same cell.
             ///
@@ -514,12 +514,12 @@ macro_rules! hilbert3_batch {
             /// the factored inverse, the translation riding in the index
             /// bits PSHUFB ignores. Per
             /// key it is the algebraic scan
-            /// ([`into_morton`](Self::into_morton)), which beats a table
+            /// ([`to_morton`](Self::to_morton)), which beats a table
             /// walk, and that finishes the keys past the last whole batch.
-            pub fn into_morton_in_place(keys: &mut [$w]) {
+            pub fn to_morton_in_place(keys: &mut [$w]) {
                 let done = batch::$decode(keys);
                 for key in &mut keys[done..] {
-                    *key = Self::from_index(*key).into_morton().code();
+                    *key = Self::from_index(*key).to_morton().code();
                 }
             }
 
@@ -539,16 +539,16 @@ macro_rules! hilbert3_batch {
                 Self::from_morton_in_place(keys);
             }
 
-            /// [`into_morton_in_place`](Self::into_morton_in_place) on the
+            /// [`to_morton_in_place`](Self::to_morton_in_place) on the
             /// curve of `order` levels, as [`decode_order`](Self::decode_order)
             /// per key; indices below `8^order` (debug-asserted).
-            pub fn into_morton_in_place_order(keys: &mut [$w], order: u32) {
+            pub fn to_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
                     keys.iter().all(|&k| k.checked_shr(3 * order).unwrap_or(0) == 0),
                     "indices above 8^{order}"
                 );
-                Self::into_morton_in_place(keys);
+                Self::to_morton_in_place(keys);
                 rotate_triples(keys, 2 * (Self::LEVELS - order) % 3);
             }
         }
@@ -556,8 +556,8 @@ macro_rules! hilbert3_batch {
 }
 
 hilbert3_batch!(
-    u32 => from_morton_u32, into_morton_u32,
-    u64 => from_morton_u64, into_morton_u64,
+    u32 => from_morton_u32, to_morton_u32,
+    u64 => from_morton_u64, to_morton_u64,
 );
 
 impl Hilbert3<u64> {
@@ -606,7 +606,7 @@ impl Hilbert3<u64> {
     /// with level `i` of a point at byte `7 - i`, which is a bit matrix
     /// `gf2p8affineqb` transposes in one instruction into a byte of `x`
     /// bits, one of `y` and one of `z`. Otherwise, and past the last
-    /// group of 64, the indices go through [`into_morton_in_place`](Self::into_morton_in_place)
+    /// group of 64, the indices go through [`to_morton_in_place`](Self::to_morton_in_place)
     /// in `xs`, which the Morton decode then overwrites.
     ///
     /// # Panics
@@ -624,7 +624,7 @@ impl Hilbert3<u64> {
         let done = batch::decode_columns(keys, xs, ys, zs);
         let rest = &mut xs[done..];
         rest.copy_from_slice(&keys[done..]);
-        Self::into_morton_in_place(rest);
+        Self::to_morton_in_place(rest);
         for ((x, y), z) in rest.iter_mut().zip(&mut ys[done..]).zip(&mut zs[done..]) {
             (*x, *y, *z) = Morton3::<u64>::from_code(*x).decode();
         }
@@ -719,7 +719,7 @@ mod batch {
             _mm512_slli_epi32
         );
         kernel!(
-            into_morton_u32,
+            to_morton_u32,
             DECODE_PADDED,
             u32,
             16,
@@ -1037,7 +1037,7 @@ mod batch {
         }
 
         #[target_feature(enable = "avx512f,avx512bw,avx512vbmi")]
-        pub(in crate::hilbert3) fn into_morton_u64(keys: &mut [u64]) -> usize {
+        pub(in crate::hilbert3) fn to_morton_u64(keys: &mut [u64]) -> usize {
             run(keys, &DECODE_PADDED)
         }
 
@@ -1380,7 +1380,7 @@ mod batch {
             vreinterpretq_u64_u8
         );
         kernel!(
-            into_morton_u32,
+            to_morton_u32,
             DECODE_PADDED,
             u32,
             4,
@@ -1397,7 +1397,7 @@ mod batch {
             vreinterpretq_u32_u8
         );
         kernel!(
-            into_morton_u64,
+            to_morton_u64,
             DECODE_PADDED,
             u64,
             2,
@@ -1420,7 +1420,7 @@ mod batch {
         target_feature = "neon",
         not(feature = "portable")
     ))]
-    pub(super) use neon::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
+    pub(super) use neon::{from_morton_u32, from_morton_u64, to_morton_u32, to_morton_u64};
 
     /// AVX2 without VBMI: the 96-entry tables do not fit a shuffle, the
     /// factored machine does (`shuffle_tables`). A level is two PSHUFB
@@ -1580,7 +1580,7 @@ mod batch {
             0x9249_2492_4924_9249_u64
         );
         kernel!(
-            into_morton_u32,
+            to_morton_u32,
             true,
             u32,
             8,
@@ -1591,7 +1591,7 @@ mod batch {
             0x4924_9249_u32
         );
         kernel!(
-            into_morton_u64,
+            to_morton_u64,
             true,
             u64,
             4,
@@ -1632,9 +1632,9 @@ mod batch {
 
         keys! {
             from_morton_u32: u32, vbmi;
-            into_morton_u32: u32, vbmi;
+            to_morton_u32: u32, vbmi;
             from_morton_u64: u64, planes;
-            into_morton_u64: u64, planes;
+            to_morton_u64: u64, planes;
         }
 
         pub(in crate::hilbert3) fn encode_columns(
@@ -1668,8 +1668,8 @@ mod batch {
 
     #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     pub(super) use dispatch::{
-        decode_columns, encode_columns, from_morton_u32, from_morton_u64, into_morton_u32,
-        into_morton_u64,
+        decode_columns, encode_columns, from_morton_u32, from_morton_u64, to_morton_u32,
+        to_morton_u64,
     };
 
     /// No column kernel: the caller goes through Morton codes.
@@ -1704,10 +1704,10 @@ mod batch {
         pub(in crate::hilbert3) const fn from_morton_u64(_: &mut [u64]) -> usize {
             0
         }
-        pub(in crate::hilbert3) const fn into_morton_u32(_: &mut [u32]) -> usize {
+        pub(in crate::hilbert3) const fn to_morton_u32(_: &mut [u32]) -> usize {
             0
         }
-        pub(in crate::hilbert3) const fn into_morton_u64(_: &mut [u64]) -> usize {
+        pub(in crate::hilbert3) const fn to_morton_u64(_: &mut [u64]) -> usize {
             0
         }
     }
@@ -1720,5 +1720,5 @@ mod batch {
             not(feature = "portable")
         )
     )))]
-    pub(super) use none::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
+    pub(super) use none::{from_morton_u32, from_morton_u64, to_morton_u32, to_morton_u64};
 }

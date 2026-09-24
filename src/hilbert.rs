@@ -49,6 +49,8 @@
 //! assert_eq!(h.decode(), (40_000, 7));
 //! ```
 
+use core::ops::RangeBounds;
+
 use crate::bits::Bits;
 use crate::cover::{Masks, Quadrants, Rect, small};
 use crate::dilated::{Dilated, Morton2};
@@ -76,7 +78,7 @@ impl<W: Word> Hilbert2<W> {
     #[inline]
     #[must_use]
     pub fn decode(self) -> (W, W) {
-        self.into_morton().decode()
+        self.to_morton().decode()
     }
 
     /// The index of `(x, y)` on the curve of `order` levels, `order`
@@ -195,7 +197,7 @@ impl<W: Word> Hilbert2<W> {
     /// `s_hi & s_lo` over the levels above, two suffix XORs. Then
     /// `x = s_hi ^ swap·s_lo ^ flip` and `y = x ^ s_lo`.
     #[must_use]
-    pub fn into_morton(self) -> Morton2<W> {
+    pub fn to_morton(self) -> Morton2<W> {
         let lanes = Dilated::<W, 2>::mask();
         let s_lo = self.0.and(lanes);
         let s_hi = self.0.shr(1).and(lanes);
@@ -314,13 +316,13 @@ macro_rules! hilbert2_batch {
                 }
             }
 
-            /// [`into_morton`](Self::into_morton) over a slice of keys, in
+            /// [`to_morton`](Self::to_morton) over a slice of keys, in
             /// place: each Hilbert index becomes the Morton code of the
             /// same cell. Per key; the decode is two suffix XORs and has no
             /// table to batch.
-            pub fn into_morton_in_place(keys: &mut [$w]) {
+            pub fn to_morton_in_place(keys: &mut [$w]) {
                 for key in keys {
-                    *key = Self::from_index(*key).into_morton().code();
+                    *key = Self::from_index(*key).to_morton().code();
                 }
             }
 
@@ -345,16 +347,16 @@ macro_rules! hilbert2_batch {
                 Self::from_morton_in_place(keys);
             }
 
-            /// [`into_morton_in_place`](Self::into_morton_in_place) on the
+            /// [`to_morton_in_place`](Self::to_morton_in_place) on the
             /// curve of `order` levels, as [`decode_order`](Self::decode_order)
             /// per key; indices below `4^order` (debug-asserted).
-            pub fn into_morton_in_place_order(keys: &mut [$w], order: u32) {
+            pub fn to_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
                     keys.iter().all(|&k| k.checked_shr(2 * order).unwrap_or(0) == 0),
                     "indices above 4^{order}"
                 );
-                Self::into_morton_in_place(keys);
+                Self::to_morton_in_place(keys);
                 if (Self::LEVELS - order) & 1 == 1 {
                     let even = Dilated::<$w, 2>::mask();
                     for key in keys.iter_mut() {
@@ -394,7 +396,7 @@ macro_rules! hilbert2_columns {
             /// [`decode`](Self::decode) of a column of indices into two
             /// columns of coordinates, the inverse of
             /// [`encode_columns`](Self::encode_columns). The indices go
-            /// to Morton codes per key ([`into_morton`](Self::into_morton),
+            /// to Morton codes per key ([`to_morton`](Self::to_morton),
             /// two suffix XORs) in blocks of 256 on the stack, and each
             /// block through [`Morton2::decode_columns`].
             ///
@@ -413,7 +415,7 @@ macro_rules! hilbert2_columns {
                 for ((k, x), y) in keys.chunks(256).zip(xs.chunks_mut(256)).zip(ys.chunks_mut(256)) {
                     let codes = &mut codes[..k.len()];
                     for (c, &h) in codes.iter_mut().zip(k) {
-                        *c = Self::from_index(h).into_morton().code();
+                        *c = Self::from_index(h).to_morton().code();
                     }
                     Morton2::<$w>::decode_columns(codes, x, y);
                 }
@@ -607,7 +609,7 @@ fn mask<W: Word>(b: bool) -> W {
 /// bottom level up in four lanes. The two end nodes are counted cell
 /// by cell.
 #[allow(clippy::too_many_arguments, clippy::many_single_char_names)]
-fn side<W: Word + Ord>(
+fn side<W: Word>(
     levels: u32,
     s: u32,
     axis: usize,
@@ -692,14 +694,14 @@ impl Quadrants for HilbertQuadrants {
         H_MASKS.cells(k, frame, cols, rows)
     }
 
-    fn context<W: Word + Ord>(r: &Rect<W>) -> [W; 4] {
+    fn context<W: Word>(r: &Rect<W>) -> [W; 4] {
         let h = |x, y| Hilbert2::<W>::encode(x, y).index();
         [h(r.x0, r.y0), h(r.x1, r.y0), h(r.x0, r.y1), h(r.x1, r.y1)]
     }
 
     /// The curve is continuous, so a run starts where a step enters the
     /// rectangle across a side, or at the origin; four sides.
-    fn runs<W: Word + Ord>(levels: u32, r: &Rect<W>, s: u32, corners: &[W; 4]) -> W {
+    fn runs<W: Word>(levels: u32, r: &Rect<W>, s: u32, corners: &[W; 4]) -> W {
         let levels = levels - s;
         let (x0, x1, y0, y1) = (r.x0.shr(s), r.x1.shr(s), r.y0.shr(s), r.y1.shr(s));
         let top = W::low_ones(levels);
@@ -723,18 +725,19 @@ impl Quadrants for HilbertQuadrants {
     }
 }
 
-impl<W: Word + Ord> Hilbert2<W> {
-    /// The keys of the rectangle `x.0..=x.1` × `y.0..=y.1` as at most
-    /// `out.len()` ranges of indices; returns how many it wrote.
+impl<W: Word> Hilbert2<W> {
+    /// The keys of the rectangle `x` × `y` as at most `out.len()` ranges
+    /// of indices: the part of `out` it filled.
     ///
     /// The ranges are inclusive, sorted, disjoint and not touching, and
     /// every cell of the rectangle has its index in one of them. When
     /// the budget allows the exact cover, the ranges hold those cells
     /// and no others; otherwise they hold more, the least any budget's
-    /// worth of ranges of the deepest cover that fits can hold (see
-    /// `cover.rs`). A scan of keys sorted on the curve seeks once per
-    /// range. Coordinates past the grid are clipped; an empty rectangle
-    /// gives no ranges.
+    /// worth of ranges of the deepest cover that fits can hold (design
+    /// notes, section 5). A scan of keys sorted on the curve seeks once
+    /// per range. `x` and `y` are any ranges, `..` included; past the
+    /// grid they are clipped, and an empty one gives no ranges. The
+    /// rest of `out` is scratch.
     ///
     /// ```
     /// use hakmem::prelude::*;
@@ -742,38 +745,39 @@ impl<W: Word + Ord> Hilbert2<W> {
     /// // The 2 × 2 block at the origin is the first quadrant of the
     /// // bottom level: indices 0..=3, one range.
     /// let mut out = [(0u8, 0u8); 4];
-    /// let n = Hilbert2::<u8>::cover((0, 1), (0, 1), &mut out);
-    /// assert_eq!(&out[..n], &[(0, 3)]);
+    /// assert_eq!(Hilbert2::<u8>::cover(0..=1, 0..2, &mut out), [(0, 3)]);
     /// ```
     ///
     /// # Panics
     ///
     /// If the rectangle is not empty and `out` is.
-    #[must_use = "only `out[..n]` holds ranges; the rest is scratch"]
-    pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
-        crate::cover::cover::<W, HilbertQuadrants>(Self::LEVELS, x, y, out)
+    pub fn cover(x: impl RangeBounds<W>, y: impl RangeBounds<W>, out: &mut [(W, W)]) -> &[(W, W)] {
+        crate::cover::cover_ranges::<W, HilbertQuadrants>(Self::LEVELS, x, y, out)
     }
 
-    /// Whether some cell of the rectangle `x.0..=x.1` × `y.0..=y.1` has
-    /// its index in `keys.0..=keys.1`: the test that prunes a block of
-    /// data sorted on the curve by its least and greatest key (a
-    /// granule, a Parquet row group, a file), as `ClickHouse` does for
-    /// its sparse index. Answered by one descent of the quadtree, where a
-    /// node is both an interval of indices and a square of cells; only
-    /// the nodes on the paths of the two ends are partly in the interval,
-    /// so it visits a few nodes a step, three levels at a time, and
-    /// decodes nothing.
+    /// Whether some cell of the rectangle `x` × `y` has its index in
+    /// `keys`: the test that prunes a block of data sorted on the curve
+    /// by its least and greatest key (a granule, a Parquet row group, a
+    /// file), as `ClickHouse` does for its sparse index. Answered by one
+    /// descent of the quadtree, where a node is both an interval of
+    /// indices and a square of cells; only the nodes on the paths of the
+    /// two ends are partly in the interval, so it visits a few nodes a
+    /// step, three levels at a time, and decodes nothing.
     ///
     /// ```
     /// use hakmem::prelude::*;
     ///
     /// // Indices 0..=3 are the 2 × 2 block at the origin.
-    /// assert!(Hilbert2::<u8>::intersects((0, 3), (1, 5), (1, 5)));
-    /// assert!(!Hilbert2::<u8>::intersects((0, 3), (2, 5), (0, 5)));
+    /// assert!(Hilbert2::<u8>::intersects(0..=3, 1..=5, 1..=5));
+    /// assert!(!Hilbert2::<u8>::intersects(0..4, 2..=5, ..));
     /// ```
     #[must_use]
-    pub fn intersects(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
-        crate::cover::intersects::<W, HilbertQuadrants>(Self::LEVELS, keys, x, y)
+    pub fn intersects(
+        keys: impl RangeBounds<W>,
+        x: impl RangeBounds<W>,
+        y: impl RangeBounds<W>,
+    ) -> bool {
+        crate::cover::intersects_ranges::<W, HilbertQuadrants>(Self::LEVELS, keys, x, y)
     }
 }
 

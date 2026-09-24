@@ -12,12 +12,29 @@
 //! has no `Add` impl, only [`incr`](Dilated::incr) / [`wrapping_add`](Dilated::wrapping_add)
 //! Plain integer addition on it does not compile.
 
+use core::ops::RangeBounds;
+
 use crate::cover::{Masks, Quadrants, Rect};
 use crate::word::Word;
 
-/// An integer whose bits sit at positions `0, D, 2D, …` of `W`.
-#[derive(Clone, Copy, PartialEq, Eq, Debug, Hash)]
+/// An integer whose bits sit at positions `0, D, 2D, …` of `W`. The
+/// order of dilated integers is the order of the integers, so `Ord`
+/// compares the raw words; the zeros between agree.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct Dilated<W: Word, const D: u32>(W);
+
+impl<W: Word, const D: u32> Default for Dilated<W, D> {
+    #[inline]
+    fn default() -> Self {
+        Self(W::ZERO)
+    }
+}
+
+impl<W: Word, const D: u32> core::fmt::Binary for Dilated<W, D> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        core::fmt::Binary::fmt(&self.0, f)
+    }
+}
 
 impl<W: Word, const D: u32> Dilated<W, D> {
     /// The positions this dilation occupies: bits `0, D, 2D, …`.
@@ -51,7 +68,7 @@ impl<W: Word, const D: u32> Dilated<W, D> {
     /// Undoes [`from_int`](Self::from_int).
     #[inline]
     #[must_use]
-    pub fn into_int(self) -> W {
+    pub fn to_int(self) -> W {
         self.0.pext(Self::mask())
     }
 
@@ -131,7 +148,7 @@ impl<W: Word> Morton2<W> {
     #[inline]
     #[must_use]
     pub fn decode(self) -> (W, W) {
-        (self.x().into_int(), self.y().into_int())
+        (self.x().to_int(), self.y().to_int())
     }
 
     /// Wraps an existing code.
@@ -225,7 +242,7 @@ impl<W: Word> Morton3<W> {
     #[must_use]
     pub fn decode(self) -> (W, W, W) {
         let lane = Dilated::<W, 3>::mask();
-        let u = |v: W| Dilated::<W, 3>::from_bits(v.and(lane)).into_int();
+        let u = |v: W| Dilated::<W, 3>::from_bits(v.and(lane)).to_int();
         (u(self.0), u(self.0.shr(1)), u(self.0.shr(2)))
     }
 
@@ -326,9 +343,9 @@ impl Quadrants for ZQuadrants {
         Z_MASKS.cells(k, 0, cols, rows)
     }
 
-    fn context<W: Word + Ord>(_: &Rect<W>) {}
+    fn context<W: Word>(_: &Rect<W>) {}
 
-    fn runs<W: Word + Ord>(levels: u32, r: &Rect<W>, s: u32, (): &()) -> W {
+    fn runs<W: Word>(levels: u32, r: &Rect<W>, s: u32, (): &()) -> W {
         z_runs(
             (r.x0.shr(s), r.x1.shr(s)),
             (r.y0.shr(s), r.y1.shr(s)),
@@ -346,7 +363,7 @@ impl Quadrants for ZQuadrants {
 /// the near side (`x = x0`, or `y = y0`), or by the far side of the other
 /// axis, which only the last aligned block before `x1` (or `y1`) can do.
 /// Each is a count of an arithmetic progression, two per level.
-fn z_runs<W: Word + Ord>((x0, x1): (W, W), (y0, y1): (W, W), levels: u32) -> W {
+fn z_runs<W: Word>((x0, x1): (W, W), (y0, y1): (W, W), levels: u32) -> W {
     // `v` in `a..=b` with `v ≡ r` mod `2^m`.
     let progression = |(a, b): (W, W), r: W, m: u32| {
         let upto = |v: W| {
@@ -394,42 +411,47 @@ fn z_runs<W: Word + Ord>((x0, x1): (W, W), (y0, y1): (W, W), levels: u32) -> W {
     n
 }
 
-impl<W: Word + Ord> Morton2<W> {
-    /// The codes of the rectangle `x.0..=x.1` × `y.0..=y.1` as at most
-    /// `out.len()` ranges; returns how many it wrote. Inclusive, sorted,
-    /// disjoint, not touching, covering every cell, exact when the
-    /// budget allows, as [`Hilbert2::cover`](crate::hilbert::Hilbert2::cover).
+impl<W: Word> Morton2<W> {
+    /// The codes of the rectangle `x` × `y` as at most `out.len()`
+    /// ranges: inclusive, sorted, disjoint, not touching, covering every
+    /// cell, exact when the budget allows, as
+    /// [`Hilbert2::cover`](crate::hilbert::Hilbert2::cover).
     ///
     /// ```
     /// use hakmem::prelude::*;
     ///
     /// // Two columns of four cells: two quadrants, two ranges.
     /// let mut out = [(0u8, 0u8); 8];
-    /// let n = Morton2::<u8>::cover((0, 1), (0, 3), &mut out);
-    /// assert_eq!(&out[..n], &[(0, 3), (8, 11)]);
+    /// assert_eq!(
+    ///     Morton2::<u8>::cover(0..=1, 0..=3, &mut out),
+    ///     [(0, 3), (8, 11)]
+    /// );
     /// ```
     ///
     /// # Panics
     ///
     /// If the rectangle is not empty and `out` is.
-    #[must_use = "only `out[..n]` holds ranges; the rest is scratch"]
-    pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
-        crate::cover::cover::<W, ZQuadrants>(Self::LEVELS, x, y, out)
+    pub fn cover(x: impl RangeBounds<W>, y: impl RangeBounds<W>, out: &mut [(W, W)]) -> &[(W, W)] {
+        crate::cover::cover_ranges::<W, ZQuadrants>(Self::LEVELS, x, y, out)
     }
 
-    /// Whether some cell of the rectangle has its code in
-    /// `keys.0..=keys.1`, as [`Hilbert2::intersects`](crate::hilbert::Hilbert2::intersects).
+    /// Whether some cell of the rectangle `x` × `y` has its code in
+    /// `keys`, as [`Hilbert2::intersects`](crate::hilbert::Hilbert2::intersects).
     ///
     /// ```
     /// use hakmem::prelude::*;
     ///
     /// // Codes 4..=11 miss the 2 × 2 block at the origin, codes 0..=3.
-    /// assert!(!Morton2::<u8>::intersects((4, 11), (0, 1), (0, 1)));
-    /// assert!(Morton2::<u8>::intersects((4, 11), (0, 2), (0, 1)));
+    /// assert!(!Morton2::<u8>::intersects(4..=11, 0..=1, 0..=1));
+    /// assert!(Morton2::<u8>::intersects(4..=11, 0..=2, 0..=1));
     /// ```
     #[must_use]
-    pub fn intersects(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
-        crate::cover::intersects::<W, ZQuadrants>(Self::LEVELS, keys, x, y)
+    pub fn intersects(
+        keys: impl RangeBounds<W>,
+        x: impl RangeBounds<W>,
+        y: impl RangeBounds<W>,
+    ) -> bool {
+        crate::cover::intersects_ranges::<W, ZQuadrants>(Self::LEVELS, keys, x, y)
     }
 }
 

@@ -2,14 +2,14 @@
 //! slices (many inventory entries), big sparse ones (many empty blocks
 //! between entries), every block-boundary length, and the panics.
 
+use hakmem::laws;
 use hakmem::rank9::Rank9;
-use hakmem::{laws, slice};
+use hakmem::slice::Words;
 
 fn with_dir(words: &[u64], f: impl FnOnce(&Rank9<'_>)) {
     let mut counts = vec![0; Rank9::counts_len(words.len())];
     let mut select = vec![0; Rank9::select_len(words.len())];
-    Rank9::build(words, &mut counts, &mut select);
-    f(&Rank9::new(words, &counts, &select));
+    f(&Rank9::build(words, &mut counts, &mut select));
 }
 
 fn xorshift(mut s: u64) -> impl FnMut() -> u64 {
@@ -69,10 +69,10 @@ fn dense_4096_words_crosses_hundreds_of_entries() {
     with_dir(&words, |dir| {
         assert!(dir.count_ones() > 100_000, "dense input expected");
         for i in (0..=words.len() * 64).step_by(97) {
-            assert_eq!(dir.rank(i), slice::rank(&words, i), "i={i}");
+            assert_eq!(dir.rank(i), words.rank(i), "i={i}");
         }
         for k in (0..dir.count_ones()).step_by(89) {
-            assert_eq!(dir.select(k), slice::select(&words, k), "k={k}");
+            assert_eq!(dir.select(k), words.select(k), "k={k}");
             assert!(laws::rank9_select_inverts_rank(dir, k), "k={k}");
         }
         assert_eq!(dir.select(dir.count_ones()), None);
@@ -94,10 +94,10 @@ fn sparse_4096_words_one_bit_per_thousand() {
             dir.count_ones()
         );
         for i in (0..=words.len() * 64).step_by(131) {
-            assert_eq!(dir.rank(i), slice::rank(&words, i), "i={i}");
+            assert_eq!(dir.rank(i), words.rank(i), "i={i}");
         }
         for k in 0..=dir.count_ones() {
-            assert_eq!(dir.select(k), slice::select(&words, k), "k={k}");
+            assert_eq!(dir.select(k), words.select(k), "k={k}");
         }
     });
 }
@@ -138,11 +138,7 @@ fn every_inventory_span_shape() {
         with_dir(&words, |dir| {
             assert!(dir.has_select());
             for k in (0..dir.count_ones()).step_by(7) {
-                assert_eq!(
-                    dir.select(k),
-                    slice::select(&words, k),
-                    "stride={stride} k={k}"
-                );
+                assert_eq!(dir.select(k), words.select(k), "stride={stride} k={k}");
                 assert!(
                     laws::rank9_select_inverts_rank(dir, k),
                     "stride={stride} k={k}"
@@ -165,11 +161,10 @@ fn without_select_storage() {
     let mut next = xorshift(0xDEAD_BEEF_CAFE_F00D);
     let words: Vec<u64> = (0..1000).map(|_| next() & next() & next()).collect();
     let mut counts = vec![0; Rank9::counts_len(words.len())];
-    Rank9::build(&words, &mut counts, &mut []);
-    let dir = Rank9::new(&words, &counts, &[]);
+    let dir = Rank9::build(&words, &mut counts, &mut []);
     assert!(!dir.has_select());
     for k in (0..=dir.count_ones()).step_by(5) {
-        assert_eq!(dir.select(k), slice::select(&words, k), "k={k}");
+        assert_eq!(dir.select(k), words.select(k), "k={k}");
     }
     for i in (0..=words.len() * 64).step_by(101) {
         assert!(laws::rank9_matches_slice(&dir, i, i));
@@ -185,19 +180,16 @@ fn rank9buf_matches_view() {
     let words: Vec<u64> = (0..777).map(|_| next()).collect();
     let buf = Rank9Buf::new(&words);
     let rank_only = Rank9Buf::rank_only(&words);
-    assert_eq!(buf.count_ones(), slice::count_ones(&words));
+    assert_eq!(buf.count_ones(), words.count_ones());
     for i in (0..=words.len() * 64).step_by(37) {
-        assert_eq!(buf.rank(i), slice::rank(&words, i));
-        assert_eq!(
-            rank_only.rank0(i),
-            i.min(words.len() * 64) - slice::rank(&words, i)
-        );
+        assert_eq!(buf.rank(i), words.rank(i));
+        assert_eq!(rank_only.rank0(i), i.min(words.len() * 64) - words.rank(i));
     }
     for k in (0..=buf.count_ones()).step_by(41) {
-        assert_eq!(buf.select(k), slice::select(&words, k));
-        assert_eq!(rank_only.select(k), slice::select(&words, k));
+        assert_eq!(buf.select(k), words.select(k));
+        assert_eq!(rank_only.select(k), words.select(k));
     }
     let (counts, select) = buf.into_parts();
-    let view = hakmem::rank9::Rank9::new(&words, &counts, &select);
-    assert_eq!(view.select(100), slice::select(&words, 100));
+    let view = hakmem::rank9::Rank9::from_parts(&words, &counts, &select);
+    assert_eq!(view.select(100), words.select(100));
 }

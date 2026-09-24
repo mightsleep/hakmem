@@ -19,6 +19,7 @@ use crate::word::Word;
 /// assert_eq!(0u32.positions().len(), 0);
 /// ```
 #[derive(Clone, Debug)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct Positions<W: Word>(pub(crate) W);
 
 impl<W: Word> Iterator for Positions<W> {
@@ -64,6 +65,7 @@ impl<W: Word> core::iter::FusedIterator for Positions<W> {}
 /// assert_eq!(0u32.subsets().count(), 1);
 /// ```
 #[derive(Clone, Debug)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct Subsets<W: Word> {
     mask: W,
     next: Option<W>,

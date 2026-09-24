@@ -39,6 +39,7 @@
 #![allow(clippy::redundant_pub_crate)]
 
 use core::cmp::Ordering;
+use core::ops::{Bound, RangeBounds};
 
 use crate::word::Word;
 
@@ -59,11 +60,11 @@ pub(crate) trait Quadrants {
     /// `p`.
     fn cells(k: u32, frame: u8, cols: usize, rows: usize) -> u64;
 
-    fn context<W: Word + Ord>(r: &Rect<W>) -> Self::Context<W>;
+    fn context<W: Word>(r: &Rect<W>) -> Self::Context<W>;
     /// The number of runs of the exact cover of `r` rounded out to
     /// multiples of `2^s`, on a curve of `levels` levels whose top frame
     /// is 0.
-    fn runs<W: Word + Ord>(levels: u32, r: &Rect<W>, s: u32, context: &Self::Context<W>) -> W;
+    fn runs<W: Word>(levels: u32, r: &Rect<W>, s: u32, context: &Self::Context<W>) -> W;
 }
 
 /// The tables behind [`Quadrants::child`] and [`Quadrants::cells`] for
@@ -269,7 +270,7 @@ fn select<W: Copy + Ord>(v: &mut [(W, W)], len: usize, m: usize) -> W {
 /// class of several values is gathered for a select.
 // The bucket is a bit length, at most 128.
 #[allow(clippy::many_single_char_names, clippy::cast_possible_truncation)]
-fn threshold<W: Word + Ord>(
+fn threshold<W: Word>(
     v: &mut [(W, W)],
     gaps: usize,
     (lengths, least): (&[u32; 129], u32),
@@ -325,7 +326,7 @@ struct Merge<'a, W> {
     ties: usize,
 }
 
-impl<W: Word + Ord> Sink<W> for Merge<'_, W> {
+impl<W: Word> Sink<W> for Merge<'_, W> {
     fn emit(&mut self, first: W, last: W) {
         if self.n > 0 {
             let end = self.out[self.n - 1].1;
@@ -388,7 +389,7 @@ pub(crate) struct Rect<W> {
 /// those meeting `a..=b` and those inside it, as masks.
 #[allow(clippy::many_single_char_names)]
 #[inline]
-fn axis<W: Word + Ord>(o: W, (a, b): (W, W), below: u32, k: u32) -> (usize, usize) {
+fn axis<W: Word>(o: W, (a, b): (W, W), below: u32, k: u32) -> (usize, usize) {
     if b < o {
         return (0, 0);
     }
@@ -435,7 +436,7 @@ fn axis<W: Word + Ord>(o: W, (a, b): (W, W), below: u32, k: u32) -> (usize, usiz
 /// node across the edge is taken whole. Three levels a step, the odd
 /// ones at the top, so every step ends on `stop`.
 #[allow(clippy::too_many_arguments)]
-fn walk<W: Word + Ord, C: Quadrants, S: Sink<W>>(
+fn walk<W: Word, C: Quadrants, S: Sink<W>>(
     r: &Rect<W>,
     level: u32,
     stop: u32,
@@ -487,7 +488,7 @@ fn walk<W: Word + Ord, C: Quadrants, S: Sink<W>>(
 /// rectangles the guess is right or one off nine times in ten, about two
 /// counts a query; long thin ones and aligned ones stray further, a count
 /// a level.
-fn depth<W: Word + Ord, C: Quadrants>(
+fn depth<W: Word, C: Quadrants>(
     levels: u32,
     r: &Rect<W>,
     top: u32,
@@ -515,7 +516,7 @@ fn depth<W: Word + Ord, C: Quadrants>(
 
 /// The cover of `x0..=x1` × `y0..=y1` on a curve of `levels` levels,
 /// top frame 0, in at most `out.len()` ranges; returns how many.
-pub(crate) fn cover<W: Word + Ord, C: Quadrants>(
+pub(crate) fn cover<W: Word, C: Quadrants>(
     levels: u32,
     (x0, x1): (W, W),
     (y0, y1): (W, W),
@@ -599,7 +600,7 @@ const fn bits(lo: u32, hi: u32) -> u64 {
 /// holding `a` and `b` are partly in the interval, so at most two go
 /// down, and a path is a third as long as a level at a time.
 #[allow(clippy::many_single_char_names)]
-fn meets<W: Word + Ord, C: Quadrants>(
+fn meets<W: Word, C: Quadrants>(
     r: &Rect<W>,
     (a, b): (W, W),
     level: u32,
@@ -670,7 +671,7 @@ fn meets<W: Word + Ord, C: Quadrants>(
 }
 
 /// Whether some cell of `x0..=x1` × `y0..=y1` has its key in `a..=b`.
-pub(crate) fn intersects<W: Word + Ord, C: Quadrants>(
+pub(crate) fn intersects<W: Word, C: Quadrants>(
     levels: u32,
     (a, b): (W, W),
     (x0, x1): (W, W),
@@ -683,6 +684,52 @@ pub(crate) fn intersects<W: Word + Ord, C: Quadrants>(
     }
     let r = Rect { x0, x1, y0, y1 };
     meets::<W, C>(&r, (a, b), levels, W::ZERO, (W::ZERO, W::ZERO), 0)
+}
+
+/// `r` as `lo..=hi`, or `None` when it holds nothing: `5..5`, `..0`,
+/// and `(Excluded(ONES), ..)` for the pedantic.
+pub(crate) fn inclusive<W: Word>(r: &impl RangeBounds<W>) -> Option<(W, W)> {
+    let lo = match r.start_bound() {
+        Bound::Included(&a) => a,
+        Bound::Excluded(&a) if a == W::ONES => return None,
+        Bound::Excluded(&a) => a.wrapping_add(W::ONE),
+        Bound::Unbounded => W::ZERO,
+    };
+    let hi = match r.end_bound() {
+        Bound::Included(&b) => b,
+        Bound::Excluded(&b) if b == W::ZERO => return None,
+        Bound::Excluded(&b) => b.wrapping_sub(W::ONE),
+        Bound::Unbounded => W::ONES,
+    };
+    (lo <= hi).then_some((lo, hi))
+}
+
+/// [`cover`] as the curves offer it: ranges in, the part of `out` it
+/// filled back.
+pub(crate) fn cover_ranges<W: Word, C: Quadrants>(
+    levels: u32,
+    x: impl RangeBounds<W>,
+    y: impl RangeBounds<W>,
+    out: &mut [(W, W)],
+) -> &[(W, W)] {
+    let n = match (inclusive(&x), inclusive(&y)) {
+        (Some(x), Some(y)) => cover::<W, C>(levels, x, y, out),
+        _ => 0,
+    };
+    &out[..n]
+}
+
+/// [`intersects`] as the curves offer it.
+pub(crate) fn intersects_ranges<W: Word, C: Quadrants>(
+    levels: u32,
+    keys: impl RangeBounds<W>,
+    x: impl RangeBounds<W>,
+    y: impl RangeBounds<W>,
+) -> bool {
+    match (inclusive(&keys), inclusive(&x), inclusive(&y)) {
+        (Some(keys), Some(x), Some(y)) => intersects::<W, C>(levels, keys, x, y),
+        _ => false,
+    }
 }
 
 #[cfg(test)]
@@ -709,7 +756,7 @@ mod tests {
     }
 
     /// The closed form against the walk, at every depth below the top.
-    fn agree<W: Word + Ord, C: Quadrants>(r: &Rect<W>) -> bool {
+    fn agree<W: Word, C: Quadrants>(r: &Rect<W>) -> bool {
         let levels = W::BITS / 2;
         let top = super::bitlen(r.x0.xor(r.x1).or(r.y0.xor(r.y1)));
         let context = C::context(r);
@@ -780,6 +827,25 @@ mod tests {
             let below = sorted.iter().filter(|&&g| g < want).count();
             assert_eq!((t, ties), (want, close - below), "{sorted:?} close {close}");
         }
+    }
+
+    /// Every kind of range, the empty ones included.
+    #[test]
+    // The empty ranges are the point.
+    #[allow(clippy::reversed_empty_ranges)]
+    fn ranges_become_inclusive() {
+        use core::ops::Bound::{Excluded, Included, Unbounded};
+
+        use super::inclusive;
+        assert_eq!(inclusive(&(..)), Some((0u8, 255)));
+        assert_eq!(inclusive(&(3u8..)), Some((3, 255)));
+        assert_eq!(inclusive(&(..7u8)), Some((0, 6)));
+        assert_eq!(inclusive(&(2u8..=9)), Some((2, 9)));
+        assert_eq!(inclusive(&(5u8..5)), None);
+        assert_eq!(inclusive(&(..0u8)), None);
+        assert_eq!(inclusive(&(9u8..=2)), None);
+        assert_eq!(inclusive(&(Excluded(255u8), Unbounded)), None);
+        assert_eq!(inclusive(&(Excluded(3u8), Included(4))), Some((4, 4)));
     }
 
     #[test]

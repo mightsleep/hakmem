@@ -88,16 +88,14 @@
 //! run of ones (`leading_ones`) continued by the next word's bottom run
 //! (`trailing_ones`). No wider window is needed; an earlier version
 //! of this kernel widened to `u128` and was 1.6–2.2× slower for it.
-//! Shipped as [`crate::slice::find_run`].
+//! Shipped as [`Words::find_run`](crate::slice::Words::find_run).
 //!
 //! ```
-//! use hakmem::slice::find_run;
+//! use hakmem::prelude::*;
 //!
 //! // 60 free slots, then 4 taken, then all free: a 6-run must straddle.
-//! let words = [u64::MAX >> 4, u64::MAX];
-//! assert_eq!(find_run(&words, 6), Some(0));
-//! let words = [0xFFu64 << 56, u64::MAX];
-//! assert_eq!(find_run(&words, 16), Some(56));
+//! assert_eq!([u64::MAX >> 4, u64::MAX].find_run(6), Some(0));
+//! assert_eq!([0xFFu64 << 56, u64::MAX].find_run(16), Some(56));
 //! ```
 //!
 //! **Laws.** `run_starts_composes`: `run_starts(a) ∘ run_starts(b) =
@@ -137,9 +135,9 @@
 //! [`crate::wide::Wide`] runs it unchanged for long patterns.
 //!
 //! ```
-//! use hakmem::myers::{edit_distance, search};
+//! use hakmem::myers::{distance_in, search};
 //!
-//! assert_eq!(edit_distance::<u64>(b"kitten", b"sitting"), Some(3));
+//! assert_eq!(distance_in::<u64>(b"kitten", b"sitting"), Some(3));
 //! let ends: Vec<_> = search::<u64>(b"lo", b"hello lo", 0).unwrap().collect();
 //! assert_eq!(ends, [(5, 0), (8, 0)]);
 //! ```

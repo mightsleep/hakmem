@@ -33,9 +33,22 @@
 /// read bytes, and [`expand_broadword`] keeps one mask per halving
 /// round. A wider carrier is a compile error, not a surprise.
 ///
-/// A word is a plain value: hashable, shareable, `'static`. Asked for
-/// now because asking later would break every carrier written meanwhile.
-pub trait Word: Copy + Eq + core::hash::Hash + core::fmt::Debug + Send + Sync + 'static {
+/// A word is a plain value: ordered as the unsigned integer it spells,
+/// printable in binary and hex (`{:b}` is how bits want to be read),
+/// hashable, shareable, `'static`. Asked for now because asking later
+/// would break every carrier written meanwhile.
+pub trait Word:
+    Copy
+    + Ord
+    + core::hash::Hash
+    + core::fmt::Debug
+    + core::fmt::Binary
+    + core::fmt::LowerHex
+    + core::fmt::UpperHex
+    + Send
+    + Sync
+    + 'static
+{
     /// Width in bits.
     const BITS: u32;
     /// All bits clear.

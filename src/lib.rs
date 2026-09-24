@@ -12,6 +12,7 @@ pub mod cookbook;
 mod cover;
 #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
 mod cpu;
+pub mod curve;
 pub mod dilated;
 pub mod grid;
 pub mod hilbert;
@@ -26,14 +27,21 @@ pub mod slice;
 pub mod wide;
 pub mod word;
 
-/// Everything most code needs: the [`Bits`] trait, the [`Word`]
-/// carrier trait, and the dilated / Morton / positions types.
+/// Everything most code needs, one `use` away.
+///
+/// The traits whose methods you call ([`Word`], [`Bits`], [`Words`] on
+/// slices, [`Lanes`], the curves [`Curve2`] and [`Curve3`]) and the types
+/// you name ([`Wide`], the Morton and Hilbert keys, [`Dilated`]). Iterator
+/// and view types come back from methods and are not here; name them from
+/// their modules.
 pub mod prelude {
     pub use crate::bits::Bits;
+    pub use crate::curve::{Curve2, Curve3};
     pub use crate::dilated::{Dilated, Morton2, Morton3};
     pub use crate::hilbert::Hilbert2;
     pub use crate::hilbert3::Hilbert3;
-    pub use crate::set::Positions;
+    pub use crate::lanes::Lanes;
+    pub use crate::slice::Words;
     pub use crate::wide::Wide;
     pub use crate::word::Word;
 }

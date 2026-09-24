@@ -94,6 +94,7 @@ fn u8_indexed_laws() {
 fn u8_binary_laws_all_pairs() {
     for x in u8::MIN..=u8::MAX {
         for m in u8::MIN..=u8::MAX {
+            assert!(laws::order_is_unsigned(x, m), "x={x} m={m}");
             assert!(laws::compact_matches_reference(x, m), "x={x} m={m}");
             assert!(laws::expand_matches_reference(x, m), "x={x} m={m}");
             assert!(laws::compact_expand_roundtrip(x, m), "x={x} m={m}");

@@ -322,7 +322,7 @@ fn bench3_batch(c: &mut Criterion) {
         g.bench_function("hakmem in place", |b| {
             b.iter(|| {
                 keys.copy_from_slice(&indices);
-                Hilbert3::<u64>::into_morton_in_place(&mut keys);
+                Hilbert3::<u64>::to_morton_in_place(&mut keys);
                 for (o, &k) in out.iter_mut().zip(&keys) {
                     *o = Morton3::<u64>::from_code(k).decode();
                 }
@@ -524,12 +524,12 @@ fn bench_cover(c: &mut Criterion) {
             (
                 "Morton2",
                 |x, y| Morton2::<u64>::encode(x, y).code(),
-                Morton2::<u64>::intersects,
+                |k, x, y| Morton2::<u64>::intersects(k.0..=k.1, x.0..=x.1, y.0..=y.1),
             ),
             (
                 "Hilbert2",
                 |x, y| Hilbert2::<u64>::encode(x, y).index(),
-                Hilbert2::<u64>::intersects,
+                |k, x, y| Hilbert2::<u64>::intersects(k.0..=k.1, x.0..=x.1, y.0..=y.1),
             ),
         ];
         for (name, key, test) in curves {
@@ -581,14 +581,18 @@ fn bench_cover(c: &mut Criterion) {
             g.bench_function(format!("Morton2, {budget} ranges"), |b| {
                 b.iter(|| {
                     for &(x, y) in &rects {
-                        black_box(Morton2::<u64>::cover(black_box(x), y, &mut out));
+                        black_box(
+                            Morton2::<u64>::cover(black_box(x.0..=x.1), y.0..=y.1, &mut out).len(),
+                        );
                     }
                 });
             });
             g.bench_function(format!("Hilbert2, {budget} ranges"), |b| {
                 b.iter(|| {
                     for &(x, y) in &rects {
-                        black_box(Hilbert2::<u64>::cover(black_box(x), y, &mut out));
+                        black_box(
+                            Hilbert2::<u64>::cover(black_box(x.0..=x.1), y.0..=y.1, &mut out).len(),
+                        );
                     }
                 });
             });
