@@ -44,14 +44,18 @@ PSHUFB a level: 5.3 ns a key encoding and 5.7 decoding against 12.6
 and 8.7 per key (`x86-64-v3` on the same core). Otherwise the per-key
 conversion. On Zen 5: 1.6 ns a key for the 2D `u64` encode from
 coordinates against 11.9 for `fast_hilbert`, 0.90 against 8.3 for
-16-bit coordinates, 2.7 against 15.2 for the 3D tables. Laws: the
+16-bit coordinates, 1.7 against 15.2 for the 3D tables, the `u64` keys
+in byte planes: a plane is one level of 64 keys, so a `vpermi2b`
+serves 64 keys and not eight, for two transposes by `vpmultishiftqb`
+and three rounds of `vpermt2b` each way. Laws: the
 batch equals the per-key conversion both ways, on every length to 300
-(the tails of the 16-, 32- and 64-key batches). Miri runs the VBMI and
+(the tails of the 16-, 32- and 64-key batches) and around the 512-key
+groups of the planes. Miri runs the VBMI and
 AVX2 kernels (`nix run .#miri-hakmem`, a new cell), the `+bmi2` CI
 cell runs AVX2 natively, and the NEON kernels run on the aarch64 CI
 runner. The 3D decode batches too,
 through the inverse of the encode table (a bijection of the octants per
-state, checked at compile time): 2.7 ns a key against 8.8 for the
+state, checked at compile time): 1.8 ns a key against 8.8 for the
 algebraic scan per key and 15.1 for the tables. `_order` forms of all
 four for curves of fewer levels, as `encode_order` / `decode_order` per
 key: a lane swap (2D) or a rotation of every bit triple (3D) over the

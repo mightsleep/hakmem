@@ -198,7 +198,7 @@ machine read as a table and applied to a register of keys at a time:
 | batch | with the target feature | without |
 |---|---|---|
 | `Hilbert2::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through 128 entries a step, three levels a step, the frame modulo the reflection of both axes (a XOR mask on the cells, the swap bit in the index byte), three `vpternlog` around the lookup; NEON: the same reduction two levels a step, 32 entries in two registers for `tbl` | `from_morton` per key |
-| `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step; NEON: `tbl` over four registers and `tbx` over two; AVX2 alone: the machine modulo its translations, 24 entries in two PSHUFB of 16 a level, the second read through `index ^ 0x80` | `from_morton` per key |
+| `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step, per register of keys (`u32`) or per plane of 64 keys (`u64`: `vpmultishiftqb` and three rounds of `vpermt2b` in, the same rounds and a `vpmaddubsw` / `vpmaddwd` pack out, the transposes checked at compile time); NEON: `tbl` over four registers and `tbx` over two; AVX2 alone: the machine modulo its translations, 24 entries in two PSHUFB of 16 a level, the second read through `index ^ 0x80` | `from_morton` per key |
 | `Hilbert3::into_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time); AVX2 the factored inverse, the translation in index bits 4 and 5, which PSHUFB ignores | `into_morton` per key, the algebraic scan |
 
 Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
@@ -208,8 +208,8 @@ Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 |---|---|---|---|
 | 2D encode, `u64` keys, 32 levels | 1.6 | 5.9 | `fast_hilbert` 11.9 |
 | 2D encode, `u16` coordinates to `u32` keys, 16 levels (the packed R-tree case) | 0.90 | 6.1 | `fast_hilbert` 8.3 |
-| 3D encode, `u64` keys, 21 levels | 2.7 | 13.1 | rawrunprotected's tables 15.2 |
-| 3D decode, `u64` keys, 21 levels | 2.7 | 8.8 | rawrunprotected's tables 15.1 |
+| 3D encode, `u64` keys, 21 levels | 1.7 | 13.1 | rawrunprotected's tables 15.2 |
+| 3D decode, `u64` keys, 21 levels | 1.8 | 8.8 | rawrunprotected's tables 15.1 |
 
 Without VBMI the batch is still faster than the per-key form (7.0
 against 12.3 µs for the 2D `u64` case on the same core): Morton first
@@ -224,6 +224,15 @@ entries are 24 between two XORs, the size of two 16-entry shuffles
 on the same core built for `x86-64-v3`, 5.3 ns a key for the 3D
 encode and 5.7 for the decode, against 12.6 and 8.7 per key. Eight
 rows of keys in flight spill and still beat four that fit, by 5 %.
+
+With VBMI the count that decides is the same kind of instruction: on
+this core shuffles, variable and immediate shifts and the byte
+multiply-adds issue once a cycle, bitwise operations twice
+(`vpternlog` fused into the lane kernel bought 2 %, not the 20 % the
+instruction count promised). The lane kernel spends three of the first
+kind a level on eight keys; the `u64` planes spend one `vpermi2b` a
+level on 64 keys and pay about five shuffles a key to transpose in and
+out, 1.0 ns a key against 1.85 for the kernel alone.
 The NEON paths are checked in CI on the aarch64 runner and not yet
 measured.
 

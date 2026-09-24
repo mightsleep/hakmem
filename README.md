@@ -311,10 +311,10 @@ keys.sort_unstable(); // curve order, as a packed R-tree builds it
 
 | Batch conversion, 1024 points, `target-cpu=native` on Zen 5 | in place | per key | incumbent |
 |---|---|---|---|
-| 2D encode, `u64` keys, 32 levels | **2.1 µs** | 6.1 µs | `fast_hilbert` 12.2 µs |
-| 2D encode, `u16` coordinates, `u32` keys, 16 levels | **0.94 µs** | 6.3 µs | `fast_hilbert` 8.5 µs |
-| 3D encode, `u64` keys, 21 levels | **2.7 µs** | 13.1 µs | rawrunprotected's tables 15.2 µs |
-| 3D decode, `u64` keys, 21 levels | **2.7 µs** | 8.8 µs | rawrunprotected's tables 15.1 µs |
+| 2D encode, `u64` keys, 32 levels | **1.6 µs** | 6.1 µs | `fast_hilbert` 12.2 µs |
+| 2D encode, `u16` coordinates, `u32` keys, 16 levels | **0.90 µs** | 6.3 µs | `fast_hilbert` 8.5 µs |
+| 3D encode, `u64` keys, 21 levels | **1.8 µs** | 13.1 µs | rawrunprotected's tables 15.2 µs |
+| 3D decode, `u64` keys, 21 levels | **1.8 µs** | 8.8 µs | rawrunprotected's tables 15.1 µs |
 
 ## Cookbook
 

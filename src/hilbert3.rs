@@ -497,9 +497,10 @@ macro_rules! hilbert3_batch {
             /// The encode is not a scan (the maps on the twelve frames
             /// are not permutations), which is the case a shuffle serves:
             /// with AVX-512 VBMI a level is one `vpermi2b` through
-            /// [`ENCODE_TABLE`], padded to 128 bytes in two registers, per
-            /// register of keys, the frame riding in the index byte as
-            /// `state · 8`; with NEON the table is `tbl` over four
+            /// [`ENCODE_TABLE`], padded to 128 bytes in two registers, the
+            /// frame riding in the index byte as `state · 8`: per register
+            /// of keys for `u32`, per plane of 64 keys for `u64`, the keys
+            /// transposed so that a byte is a key and a register a level; with NEON the table is `tbl` over four
             /// registers and `tbx` over two. With AVX2 alone, where 96
             /// entries fit no shuffle, the frame is taken modulo its
             /// translations: 24 entries, two PSHUFB of 16 between XORs a
@@ -518,8 +519,9 @@ macro_rules! hilbert3_batch {
             ///
             /// The decode as a machine is the same twelve states read the
             /// other way, so the same kernel runs it through the inverse
-            /// table, a level a step; with AVX2 the factored inverse, the
-            /// translation riding in the index bits PSHUFB ignores. Per
+            /// table, a level a step, the `u64` planes likewise; with AVX2
+            /// the factored inverse, the translation riding in the index
+            /// bits PSHUFB ignores. Per
             /// key it is the algebraic scan
             /// ([`into_morton`](Self::into_morton)), which beats a table
             /// walk, and that finishes the keys past the last whole batch.
@@ -581,8 +583,8 @@ mod batch {
     mod vbmi {
         use core::arch::x86_64::{
             _mm512_and_si512, _mm512_loadu_si512, _mm512_permutex2var_epi8, _mm512_set1_epi32,
-            _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi32, _mm512_slli_epi64,
-            _mm512_srlv_epi32, _mm512_srlv_epi64, _mm512_storeu_si512, _mm512_ternarylogic_epi64,
+            _mm512_setzero_si512, _mm512_slli_epi32, _mm512_srlv_epi32, _mm512_storeu_si512,
+            _mm512_ternarylogic_epi64,
         };
 
         use super::super::{DECODE_PADDED, ENCODE_PADDED};
@@ -657,15 +659,6 @@ mod batch {
             _mm512_slli_epi32
         );
         kernel!(
-            from_morton_u64,
-            ENCODE_PADDED,
-            u64,
-            8,
-            _mm512_set1_epi64,
-            _mm512_srlv_epi64,
-            _mm512_slli_epi64
-        );
-        kernel!(
             into_morton_u32,
             DECODE_PADDED,
             u32,
@@ -674,15 +667,304 @@ mod batch {
             _mm512_srlv_epi32,
             _mm512_slli_epi32
         );
-        kernel!(
-            into_morton_u64,
-            DECODE_PADDED,
-            u64,
-            8,
-            _mm512_set1_epi64,
-            _mm512_srlv_epi64,
-            _mm512_slli_epi64
-        );
+    }
+
+    /// `u64` keys in byte planes: a plane is one level of 64 keys, a
+    /// byte a key, so a `vpermi2b` serves 64 keys where the lane layout
+    /// above serves eight and moves zeros in the other 56 bytes. The
+    /// price is two transposes: `vpmultishiftqb` pulls eight triples of
+    /// a key into bytes, three rounds of `vpermt2b` turn 8 registers of
+    /// (key, level) into 8 planes, and the way back is the same rounds
+    /// the other way and a `vpmaddubsw` / `vpmaddwd` pack of the 3-bit
+    /// fields. On Zen 5 shuffles, variable and immediate shifts and the
+    /// multiply-adds all issue once a cycle and the rest twice, so the
+    /// count that matters is the first kind: about 5 a key here against
+    /// 8 in the lane kernel. Eight groups of 64 keys go through the
+    /// level loop together, or the loop waits on its own latency.
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx512vbmi",
+        not(feature = "portable")
+    ))]
+    // `inline(always)`: the planes are arrays of registers, and an
+    // outlined helper takes them by memory.
+    #[allow(unsafe_code, clippy::inline_always)]
+    mod planes {
+        use core::arch::x86_64::{
+            __m512i, _mm512_and_si512, _mm512_loadu_si512, _mm512_madd_epi16, _mm512_maddubs_epi16,
+            _mm512_multishift_epi64_epi8, _mm512_permutex2var_epi8, _mm512_set1_epi8,
+            _mm512_set1_epi16, _mm512_set1_epi32, _mm512_set1_epi64, _mm512_setzero_si512,
+            _mm512_slli_epi64, _mm512_srli_epi64, _mm512_storeu_si512, _mm512_ternarylogic_epi64,
+        };
+
+        use super::super::{DECODE_PADDED, ENCODE_PADDED};
+
+        /// A byte of the transpose is tagged `key · 8 + level`, key and
+        /// level within one group of 64 keys and one block of 8 levels.
+        type Rounds = [[[u8; 64]; 8]; 3];
+
+        /// The `vpermt2b` controls of an 8-register transpose in three
+        /// rounds: round `k` pairs registers `r` and `r | 1 << k` and
+        /// splits their 128 bytes by bit `k` of the destination register
+        /// (`to_planes`: the level; else: the key's register of eight),
+        /// each register kept sorted (by key, or by `key · 8 + level`
+        /// within the register of eight).
+        #[allow(clippy::cast_possible_truncation, clippy::many_single_char_names)]
+        const fn rounds(to_planes: bool) -> Rounds {
+            let mut regs = [[0u16; 64]; 8];
+            let mut r = 0;
+            while r < 8 {
+                let mut p = 0;
+                while p < 64 {
+                    regs[r][p] = if to_planes {
+                        ((8 * r + p / 8) * 8 + p % 8) as u16
+                    } else {
+                        (p * 8 + r) as u16
+                    };
+                    p += 1;
+                }
+                r += 1;
+            }
+            let mut ctl = [[[0u8; 64]; 8]; 3];
+            let mut k = 0;
+            while k < 3 {
+                let mut next = regs;
+                let mut r0 = 0;
+                while r0 < 8 {
+                    if r0 & (1 << k) == 0 {
+                        let r1 = r0 | 1 << k;
+                        // A stable sort of the pair's 128 tags by the sort
+                        // key, ties in pool order, one side at a time.
+                        let mut side = 0;
+                        while side < 2 {
+                            let r = if side == 0 { r0 } else { r1 };
+                            let mut p = 0;
+                            let mut v = 0;
+                            while v < 64 {
+                                let mut q = 0;
+                                while q < 128 {
+                                    let t = if q < 64 {
+                                        regs[r0][q]
+                                    } else {
+                                        regs[r1][q - 64]
+                                    };
+                                    let key = if to_planes {
+                                        t / 8
+                                    } else {
+                                        (t / 8 % 8) * 8 + t % 8
+                                    };
+                                    let dest = if to_planes { t % 8 } else { t / 64 };
+                                    if key == v && (dest >> k) & 1 == side {
+                                        next[r][p] = t;
+                                        ctl[k][r][p] = q as u8;
+                                        p += 1;
+                                    }
+                                    q += 1;
+                                }
+                                v += 1;
+                            }
+                            assert!(p == 64, "an unbalanced transpose round");
+                            side += 1;
+                        }
+                    }
+                    r0 += 1;
+                }
+                regs = next;
+                k += 1;
+            }
+            // Planes: register = level, byte = key. Back: register = key's
+            // eight, byte = `key % 8 · 8 + level`, the multishift layout.
+            let mut r = 0;
+            while r < 8 {
+                let mut p = 0;
+                while p < 64 {
+                    let want = if to_planes {
+                        p * 8 + r
+                    } else {
+                        (8 * r + p / 8) * 8 + p % 8
+                    };
+                    assert!(
+                        regs[r][p] as usize == want,
+                        "a transpose that does not transpose"
+                    );
+                    p += 1;
+                }
+                r += 1;
+            }
+            ctl
+        }
+
+        const TO_PLANES: Rounds = rounds(true);
+        const FROM_PLANES: Rounds = rounds(false);
+
+        /// Groups of 64 keys in flight through the level loop.
+        const GROUPS: usize = 8;
+
+        /// Levels of a `u64`, and the planes holding them: three blocks
+        /// of eight, the last five of the third block above the key.
+        const LEVELS: usize = 21;
+
+        type Planes = [[__m512i; 8]; 3];
+
+        #[inline(always)]
+        unsafe fn transpose(x: &mut [__m512i; 8], ctl: &Rounds) {
+            // Unrolled by hand: behind indices known only at run time the
+            // compiler keeps the registers in memory, 300 spills and three
+            // times the cost; it will not say so.
+            macro_rules! round {
+                ($k:literal: $(($a:literal, $b:literal)),*) => {{
+                    let y = *x;
+                    $(
+                        x[$a] = _mm512_permutex2var_epi8(
+                            y[$a],
+                            _mm512_loadu_si512(ctl[$k][$a].as_ptr().cast()),
+                            y[$b],
+                        );
+                        x[$b] = _mm512_permutex2var_epi8(
+                            y[$a],
+                            _mm512_loadu_si512(ctl[$k][$b].as_ptr().cast()),
+                            y[$b],
+                        );
+                    )*
+                }};
+            }
+            // SAFETY: AVX-512 BW and VBMI by cfg; the loads read the 64
+            // bytes of one control vector.
+            unsafe {
+                round!(0: (0, 1), (2, 3), (4, 5), (6, 7));
+                round!(1: (0, 2), (1, 3), (4, 6), (5, 7));
+                round!(2: (0, 4), (1, 5), (2, 6), (3, 7));
+            }
+        }
+
+        /// 64 keys to three blocks of eight planes, written in place: the
+        /// planes of eight groups are 12 KB, and moving them by value is a
+        /// `memcpy` call with a `vzeroupper` in front.
+        #[inline(always)]
+        unsafe fn to_planes(keys: &[u64; 64], planes: &mut Planes) {
+            // SAFETY: as `transpose`; the loads read the 64 keys.
+            unsafe {
+                let a: [__m512i; 8] =
+                    core::array::from_fn(|g| _mm512_loadu_si512(keys.as_ptr().add(8 * g).cast()));
+                for (j, block) in planes.iter_mut().enumerate() {
+                    // Byte `i` of every key: bits `3 (8j + i)` onwards.
+                    let mut offsets = [0u8; 8];
+                    for (i, o) in offsets.iter_mut().enumerate() {
+                        #[allow(clippy::cast_possible_truncation)]
+                        let offset = ((3 * (8 * j + i)) % 64) as u8;
+                        *o = offset;
+                    }
+                    #[allow(clippy::cast_possible_wrap)]
+                    let c = _mm512_set1_epi64(u64::from_le_bytes(offsets) as i64);
+                    let mut x: [__m512i; 8] =
+                        core::array::from_fn(|g| _mm512_multishift_epi64_epi8(c, a[g]));
+                    transpose(&mut x, &TO_PLANES);
+                    *block = x;
+                }
+            }
+        }
+
+        /// Three blocks of planes back to 64 keys, the low three bits of
+        /// every byte packed.
+        #[inline(always)]
+        unsafe fn from_planes(planes: &Planes, keys: &mut [u64; 64]) {
+            // SAFETY: as `transpose`; the stores write the 64 keys.
+            unsafe {
+                let seven = _mm512_set1_epi8(7);
+                // Two bytes to six bits, two of those to twelve, two of
+                // those to 24 by hand; three blocks to 63 bits.
+                let pairs = _mm512_set1_epi16(0x0801);
+                let quads = _mm512_set1_epi32(0x0040_0001);
+                let low12 = _mm512_set1_epi64(0xFFF);
+                let mut part = [[_mm512_setzero_si512(); 8]; 3];
+                for (j, block) in planes.iter().enumerate() {
+                    // A local copy: through the reference the rounds would
+                    // run in memory.
+                    let mut x = *block;
+                    if j == 2 {
+                        // Levels 21 to 23 are above the key.
+                        for plane in &mut x[LEVELS % 8..] {
+                            *plane = _mm512_setzero_si512();
+                        }
+                    }
+                    transpose(&mut x, &FROM_PLANES);
+                    for (g, x) in x.iter().enumerate() {
+                        let w = _mm512_maddubs_epi16(_mm512_and_si512(*x, seven), pairs);
+                        let d = _mm512_madd_epi16(w, quads);
+                        // `(d & 0xFFF) | (d >> 32) << 12`
+                        part[j][g] = _mm512_ternarylogic_epi64::<0xEC>(
+                            d,
+                            _mm512_slli_epi64::<12>(_mm512_srli_epi64::<32>(d)),
+                            low12,
+                        );
+                    }
+                }
+                for g in 0..8 {
+                    // `a | b << 24 | c << 48`
+                    let v = _mm512_ternarylogic_epi64::<0xFE>(
+                        part[0][g],
+                        _mm512_slli_epi64::<24>(part[1][g]),
+                        _mm512_slli_epi64::<48>(part[2][g]),
+                    );
+                    _mm512_storeu_si512(keys.as_mut_ptr().add(8 * g).cast(), v);
+                }
+            }
+        }
+
+        /// `B` groups of 64 keys through the machine, the levels from the
+        /// top, the groups interleaved.
+        #[inline(always)]
+        unsafe fn groups<const B: usize>(keys: &mut [[u64; 64]; B], table: &[u8; 128]) {
+            // SAFETY: as `transpose`; the loads read the 128 table bytes.
+            unsafe {
+                let lo = _mm512_loadu_si512(table.as_ptr().cast());
+                let hi = _mm512_loadu_si512(table.as_ptr().add(64).cast());
+                let seven = _mm512_set1_epi8(7);
+                let state_bits = _mm512_set1_epi8(0x78);
+                let mut planes = [[[_mm512_setzero_si512(); 8]; 3]; B];
+                for (p, k) in planes.iter_mut().zip(keys.iter()) {
+                    to_planes(k, p);
+                }
+                let mut state = [_mm512_setzero_si512(); B];
+                for l in (0..LEVELS).rev() {
+                    let (j, i) = (l / 8, l % 8);
+                    for b in 0..B {
+                        // `(input & 7) | state`
+                        let index =
+                            _mm512_ternarylogic_epi64::<0xEC>(planes[b][j][i], state[b], seven);
+                        let entry = _mm512_permutex2var_epi8(lo, index, hi);
+                        planes[b][j][i] = entry;
+                        state[b] = _mm512_and_si512(entry, state_bits);
+                    }
+                }
+                for (p, k) in planes.iter().zip(keys.iter_mut()) {
+                    from_planes(p, k);
+                }
+            }
+        }
+
+        fn run(keys: &mut [u64], table: &[u8; 128]) -> usize {
+            let (chunks, _) = keys.as_chunks_mut::<64>();
+            let done = chunks.len() * 64;
+            let (full, rest) = chunks.as_chunks_mut::<GROUPS>();
+            for g in full {
+                // SAFETY: AVX-512 F, BW and VBMI are enabled by cfg.
+                unsafe { groups::<GROUPS>(g, table) }
+            }
+            for c in rest {
+                // SAFETY: as above.
+                unsafe { groups::<1>(core::array::from_mut(c), table) }
+            }
+            done
+        }
+
+        pub(in crate::hilbert3) fn from_morton_u64(keys: &mut [u64]) -> usize {
+            run(keys, &ENCODE_PADDED)
+        }
+
+        pub(in crate::hilbert3) fn into_morton_u64(keys: &mut [u64]) -> usize {
+            run(keys, &DECODE_PADDED)
+        }
     }
 
     #[cfg(all(
@@ -690,7 +972,10 @@ mod batch {
         target_feature = "avx512vbmi",
         not(feature = "portable")
     ))]
-    pub(super) use vbmi::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
+    pub(super) use {
+        planes::{from_morton_u64, into_morton_u64},
+        vbmi::{from_morton_u32, into_morton_u32},
+    };
 
     #[cfg(all(
         target_arch = "aarch64",

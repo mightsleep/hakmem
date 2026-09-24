@@ -417,6 +417,32 @@ mod hilbert2_in_place {
     }
 
     #[test]
+    fn group_boundaries_3d() {
+        // The `u64` plane kernel takes 512 keys at a time, then whole
+        // groups of 64, then leaves the rest to the per-key form; 200
+        // never reaches the first of those.
+        for n in [
+            511,
+            512,
+            513,
+            575,
+            576,
+            577,
+            1023,
+            1024,
+            1025,
+            4096 + 64 * 3 + 7,
+        ] {
+            let codes = xorshift(n, 0x9E37_79B9_7F4A_7C15 ^ n as u64);
+            let mut scratch = vec![0; n];
+            assert!(
+                laws::hilbert3_in_place_matches_per_key_u64(&codes, &mut scratch),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
     fn every_length_to_200_3d() {
         for n in 0..=200 {
             let codes = xorshift(n, 0x2545_F491_4F6C_DD1D ^ n as u64);
