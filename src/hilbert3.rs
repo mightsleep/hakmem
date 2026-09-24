@@ -580,12 +580,18 @@ mod batch {
     #[allow(unsafe_code)]
     mod vbmi {
         use core::arch::x86_64::{
-            _mm512_and_si512, _mm512_loadu_si512, _mm512_or_si512, _mm512_permutex2var_epi8,
-            _mm512_set1_epi32, _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi32,
-            _mm512_slli_epi64, _mm512_srlv_epi32, _mm512_srlv_epi64, _mm512_storeu_si512,
+            _mm512_and_si512, _mm512_loadu_si512, _mm512_permutex2var_epi8, _mm512_set1_epi32,
+            _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi32, _mm512_slli_epi64,
+            _mm512_srlv_epi32, _mm512_srlv_epi64, _mm512_storeu_si512, _mm512_ternarylogic_epi64,
         };
 
         use super::super::{DECODE_PADDED, ENCODE_PADDED};
+
+        // `vpternlog` truth tables over `(a, b, c) = (0xF0, 0xCC, 0xAA)`.
+        /// `(a & c) | b`
+        const AND_OR: i32 = 0xEC;
+        /// `a | (b & c)`
+        const OR_AND: i32 = 0xF8;
 
         macro_rules! kernel {
             ($name:ident, $table:ident, $w:ty, $lanes:literal, $set1:ident, $srlv:ident, $slli:ident) => {
@@ -617,14 +623,16 @@ mod batch {
                                 level -= 1;
                                 let shift = $set1((3 * level).into());
                                 for r in 0..REGS {
-                                    let index = _mm512_or_si512(
-                                        _mm512_and_si512($srlv(code[r], shift), octant),
+                                    let index = _mm512_ternarylogic_epi64::<AND_OR>(
+                                        $srlv(code[r], shift),
                                         state[r],
+                                        octant,
                                     );
                                     let entry = _mm512_permutex2var_epi8(lo, index, hi);
-                                    acc[r] = _mm512_or_si512(
+                                    acc[r] = _mm512_ternarylogic_epi64::<OR_AND>(
                                         $slli::<3>(acc[r]),
-                                        _mm512_and_si512(entry, octant),
+                                        entry,
+                                        octant,
                                     );
                                     state[r] = _mm512_and_si512(entry, state_bits);
                                 }
