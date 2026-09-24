@@ -378,6 +378,57 @@ const DECODE_PADDED: [u8; 128] = {
     t
 };
 
+// The frame `(m, t)` is an element of `A₄ = V₄ ⋊ C₃`, and only the
+// rotation `m` needs a table. In the octant basis `x = ea | eb << 1 |
+// p << 2` (`ea = v1 ^ v2`, `eb = v0 ^ v1`, `p` the parity) the
+// translation is a XOR on the low two bits, so a step of either machine
+// is a XOR, a lookup in 24 entries keyed by `(m, x ^ t)` or `(m, triple)`,
+// and a XOR of `t` into the frame below (and, decoding, into the
+// octant). Checked here against both tables on all 96 entries: the
+// shape of a kernel for 16-entry shuffles (PSHUFB, `tbl` over two
+// registers) where the 96-entry tables do not fit.
+const _: () = {
+    const fn to_x(o: u8) -> u8 {
+        let (v0, v1, v2) = (o & 1, (o >> 1) & 1, (o >> 2) & 1);
+        (v1 ^ v2) | (v0 ^ v1) << 1 | (v0 ^ v1 ^ v2) << 2
+    }
+    const fn from_x(x: u8) -> u8 {
+        let (ea, eb, p) = (x & 1, (x >> 1) & 1, (x >> 2) & 1);
+        (p ^ ea) | (ea ^ p ^ eb) << 1 | (p ^ eb) << 2
+    }
+    let mut state = 0u8;
+    while state < 12 {
+        let (m, t) = (state / 4, state % 4);
+        let mut octant = 0u8;
+        while octant < 8 {
+            assert!(from_x(to_x(octant)) == octant);
+            // Encode: the entry of `(m, x ^ t)` in the frame `(m, 0)`.
+            let (triple, below) = encode_step(m * 4, from_x(to_x(octant) ^ t));
+            let entry = ENCODE_TABLE[(state * 8 + octant) as usize];
+            assert!(
+                entry == (below & !3 | (below & 3) ^ t) * 8 + triple,
+                "the encode table does not factor through A₄"
+            );
+            // Decode: the entry of `(m, triple)` in the frame `(m, 0)`.
+            let triple = entry & 7;
+            let (y, below) = {
+                let mut o = 0u8;
+                while encode_step(m * 4, o).0 != triple {
+                    o += 1;
+                }
+                (to_x(o), encode_step(m * 4, o).1)
+            };
+            assert!(
+                DECODE_PADDED[(state * 8 + triple) as usize]
+                    == (below & !3 | (below & 3) ^ t) * 8 + from_x(y ^ t),
+                "the decode table does not factor through A₄"
+            );
+            octant += 1;
+        }
+        state += 1;
+    }
+};
+
 macro_rules! hilbert3_batch {
     ($($w:ty => $encode:ident, $decode:ident),* $(,)?) => {$(
         impl Hilbert3<$w> {
