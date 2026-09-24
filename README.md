@@ -16,16 +16,38 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-b4befe?style=for-the-badge&labelColor=313244">
 </p>
 
-Typed combinator algebra over machine words. A register is an 8- to
-128-element container; an instruction (POPCNT, TZCNT, the carry chain,
-PEXT/PDEP, PCLMULQDQ) is a combinator; a kernel is a composition. The
-crate names the combinators, restricts them to the domains where they
-are lawful, and exports the laws they obey so downstream code can
-property-test its own carriers and backends.
+Every fast codebase has a `bits.rs`: one-liners from Hacker's Delight,
+each under a comment that says `// do not touch`. This crate is that
+file with the comment replaced by a proof obligation. Every trick has a
+name, a type, a domain where it is defined, and the laws it obeys,
+property-tested on every carrier from `u8` to `[u64; N]` and
+exhaustively at 8 and 16 bits. The laws are exported, so your own
+backends can be held to them too.
+
+The plan was correctness. Speed turned up anyway:
+
+- Hilbert encode at 1.3 ns a point in 2D, where `fast_hilbert` takes 12;
+  the 3D curve beats the 96-byte lookup tables it was derived from.
+- A rectangle becomes 16 sorted key ranges in 0.3 µs (Morton) or 1.1 µs
+  (Hilbert); "can this row group hold anything in the rectangle" takes
+  10 to 100 ns.
+- Levenshtein on a 64-byte pattern over 1 KiB of text in 2.4 µs, where
+  `strsim` takes 44 and `triple_accel` 235. Fuzzy search reports where
+  each match starts, too, which the bit-parallel column does not know.
+- Rank over 2^20 bits in two thirds of `sux`'s time, bounds checks
+  included.
+
+`no_std`, zero dependencies, stable Rust, no `unsafe` outside the
+intrinsics. Where it loses (and it does, see the tables), the tables
+say so.
 
 Named after [HAKMEM](https://en.wikipedia.org/wiki/HAKMEM) (MIT AI Memo
 239, 1972), items 161–180 of which are the first catalogue of these
-sentences.
+tricks. They still work; now a compiler checks.
+
+## A tour
+
+Every line is a doctest, so if this README lies, CI goes red.
 
 ```rust
 use hakmem::{Bits, Hilbert2, Hilbert3, Morton2, Words};
@@ -82,8 +104,14 @@ assert_eq!(escaped, 0b10_0000_0100);
 use hakmem::myers::{distance, distance_in, search};
 assert_eq!(distance_in::<u64>(b"kitten", b"sitting"), Some(3));
 assert_eq!(distance(b"kitten", b"sitting"), Some(3)); // carrier by length
-let hits: Vec<_> = search::<u64>(b"lo", b"hello lo", 0).unwrap().collect();
-assert_eq!(hits, [(5, 0), (8, 0)]);
+// Fuzzy search, with where each match starts. The typo is deliberate.
+let text = b"the quick brown fox and the quikc brown fox";
+let found: Vec<_> = search::<u64>(b"quick brown fox", text, 2)
+    .unwrap()
+    .occurrences()
+    .map(|o| (o.start(), o.distance()))
+    .collect();
+assert_eq!(found, [(4, 0), (28, 2)]);
 
 // Patterns wider than a register: `Wide<N>` is `[u64; N]` as one word,
 // and the same Myers code runs on it unchanged.
@@ -118,14 +146,17 @@ assert_eq!((dir.rank(64), dir.select(3)), (3, Some(64)));
 
 ## Status
 
-This is a learning project, one person's, and far from production.
-I am working through the broadword literature by giving each trick a
-type, a law and a test; the crate is what that leaves behind. Expect
-the API to change between minor versions, and do not expect every
-definition to be the best one available: the portable `select` loses
-to a plain loop for small `k`, the portable `compact` to one over sparse
-masks, and definitions were chosen for clarity and lawfulness before
-speed.
+One person's learning project, and far from production. I am working
+through the broadword literature by giving each trick a type, a law and
+a test; the crate is what that leaves behind. Definitions were chosen
+for lawfulness first and speed second, and it shows in places: the
+portable `select` loses to a plain loop for small `k`, the portable
+`compact` to one over sparse masks.
+
+The API will change between minor versions (0.2 broke 0.1 without
+apology). It changes on purpose, though: `public-api.txt` is checked in
+and diffed in CI, and cargo-semver-checks says whether the version
+number admits it.
 
 What I do take seriously is finding bugs. Every combinator ships
 with laws; the laws run on every carrier, with and without the
@@ -137,39 +168,25 @@ it. A slow one may be known; the design notes linked at the end list
 what is.
 
 If you need a stable dependency today, take the two or three lines
-you need from Hacker's Delight; that is where this crate started. If
-you want to see them named, typed and checked, read on.
+you need from Hacker's Delight; that is where this crate started, and
+their MSRV is 1972. If you want them named, typed and checked, read on.
 
-## Checks
+## Examples
 
-Every cell is one Nix derivation built in a sandbox without network,
-on every push to `main`. The badges are written by CI after each run
-(`.github/status.sh`) and read from the [site](https://mightsleep.github.io/hakmem/).
-
-| check | `x86_64` | `aarch64` |
-|---|---|---|
-| tests, portable | [![hakmem-test-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-test-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-test-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| tests, `+bmi2,+pclmulqdq,+avx2` | [![hakmem-test-bmi2-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
-| tests, `+bmi2` with feature `portable` | [![hakmem-test-bmi2-portable-feature](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-portable-feature.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
-| tests, debug build (asserts, overflow checks) | [![hakmem-test-debug](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-debug.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-test-debug](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-test-debug.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| doctests (this README), portable | [![hakmem-doctest-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-doctest-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doctest-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| doctests, `+bmi2` | [![hakmem-doctest-bmi2](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-bmi2.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
-| clippy, portable | [![hakmem-clippy-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-clippy-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-clippy-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| clippy, `+bmi2` | [![hakmem-clippy-bmi2-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
-| clippy, `+bmi2` with feature `portable` | [![hakmem-clippy-bmi2-portable-feature](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-portable-feature.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
-| rustdoc, warnings as errors | [![hakmem-doc](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doc.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-doc](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doc.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| public API matches `public-api.txt` | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| MSRV 1.89 build of the packaged tarball | [![hakmem-msrv](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-msrv.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-msrv](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-msrv.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| cargo-deny (licences, bans, sources) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| cargo-audit (advisories, offline) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| treefmt | [![treefmt](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Ftreefmt.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![treefmt](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Ftreefmt.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| Miri over the intrinsics, both paths | [![miri](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fmiri.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+`examples/` holds four programs written the way a user would write them,
+each checking itself against the slow way: `geo_index` (a million
+points in row groups, a rectangle query that skips most of them),
+`primes` (the primes below ten million as a bitmap with rank and
+select), `json_structure` (the first stage of simdjson, carries across
+64-byte blocks) and `fuzzy` (the nearest words to a typo, and a phrase
+found with its typos). `cargo run --release --example geo_index`.
 
 ## Benchmarks against the crates people use
 
 Criterion, AMD Zen 5, one thread, `cargo bench --bench
 incumbents`. Numbers are from a sandboxed run; rerun on your machine
-before believing them. What the table does not hide: without BMI2 the
+before believing them. Bold marks the winner, also when it is not
+this crate. What the tables do not hide: without BMI2 the
 select is slower than the `broadword` crate's, and `Wide<N>` pays `N`
 limb operations per step.
 
@@ -354,16 +371,6 @@ let hits: usize = Hilbert2::cover(8..=15, 8..=15, &mut ranges)
 assert_eq!(hits, 3);
 ```
 
-## Examples
-
-`examples/` holds four programs written the way a user would write them,
-each checking itself against the slow way: `geo_index` (a million
-points in row groups, a rectangle query that skips most of them),
-`primes` (the primes below ten million as a bitmap with rank and
-select), `json_structure` (the first stage of simdjson, carries across
-64-byte blocks) and `fuzzy` (the nearest words to a typo, and a phrase
-found with its typos). `cargo run --release --example geo_index`.
-
 ## Cookbook
 
 `hakmem::cookbook` explains how the shipped kernels were composed:
@@ -418,6 +425,33 @@ tests in debug once.
 `no_std`, zero dependencies, stable Rust. The one allocating convenience
 (`Rank9Buf`) sits behind the default `alloc` feature; with
 `default-features = false` nothing in the crate allocates.
+
+## Checks
+
+Every cell is one Nix derivation built in a sandbox without network,
+on every push to `main`. The badges are written by CI after each run
+(`.github/status.sh`) and read from the [site](https://mightsleep.github.io/hakmem/).
+A lot of cells for a crate of one-liners; the one-liner wrong for one
+input in 65 536 is the bug they exist for.
+
+| check | `x86_64` | `aarch64` |
+|---|---|---|
+| tests, portable | [![hakmem-test-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-test-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-test-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| tests, `+bmi2,+pclmulqdq,+avx2` | [![hakmem-test-bmi2-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| tests, `+bmi2` with feature `portable` | [![hakmem-test-bmi2-portable-feature](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-portable-feature.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| tests, debug build (asserts, overflow checks) | [![hakmem-test-debug](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-debug.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-test-debug](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-test-debug.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| doctests (this README), portable | [![hakmem-doctest-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-doctest-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doctest-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| doctests, `+bmi2` | [![hakmem-doctest-bmi2](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-bmi2.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| clippy, portable | [![hakmem-clippy-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-clippy-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-clippy-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| clippy, `+bmi2` | [![hakmem-clippy-bmi2-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| clippy, `+bmi2` with feature `portable` | [![hakmem-clippy-bmi2-portable-feature](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-portable-feature.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| rustdoc, warnings as errors | [![hakmem-doc](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doc.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-doc](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doc.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| public API matches `public-api.txt` | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| MSRV 1.89 build of the packaged tarball | [![hakmem-msrv](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-msrv.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-msrv](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-msrv.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| cargo-deny (licences, bans, sources) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| cargo-audit (advisories, offline) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| treefmt | [![treefmt](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Ftreefmt.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![treefmt](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Ftreefmt.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| Miri over the intrinsics, both paths | [![miri](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fmiri.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 
 Design: [`docs/design.md`](https://github.com/mightsleep/hakmem/blob/main/docs/design.md),
 the decisions behind the API, the hardware policy, how the laws are
