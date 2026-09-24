@@ -1,12 +1,20 @@
 //! The algebra's laws as exported property functions.
 //!
 //! Each function returns `true` when the law holds for its inputs.
-//! The crate tests them against the `reference` module's bit-loop model for
-//! `u32`, `u64` and `u128`, with and without the BMI2 fast paths (see
-//! `tests/laws.rs`); downstream carriers and backends run the same
-//! functions over their own types. A law that fails is a bug in the
-//! backend, never a caveat in the docs.
+//! The crate tests them against the `reference` module's bit-loop model on
+//! every carrier from `u8` to `u128` and on `Wide`, on every hardware path
+//! the CI matrix builds (see `tests/laws.rs`); downstream carriers and
+//! backends run the same functions over their own types. A law that
+//! fails is a bug in the backend, never a caveat in the docs.
+//!
+//! The laws are API, under semver like the rest: a new law is a minor
+//! release, a law that changes its name, its arguments or its claim is a
+//! breaking one. A test suite built on them should not wake up to a
+//! different theorem.
 
+use crate::affine::Affine8;
+use crate::bits::truth_table;
+use crate::lanes::{Lanes, U8x8, U8x16};
 use crate::permute::board8::{self, Dir};
 use crate::prelude::*;
 use crate::rank9::Rank9;
@@ -60,6 +68,18 @@ pub fn prefix_xor_matches_reference<W: Word>(x: W) -> bool {
     x.prefix_xor() == reference::prefix_xor(x)
 }
 
+/// `suffix_xor` is the per-bit parity from the top, the inverse of
+/// `gray_encode` both ways, and `prefix_xor` seen in a mirror:
+/// reverse, scan, reverse back.
+#[must_use]
+pub fn suffix_xor_laws<W: Word>(x: W) -> bool {
+    let s = x.suffix_xor();
+    s == reference::prefix_xor_from_top(x)
+        && s.gray_encode() == x
+        && x.gray_encode().suffix_xor() == x
+        && s == reference::reverse_bits(reference::reverse_bits(x).prefix_xor())
+}
+
 // --- set view ---------------------------------------------------------
 
 /// `rank` is monotone in its bound. `i` in `0..BITS`.
@@ -98,6 +118,33 @@ pub fn select_is_rank_inverse<W: Word>(x: W, k: u32) -> bool {
 #[must_use]
 pub fn select_matches_reference<W: Word>(x: W, k: u32) -> bool {
     x.select(k) == reference::select(x, k)
+}
+
+/// `Ord` is the order of unsigned integers: the highest bit where two
+/// words differ decides. A derived order on limbs gets this wrong, which
+/// is how the law came to be.
+#[must_use]
+pub fn order_is_unsigned<W: Word>(a: W, b: W) -> bool {
+    let mut want = core::cmp::Ordering::Equal;
+    for i in (0..W::BITS).rev() {
+        if a.bit(i) != b.bit(i) {
+            want = if a.bit(i) {
+                core::cmp::Ordering::Greater
+            } else {
+                core::cmp::Ordering::Less
+            };
+            break;
+        }
+    }
+    a.cmp(&b) == want
+}
+
+/// `select_lowest` is total: the `k`-th set bit, or `BITS` when there
+/// is none, for every `k` up to `u32::MAX`, on every build. It used to
+/// panic, return garbage or return 64, depending on the flags.
+#[must_use]
+pub fn select_lowest_is_total<W: Word>(x: W, k: u32) -> bool {
+    x.select_lowest(k) == reference::select(x, k).unwrap_or(W::BITS)
 }
 
 // --- compact / expand -------------------------------------------------
@@ -146,7 +193,7 @@ pub fn compact_composes<W: Word>(x: W, m: W, n: W) -> bool {
 #[must_use]
 pub fn dilated_roundtrip<W: Word, const D: u32>(x: W) -> bool {
     let x = x.and(W::low_ones(Dilated::<W, D>::width()));
-    Dilated::<W, D>::from_int(x).into_int() == x
+    Dilated::<W, D>::from_int(x).to_int() == x
 }
 
 /// `incr` in dilated space is `+ 1` modulo the dilated width.
@@ -154,7 +201,7 @@ pub fn dilated_roundtrip<W: Word, const D: u32>(x: W) -> bool {
 pub fn dilated_incr_is_add_one<W: Word, const D: u32>(x: W) -> bool {
     let width = W::low_ones(Dilated::<W, D>::width());
     let x = x.and(width);
-    Dilated::<W, D>::from_int(x).incr().into_int() == x.wrapping_add(W::ONE).and(width)
+    Dilated::<W, D>::from_int(x).incr().to_int() == x.wrapping_add(W::ONE).and(width)
 }
 
 /// `decr` undoes `incr`.
@@ -170,7 +217,7 @@ pub fn dilated_add_is_add<W: Word, const D: u32>(a: W, b: W) -> bool {
     let width = W::low_ones(Dilated::<W, D>::width());
     let (a, b) = (a.and(width), b.and(width));
     let (da, db) = (Dilated::<W, D>::from_int(a), Dilated::<W, D>::from_int(b));
-    da.wrapping_add(db).into_int() == a.wrapping_add(b).and(width)
+    da.wrapping_add(db).to_int() == a.wrapping_add(b).and(width)
 }
 
 /// Encoding then decoding a Morton code returns the coordinates.
@@ -206,9 +253,517 @@ pub fn morton_aligned_block_is_contiguous<W: Word>(x: W, y: W) -> bool {
         && cell(W::ONE, W::ONE) == base.or(W::low_ones(2))
 }
 
+// --- Hilbert ------------------------------------------------------------
+
+/// The 3D decode scan and the memoised encode agree with the
+/// twelve-state machine walked level by level in GF(4) arithmetic,
+/// both directions, and undo each other. On the full-width curve.
+#[must_use]
+pub fn hilbert3_matches_reference<W: Word>(h: W) -> bool {
+    let h = h.and(W::low_ones(3 * Hilbert3::<W>::LEVELS));
+    let hi = Hilbert3::from_index(h);
+    let m = hi.to_morton();
+    m == reference::hilbert3_morton_machine(hi)
+        && Hilbert3::from_morton(m) == hi
+        && reference::hilbert3_index_machine(m) == hi
+}
+
+/// Encode undoes decode on coordinates of the full-width cube, and on
+/// Morton codes.
+#[must_use]
+pub fn hilbert3_roundtrip<W: Word>(x: W, y: W, z: W) -> bool {
+    let side = W::low_ones(Hilbert3::<W>::LEVELS);
+    let (x, y, z) = (x.and(side), y.and(side), z.and(side));
+    let m = Morton3::encode(x, y, z);
+    Hilbert3::encode(x, y, z).decode() == (x, y, z) && Hilbert3::from_morton(m).to_morton() == m
+}
+
+/// The 3D curve is a path: indices `h` and `h + 1` are cells one step
+/// apart along exactly one axis.
+#[must_use]
+pub fn hilbert3_consecutive_are_adjacent<W: Word>(h: W) -> bool {
+    let last = W::low_ones(3 * Hilbert3::<W>::LEVELS);
+    let h = h.and(last);
+    if h == last {
+        return true;
+    }
+    let (x0, y0, z0) = Hilbert3::from_index(h).decode();
+    let (x1, y1, z1) = Hilbert3::from_index(h.wrapping_add(W::ONE)).decode();
+    let unit = |a: W, b: W| a.wrapping_sub(b) == W::ONE || b.wrapping_sub(a) == W::ONE;
+    (x0 == x1 && y0 == y1 && unit(z0, z1))
+        || (x0 == x1 && z0 == z1 && unit(y0, y1))
+        || (y0 == y1 && z0 == z1 && unit(x0, x1))
+}
+
+/// The curve of `order + 1` restricted to its first octant is the
+/// curve of `order` with the axes rotated once, `(x, y, z) ↦ (y, z, x)`,
+/// and every curve starts at the origin. `order` in `0..BITS / 3`.
+#[must_use]
+pub fn hilbert3_order_laws<W: Word>(x: W, y: W, z: W, order: u32) -> bool {
+    let side = W::low_ones(order);
+    let (x, y, z) = (x.and(side), y.and(side), z.and(side));
+    let h = Hilbert3::encode_order(x, y, z, order + 1);
+    h == Hilbert3::encode_order(y, z, x, order)
+        && h.decode_order(order + 1) == (x, y, z)
+        && Hilbert3::encode_order(W::ZERO, W::ZERO, W::ZERO, order).index() == W::ZERO
+}
+
+/// The state-machine encode and the two-scan decode agree with the
+/// textbook loops (`xy2d` / `d2xy`) and undo each other.
+///
+/// On the curve of `order` levels, `order` in `0..=BITS / 2`;
+/// coordinates are masked to it.
+#[must_use]
+pub fn hilbert_matches_reference<W: Word>(x: W, y: W, order: u32) -> bool {
+    let side = W::low_ones(order);
+    let (x, y) = (x.and(side), y.and(side));
+    let h = Hilbert2::encode_order(x, y, order);
+    h.index() == reference::hilbert_index(x, y, order)
+        && Hilbert2::encode(x, y).index() == reference::hilbert_index_machine(x, y)
+        && h.decode_order(order) == (x, y)
+        && reference::hilbert_coords(h.index(), order) == (x, y)
+}
+
+/// On the full-width curve: encode undoes decode and decode encode, on
+/// coordinates and on Morton codes alike.
+#[must_use]
+pub fn hilbert_roundtrip<W: Word>(x: W, y: W) -> bool {
+    let half = W::low_ones(W::BITS / 2);
+    let (x, y) = (x.and(half), y.and(half));
+    let h = Hilbert2::encode(x, y);
+    let m = Morton2::encode(x, y);
+    h.decode() == (x, y)
+        && Hilbert2::from_morton(m).to_morton() == m
+        && Hilbert2::from_morton(Hilbert2::from_index(m.code()).to_morton()).index() == m.code()
+}
+
+/// The curve is a path: indices `h` and `h + 1` are cells one step
+/// apart, along exactly one axis.
+#[must_use]
+pub fn hilbert_consecutive_are_adjacent<W: Word>(h: W) -> bool {
+    if h == W::ONES {
+        return true;
+    }
+    let (x0, y0) = Hilbert2::from_index(h).decode();
+    let (x1, y1) = Hilbert2::from_index(h.wrapping_add(W::ONE)).decode();
+    let unit = |a: W, b: W| a.wrapping_sub(b) == W::ONE || b.wrapping_sub(a) == W::ONE;
+    (x0 == x1 && unit(y0, y1)) || (y0 == y1 && unit(x0, x1))
+}
+
+/// The curve of `order + 1` restricted to its first quadrant is the
+/// curve of `order` transposed, and every curve runs from `(0, 0)` to
+/// `(2^order − 1, 0)`.
+///
+/// A zero top pair transposes the frame below it. `order` in
+/// `0..BITS / 2`.
+#[must_use]
+pub fn hilbert_order_laws<W: Word>(x: W, y: W, order: u32) -> bool {
+    let side = W::low_ones(order);
+    let (x, y) = (x.and(side), y.and(side));
+    Hilbert2::encode_order(x, y, order + 1) == Hilbert2::encode_order(y, x, order)
+        && Hilbert2::encode_order(W::ZERO, W::ZERO, order).index() == W::ZERO
+        && Hilbert2::encode_order(side, W::ZERO, order).index() == W::low_ones(2 * order)
+}
+
+macro_rules! hilbert2_in_place_law {
+    ($($w:ty => $name:ident),* $(,)?) => {$(
+        /// The batch conversion is the per-key one, both ways.
+        ///
+        /// `codes` copied into `scratch` (same length, asserted) and
+        /// converted in place equals [`Hilbert2::from_morton`] of each
+        /// code, and converting back gives `codes`. Lengths off a multiple
+        /// of the batch exercise the tail.
+        #[must_use]
+        pub fn $name(codes: &[$w], scratch: &mut [$w]) -> bool {
+            assert_eq!(codes.len(), scratch.len(), "scratch must match codes");
+            scratch.copy_from_slice(codes);
+            Hilbert2::<$w>::from_morton_in_place(scratch);
+            let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
+                h == Hilbert2::<$w>::from_morton(Morton2::from_code(c)).index()
+            });
+            Hilbert2::<$w>::to_morton_in_place(scratch);
+            forward && scratch == codes
+        }
+    )*};
+}
+
+hilbert2_in_place_law!(
+    u32 => hilbert2_in_place_matches_per_key_u32,
+    u64 => hilbert2_in_place_matches_per_key_u64,
+);
+
+macro_rules! hilbert3_in_place_law {
+    ($($w:ty => $name:ident),* $(,)?) => {$(
+        /// The 3D batch conversion is the per-key one, both ways.
+        ///
+        /// As in the 2D law: `codes` copied into `scratch` (same length,
+        /// asserted), converted in place, compared with
+        /// [`Hilbert3::from_morton`](crate::hilbert3::Hilbert3::from_morton)
+        /// of each code, and converted back to `codes`. Bits above
+        /// `3 · LEVELS` are outside the curve and are masked off first.
+        #[must_use]
+        pub fn $name(codes: &[$w], scratch: &mut [$w]) -> bool {
+            use crate::dilated::Morton3;
+            use crate::hilbert3::Hilbert3;
+            assert_eq!(codes.len(), scratch.len(), "scratch must match codes");
+            let used: $w = <$w>::MAX >> (<$w>::BITS - 3 * Hilbert3::<$w>::LEVELS);
+            for (s, &c) in scratch.iter_mut().zip(codes) {
+                *s = c & used;
+            }
+            Hilbert3::<$w>::from_morton_in_place(scratch);
+            let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
+                h == Hilbert3::<$w>::from_morton(Morton3::from_code(c & used)).index()
+            });
+            Hilbert3::<$w>::to_morton_in_place(scratch);
+            forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
+        }
+    )*};
+}
+
+hilbert3_in_place_law!(
+    u32 => hilbert3_in_place_matches_per_key_u32,
+    u64 => hilbert3_in_place_matches_per_key_u64,
+);
+
+/// The 3D column conversions are the per-point ones, both ways.
+///
+/// [`Hilbert3::encode_columns`](crate::hilbert3::Hilbert3::encode_columns)
+/// is [`Hilbert3::encode`](crate::hilbert3::Hilbert3::encode) per point,
+/// and [`decode_columns`](crate::hilbert3::Hilbert3::decode_columns)
+/// takes the indices back to the coordinates, masked to the 21 bits the
+/// curve has. `keys` and `out` are scratch of the columns' length
+/// (asserted); `out` holds the three decoded columns end to end.
+///
+/// # Panics
+///
+/// If the columns differ in length, or `keys` and `out` are not one
+/// and three times it.
+#[must_use]
+pub fn hilbert3_columns_match_per_point(
+    xs: &[u64],
+    ys: &[u64],
+    zs: &[u64],
+    keys: &mut [u64],
+    out: &mut [u64],
+) -> bool {
+    use crate::hilbert3::Hilbert3;
+    let n = xs.len();
+    assert!(ys.len() == n && zs.len() == n, "columns must match");
+    assert!(
+        keys.len() == n && out.len() == 3 * n,
+        "scratch must match the columns"
+    );
+    Hilbert3::<u64>::encode_columns(xs, ys, zs, keys);
+    let forward = (0..n).all(|i| keys[i] == Hilbert3::<u64>::encode(xs[i], ys[i], zs[i]).index());
+    let (ox, rest) = out.split_at_mut(n);
+    let (oy, oz) = rest.split_at_mut(n);
+    Hilbert3::<u64>::decode_columns(keys, ox, oy, oz);
+    let used = (1u64 << Hilbert3::<u64>::LEVELS) - 1;
+    forward && (0..n).all(|i| (ox[i], oy[i], oz[i]) == (xs[i] & used, ys[i] & used, zs[i] & used))
+}
+
+macro_rules! morton2_columns_law {
+    ($($w:ty => $name:ident),* $(,)?) => {$(
+        /// The 2D Morton column conversions are the per-point ones, both
+        /// ways.
+        ///
+        /// [`Morton2::encode_columns`](crate::dilated::Morton2::encode_columns)
+        /// is [`Morton2::encode`](crate::dilated::Morton2::encode) per
+        /// point, and `decode_columns` gives the coordinates back, masked
+        /// to the `BITS / 2` bits a code holds. `codes` and `out` are
+        /// scratch of the columns' length and twice it (asserted).
+        #[must_use]
+        pub fn $name(xs: &[$w], ys: &[$w], codes: &mut [$w], out: &mut [$w]) -> bool {
+            use crate::dilated::Morton2;
+            let n = xs.len();
+            assert!(ys.len() == n, "columns must match");
+            assert!(codes.len() == n && out.len() == 2 * n, "scratch must match the columns");
+            Morton2::<$w>::encode_columns(xs, ys, codes);
+            let forward = (0..n).all(|i| codes[i] == Morton2::<$w>::encode(xs[i], ys[i]).code());
+            let (ox, oy) = out.split_at_mut(n);
+            Morton2::<$w>::decode_columns(codes, ox, oy);
+            let used = <$w>::MAX >> (<$w>::BITS / 2);
+            forward && (0..n).all(|i| (ox[i], oy[i]) == (xs[i] & used, ys[i] & used))
+        }
+    )*};
+}
+
+morton2_columns_law!(
+    u32 => morton2_columns_match_per_point_u32,
+    u64 => morton2_columns_match_per_point_u64,
+);
+
+macro_rules! hilbert2_columns_law {
+    ($($w:ty => $name:ident),* $(,)?) => {$(
+        /// The 2D Hilbert column conversions are the per-point ones, both
+        /// ways.
+        ///
+        /// [`Hilbert2::encode_columns`](crate::hilbert::Hilbert2::encode_columns)
+        /// is [`Hilbert2::encode`](crate::hilbert::Hilbert2::encode) per
+        /// point, and `decode_columns` gives the coordinates back, masked
+        /// to the `LEVELS` bits the curve has. `keys` and `out` are
+        /// scratch of the columns' length and twice it (asserted).
+        #[must_use]
+        pub fn $name(xs: &[$w], ys: &[$w], keys: &mut [$w], out: &mut [$w]) -> bool {
+            use crate::hilbert::Hilbert2;
+            let n = xs.len();
+            assert!(ys.len() == n, "columns must match");
+            assert!(keys.len() == n && out.len() == 2 * n, "scratch must match the columns");
+            Hilbert2::<$w>::encode_columns(xs, ys, keys);
+            let forward = (0..n).all(|i| keys[i] == Hilbert2::<$w>::encode(xs[i], ys[i]).index());
+            let (ox, oy) = out.split_at_mut(n);
+            Hilbert2::<$w>::decode_columns(keys, ox, oy);
+            let used = <$w>::MAX >> (<$w>::BITS / 2);
+            forward && (0..n).all(|i| (ox[i], oy[i]) == (xs[i] & used, ys[i] & used))
+        }
+    )*};
+}
+
+hilbert2_columns_law!(
+    u32 => hilbert2_columns_match_per_point_u32,
+    u64 => hilbert2_columns_match_per_point_u64,
+);
+
+/// Room for the gaps of an exact cover in the `u16` cover laws.
+const GAPS: usize = 4096;
+
+macro_rules! cover_laws {
+    ($($curve:ident => $small:ident, $wide:ident, $encode:expr, $encode64:expr;)*) => {$(
+        /// The cover of a rectangle on the `u16` grid (256 × 256),
+        /// checked cell by cell against the curve's encode.
+        ///
+        /// The ranges are sorted, inclusive, disjoint and not touching,
+        /// at most `out.len()`, and hold every cell of the rectangle; when
+        /// the exact cover (the runs of the rectangle's keys) has at most
+        /// `out.len()` ranges, the result is that cover and nothing else.
+        #[must_use]
+        pub fn $small(x: (u16, u16), y: (u16, u16), out: &mut [(u16, u16)]) -> bool {
+            use crate::prelude::*;
+            let n = $curve::<u16>::cover(x.0..=x.1, y.0..=y.1, out).len();
+            if n > out.len() {
+                return false;
+            }
+            let ranges = &out[..n];
+            let ordered = ranges.iter().all(|r| r.0 <= r.1)
+                && ranges.windows(2).all(|w| u32::from(w[0].1) + 1 < u32::from(w[1].0));
+            // Keys held by the ranges, and keys of the rectangle's cells.
+            let mut held = [0u64; 1024];
+            let mut wanted = [0u64; 1024];
+            for &(a, b) in ranges {
+                for k in a..=b {
+                    held[usize::from(k) / 64] |= 1 << (k % 64);
+                }
+            }
+            let (x1, y1) = (x.1.min(255), y.1.min(255));
+            for cx in x.0..=x1 {
+                for cy in y.0..=y1 {
+                    let k: u16 = $encode(cx, cy);
+                    wanted[usize::from(k) / 64] |= 1 << (k % 64);
+                }
+            }
+            let covers = held.iter().zip(&wanted).all(|(h, w)| w & !h == 0);
+            // Runs of the wanted keys: rising edges of the bitmap.
+            let mut runs = 0;
+            let mut prev = false;
+            for k in 0..65_536usize {
+                let bit = wanted[k / 64] >> (k % 64) & 1 == 1;
+                runs += usize::from(bit && !prev);
+                prev = bit;
+            }
+            let exact = runs > out.len() || (held == wanted && n == runs);
+            // Between one and two budgets of runs the walk reaches the
+            // cells, and the merge must keep the largest gaps: the keys
+            // held are the cells and the `runs - budget` smallest gaps.
+            let optimal = if runs > out.len() && runs <= 2 * out.len() && runs <= GAPS {
+                let mut gaps = [0u32; GAPS];
+                let (mut g, mut last_end, mut prev) = (0, None::<u32>, false);
+                for k in 0..65_536u32 {
+                    let bit = wanted[k as usize / 64] >> (k % 64) & 1 == 1;
+                    if bit && !prev {
+                        if let Some(end) = last_end {
+                            gaps[g] = k - end - 1;
+                            g += 1;
+                        }
+                    }
+                    if !bit && prev {
+                        last_end = Some(k - 1);
+                    }
+                    prev = bit;
+                }
+                let gaps = &mut gaps[..g];
+                gaps.sort_unstable();
+                let extra: u32 = gaps[..runs - out.len()].iter().sum();
+                let ones = |m: &[u64; 1024]| m.iter().map(|w| w.count_ones()).sum::<u32>();
+                n == out.len() && ones(&held) == ones(&wanted) + extra
+            } else {
+                true
+            };
+            ordered && covers && exact && optimal
+        }
+
+        /// The cover on the full `u64` grid: well formed, within budget,
+        /// and holding each of `points` that lies in the rectangle (found
+        /// by binary search over the ranges).
+        #[must_use]
+        pub fn $wide(x: (u64, u64), y: (u64, u64), points: &[(u64, u64)], out: &mut [(u64, u64)]) -> bool {
+            use crate::prelude::*;
+            let n = $curve::<u64>::cover(x.0..=x.1, y.0..=y.1, out).len();
+            if n > out.len() {
+                return false;
+            }
+            let ranges = &out[..n];
+            let ordered = ranges.iter().all(|r| r.0 <= r.1)
+                && ranges.windows(2).all(|w| w[0].1 < w[1].0 && w[1].0 - w[0].1 > 1);
+            let side = u64::from(u32::MAX);
+            let inside = |p: &(u64, u64)| {
+                x.0 <= p.0 && p.0 <= x.1.min(side) && y.0 <= p.1 && p.1 <= y.1.min(side)
+            };
+            ordered
+                && points.iter().filter(|p| inside(p)).all(|&(px, py)| {
+                    let k: u64 = $encode64(px, py);
+                    let i = ranges.partition_point(|r| r.1 < k);
+                    i < n && ranges[i].0 <= k
+                })
+        }
+    )*};
+}
+
+cover_laws! {
+    Morton2 => morton2_cover_matches_cells, morton2_cover_holds_points,
+        |x, y| Morton2::<u16>::encode(x, y).code(), |x, y| Morton2::<u64>::encode(x, y).code();
+    Hilbert2 => hilbert2_cover_matches_cells, hilbert2_cover_holds_points,
+        |x, y| Hilbert2::<u16>::encode(x, y).index(), |x, y| Hilbert2::<u64>::encode(x, y).index();
+}
+
+macro_rules! intersects_laws {
+    ($($curve:ident . $key:ident => $small:ident, $wide:ident;)*) => {$(
+        /// `intersects` against the cells, on any carrier: true exactly
+        /// when some cell of the rectangle has its key in `keys`. It
+        /// visits every cell, so keep the rectangle small past `u16`.
+        #[must_use]
+        pub fn $small<W: Word>(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
+            use crate::prelude::*;
+            let side = W::low_ones(W::BITS / 2);
+            let (x1, y1) = (x.1.min(side), y.1.min(side));
+            let mut any = false;
+            let mut cx = x.0;
+            while x.0 <= x1 && y.0 <= y1 {
+                let mut cy = y.0;
+                loop {
+                    let k = $curve::<W>::encode(cx, cy).$key();
+                    any |= keys.0 <= k && k <= keys.1;
+                    if cy == y1 {
+                        break;
+                    }
+                    cy = cy.wrapping_add(W::ONE);
+                }
+                if cx == x1 {
+                    break;
+                }
+                cx = cx.wrapping_add(W::ONE);
+            }
+            $curve::<W>::intersects(keys.0..=keys.1, x.0..=x.1, y.0..=y.1) == any
+        }
+
+        /// `intersects` against `cover`, on any carrier and any grid.
+        ///
+        /// Every gap between the ranges of a cover misses the rectangle,
+        /// and every interval holding the key of one of `points` inside
+        /// it meets it: the key alone, and a long run of keys before it.
+        /// `out` is the cover's scratch.
+        #[must_use]
+        pub fn $wide<W: Word>(x: (W, W), y: (W, W), points: &[(W, W)], out: &mut [(W, W)]) -> bool {
+            use crate::prelude::*;
+            let meets = |a: W, b: W| $curve::<W>::intersects(a..=b, x.0..=x.1, y.0..=y.1);
+            let n = $curve::<W>::cover(x.0..=x.1, y.0..=y.1, out).len();
+            let gaps_miss = out[..n]
+                .windows(2)
+                .all(|w| !meets(w[0].1.wrapping_add(W::ONE), w[1].0.wrapping_sub(W::ONE)));
+            let ends_miss = n == 0
+                || ((out[0].0 == W::ZERO || !meets(W::ZERO, out[0].0.wrapping_sub(W::ONE)))
+                    && (out[n - 1].1 == W::ONES || !meets(out[n - 1].1.wrapping_add(W::ONE), W::ONES)));
+            let side = W::low_ones(W::BITS / 2);
+            // 2^40 keys on u64, as many relative to the width elsewhere.
+            let long = W::ONE.shl(W::BITS * 5 / 8);
+            let hits = points
+                .iter()
+                .filter(|p| x.0 <= p.0 && p.0 <= x.1.min(side) && y.0 <= p.1 && p.1 <= y.1.min(side))
+                .all(|&(px, py)| {
+                    let k = $curve::<W>::encode(px, py).$key();
+                    let before = if k >= long { k.wrapping_sub(long) } else { W::ZERO };
+                    meets(k, k) && meets(before, k)
+                });
+            gaps_miss && ends_miss && hits
+        }
+    )*};
+}
+
+intersects_laws! {
+    Morton2.code => morton2_intersects_matches_cells, morton2_intersects_agrees_with_cover;
+    Hilbert2.index => hilbert2_intersects_matches_cells, hilbert2_intersects_agrees_with_cover;
+}
+
+macro_rules! hilbert_in_place_order_law {
+    ($($w:ty => $name2:ident, $name3:ident),* $(,)?) => {$(
+        /// The batch on the curve of `order` levels is
+        /// [`Hilbert2::encode_order`] per key, both ways.
+        ///
+        /// `codes` masked to `4^order`, copied into `scratch` (same
+        /// length, asserted), converted with
+        /// `from_morton_in_place_order`, compared per key, and converted
+        /// back with `to_morton_in_place_order`. `order` in
+        /// `0..=LEVELS`.
+        #[must_use]
+        pub fn $name2(codes: &[$w], scratch: &mut [$w], order: u32) -> bool {
+            assert_eq!(codes.len(), scratch.len(), "scratch must match codes");
+            let used = <$w>::MAX.checked_shl(2 * order).map_or(<$w>::MAX, |m| !m);
+            for (s, &c) in scratch.iter_mut().zip(codes) {
+                *s = c & used;
+            }
+            Hilbert2::<$w>::from_morton_in_place_order(scratch, order);
+            let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
+                let (x, y) = Morton2::<$w>::from_code(c & used).decode();
+                h == Hilbert2::<$w>::encode_order(x, y, order).index()
+            });
+            Hilbert2::<$w>::to_morton_in_place_order(scratch, order);
+            forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
+        }
+
+        /// The 3D batch on the curve of `order` levels is
+        /// [`Hilbert3::encode_order`](crate::hilbert3::Hilbert3::encode_order)
+        /// per key, both ways, as in the 2D law, with codes masked to
+        /// `8^order`.
+        #[must_use]
+        pub fn $name3(codes: &[$w], scratch: &mut [$w], order: u32) -> bool {
+            use crate::dilated::Morton3;
+            use crate::hilbert3::Hilbert3;
+            assert_eq!(codes.len(), scratch.len(), "scratch must match codes");
+            let used = <$w>::MAX.checked_shl(3 * order).map_or(<$w>::MAX, |m| !m);
+            for (s, &c) in scratch.iter_mut().zip(codes) {
+                *s = c & used;
+            }
+            Hilbert3::<$w>::from_morton_in_place_order(scratch, order);
+            let forward = codes.iter().zip(scratch.iter()).all(|(&c, &h)| {
+                let (x, y, z) = Morton3::<$w>::from_code(c & used).decode();
+                h == Hilbert3::<$w>::encode_order(x, y, z, order).index()
+            });
+            Hilbert3::<$w>::to_morton_in_place_order(scratch, order);
+            forward && scratch.iter().zip(codes).all(|(&s, &c)| s == c & used)
+        }
+    )*};
+}
+
+hilbert_in_place_order_law!(
+    u32 => hilbert2_in_place_order_matches_per_key_u32, hilbert3_in_place_order_matches_per_key_u32,
+    u64 => hilbert2_in_place_order_matches_per_key_u64, hilbert3_in_place_order_matches_per_key_u64,
+);
+
 /// Bit-loop reference semantics. Slow, obviously correct, the thing
 /// every combinator is measured against.
 pub mod reference {
+    use crate::affine::Affine8;
+    use crate::dilated::Morton3;
+    use crate::hilbert3::Hilbert3;
     use crate::word::Word;
 
     /// Bit `p` set iff bits `p..p + k` of `x` are all set.
@@ -305,6 +860,183 @@ pub mod reference {
         out
     }
 
+    /// Bit `i` of the result is bit `BITS - 1 - i` of `x`.
+    #[must_use]
+    pub fn reverse_bits<W: Word>(x: W) -> W {
+        let mut out = W::ZERO;
+        for i in 0..W::BITS {
+            if x.bit(i) {
+                out = out.or(W::ONE.shl(W::BITS - 1 - i));
+            }
+        }
+        out
+    }
+
+    /// The Hilbert index of `(x, y)` on the curve of `order` levels:
+    /// the `xy2d` loop, top level first.
+    ///
+    /// Rotates the frame after each quadrant. Quadrants in the order
+    /// lower-left, upper-left, upper-right, lower-right.
+    #[must_use]
+    pub fn hilbert_index<W: Word>(mut x: W, mut y: W, order: u32) -> W {
+        let mut d = W::ZERO;
+        for level in (0..order).rev() {
+            let (rx, ry) = (x.bit(level), y.bit(level));
+            let q: u32 = match (rx, ry) {
+                (false, false) => 0,
+                (false, true) => 1,
+                (true, true) => 2,
+                (true, false) => 3,
+            };
+            d = d.or(quad::<W>(q).shl(2 * level));
+            // Only the bits below `level` still matter.
+            let below = W::low_ones(level);
+            (x, y) = (x.and(below), y.and(below));
+            if !ry {
+                if rx {
+                    (x, y) = (x.xor(below), y.xor(below));
+                }
+                (x, y) = (y, x);
+            }
+        }
+        d
+    }
+
+    /// The `(x, y)` of Hilbert index `d` on the curve of `order` levels:
+    /// the `d2xy` loop, bottom level first, rotating what is built so
+    /// far into each quadrant's frame.
+    #[must_use]
+    pub fn hilbert_coords<W: Word>(d: W, order: u32) -> (W, W) {
+        let (mut x, mut y) = (W::ZERO, W::ZERO);
+        for level in 0..order {
+            let rx = d.bit(2 * level + 1);
+            let ry = d.bit(2 * level) ^ rx;
+            let below = W::low_ones(level);
+            if !ry {
+                if rx {
+                    (x, y) = (x.xor(below), y.xor(below));
+                }
+                (x, y) = (y, x);
+            }
+            if rx {
+                x = x.or(W::ONE.shl(level));
+            }
+            if ry {
+                y = y.or(W::ONE.shl(level));
+            }
+        }
+        (x, y)
+    }
+
+    /// The Hilbert index of `(x, y)` on the full-width curve by the
+    /// four-state machine written in the frame flags: the loop
+    /// `Hilbert2::from_morton` replaces, kept as the second reference
+    /// and the bench baseline.
+    #[must_use]
+    pub fn hilbert_index_machine<W: Word>(x: W, y: W) -> W {
+        let levels = W::BITS / 2;
+        let (mut swap, mut flip) = (false, false);
+        let mut index = W::ZERO;
+        for level in (0..levels).rev() {
+            let (xb, yb) = (x.bit(level), y.bit(level));
+            let lo = xb ^ yb;
+            let hi = xb ^ flip ^ (swap && lo);
+            swap ^= !(hi ^ lo);
+            flip ^= hi && lo;
+            index = index.or(quad::<W>(u32::from(hi) << 1 | u32::from(lo)).shl(2 * level));
+        }
+        index
+    }
+
+    /// The 3D Hilbert decode as the twelve-state machine, one level at
+    /// a time.
+    ///
+    /// The frame `(m, t)` in GF(4), the octant `q(i) = i ^ (i >> 1)`
+    /// placed in it, the frame below `(m·m_g, t + m·t_g)`. The loop the
+    /// scan in `Hilbert3::to_morton` replaces.
+    #[must_use]
+    pub fn hilbert3_morton_machine<W: Word>(h: Hilbert3<W>) -> Morton3<W> {
+        let h = h.index();
+        let levels = W::BITS / 3;
+        let (mut ma, mut mb, mut ta, mut tb) = (1u8, 0u8, 0u8, 0u8);
+        let mut code = W::ZERO;
+        for level in (0..levels).rev() {
+            let bit = |k: u32| u8::from(h.bit(3 * level + k));
+            let (i0, i1, i2) = (bit(0), bit(1), bit(2));
+            // The octant as (e, p).
+            let e = (i1, i0 ^ i2);
+            let p = i0;
+            let (fa, fb) = gf4(ma, mb, e.0, e.1);
+            let (ea, eb) = (fa ^ ta, fb ^ tb);
+            let (v0, v1, v2) = (ea ^ p, ea ^ eb ^ p, eb ^ p);
+            code = code.or(quad::<W>(u32::from(v0) | u32::from(v1) << 1).shl(3 * level));
+            if v2 == 1 {
+                code = code.or(W::ONE.shl(3 * level + 2));
+            }
+            // The map of this triple, then the frame below.
+            let both = i0 & i1;
+            let either = i0 | i1;
+            let maj = both | (i2 & (i0 ^ i1));
+            let par = i0 ^ i1 ^ i2;
+            let (ga, gb) = (par ^ maj, (i2 ^ maj) ^ 1);
+            let (ha, hb) = (both | (i2 & (either ^ 1)), i2 & either);
+            let (sa, sb) = gf4(ma, mb, ha, hb);
+            (ta, tb) = (ta ^ sa, tb ^ sb);
+            (ma, mb) = gf4(ma, mb, ga, gb);
+        }
+        Morton3::from_code(code)
+    }
+
+    /// The 3D Hilbert encode as the twelve-state machine, one level at
+    /// a time, in GF(4) arithmetic.
+    ///
+    /// The definition `Hilbert3::from_morton` memoises. Per level the
+    /// octant `(e, p)` in the frame is `e' = m⁻¹·(e + t)`, the triple
+    /// `(p, e'_a, e'_b ^ p)`, the frame below `(m·m_g, t + m·t_g)`.
+    #[must_use]
+    pub fn hilbert3_index_machine<W: Word>(m: Morton3<W>) -> Hilbert3<W> {
+        let code = m.code();
+        let levels = W::BITS / 3;
+        let (mut ma, mut mb, mut ta, mut tb) = (1u8, 0u8, 0u8, 0u8);
+        let mut index = W::ZERO;
+        for level in (0..levels).rev() {
+            let bit = |k: u32| u8::from(code.bit(3 * level + k));
+            let (v0, v1, v2) = (bit(0), bit(1), bit(2));
+            let p = v0 ^ v1 ^ v2;
+            let (fa, fb) = gf4(ma ^ mb, mb, v0 ^ p ^ ta, v2 ^ p ^ tb);
+            let (i0, i1, i2) = (p, fa, fb ^ p);
+            let both = i0 & i1;
+            let either = i0 | i1;
+            let maj = both | (i2 & (i0 ^ i1));
+            let par = i0 ^ i1 ^ i2;
+            let (ga, gb) = (par ^ maj, (i2 ^ maj) ^ 1);
+            let (ha, hb) = (both | (i2 & (either ^ 1)), i2 & either);
+            let (sa, sb) = gf4(ma, mb, ha, hb);
+            (ta, tb) = (ta ^ sa, tb ^ sb);
+            (ma, mb) = gf4(ma, mb, ga, gb);
+            index = index.or(quad::<W>(u32::from(i0) | u32::from(i1) << 1).shl(3 * level));
+            if i2 == 1 {
+                index = index.or(W::ONE.shl(3 * level + 2));
+            }
+        }
+        Hilbert3::from_index(index)
+    }
+
+    /// GF(4) product on one-bit `u8` scalars, `ω² = ω + 1`.
+    const fn gf4(a: u8, b: u8, c: u8, d: u8) -> (u8, u8) {
+        (a & c ^ b & d, a & d ^ b & c ^ b & d)
+    }
+
+    /// A quadrant number as a word.
+    fn quad<W: Word>(q: u32) -> W {
+        match q {
+            0 => W::ZERO,
+            1 => W::ONE,
+            2 => W::ONE.shl(1),
+            _ => W::low_ones(2),
+        }
+    }
+
     /// Position of the `k`-th set bit, by counting.
     #[must_use]
     pub fn select<W: Word>(x: W, k: u32) -> Option<u32> {
@@ -347,6 +1079,34 @@ pub mod reference {
                     out = out.or(W::ONE.shl(i));
                 }
                 k += 1;
+            }
+        }
+        out
+    }
+
+    /// `x ↦ A·x ⊕ b` on one byte, bit by bit: output bit `i` is the XOR
+    /// over `j` of `row_i[j] & x[j]`, then bit `i` of the constant.
+    #[must_use]
+    pub fn affine(map: Affine8, x: u8) -> u8 {
+        let mut out = 0u8;
+        for i in 0..8 {
+            let mut bit = map.add() >> i & 1;
+            for j in 0..8 {
+                bit ^= (map.row(i) >> j & 1) & (x >> j & 1);
+            }
+            out |= bit << i;
+        }
+        out
+    }
+
+    /// Bit `i` of the result is bit `4 a_i + 2 b_i + c_i` of `table`.
+    #[must_use]
+    pub fn ternary<W: Word>(a: W, b: W, c: W, table: u8) -> W {
+        let mut out = W::ZERO;
+        for i in 0..W::BITS {
+            let k = u32::from(a.bit(i)) << 2 | u32::from(b.bit(i)) << 1 | u32::from(c.bit(i));
+            if table >> k & 1 == 1 {
+                out = out.or(W::ONE.shl(i));
             }
         }
         out
@@ -422,7 +1182,7 @@ pub fn swar_lanes_match_reference<W: Word>(x: W, b: u8, n: u8) -> bool {
 
 // --- slice ---------------------------------------------------------------
 
-/// Slice `rank`/`select`/`next_set_after`/`find_run` agree with the
+/// Slice `rank`/`select`/`next_set_from`/`find_run` agree with the
 /// bit-loop definitions over the concatenated words.
 // `p % bits < BITS` fits a u32.
 #[allow(clippy::cast_possible_truncation)]
@@ -431,53 +1191,46 @@ pub fn slice_ops_match_reference<W: Word>(words: &[W], i: usize, k: u32) -> bool
     let bits = W::BITS as usize;
     let total = words.len() * bits;
     let bit = |p: usize| words[p / bits].bit((p % bits) as u32);
-    let set: alloc_free::Positions = (0..total).filter(|&p| bit(p)).collect();
+    // The reference counts instead of collecting. It collected into 512
+    // slots once, which held until a test handed it four `Wide<3>` of ones.
+    let set = || (0..total).filter(|&p| bit(p));
 
-    let rank_ok = crate::slice::rank(words, i) == set.iter().filter(|&&p| p < i).count();
-    let select_ok = crate::slice::select(words, i) == set.get(i).copied();
-    let next_ok = crate::slice::next_set_after(words, i) == set.iter().copied().find(|&p| p >= i);
+    let rank_ok = words.rank(i) == set().filter(|&p| p < i).count();
+    let select_ok = words.select(i) == set().nth(i);
+    let next_ok = words.next_set_from(i) == set().find(|&p| p >= i);
     let run_ref = (0..total).find(|&s| s + k as usize <= total && (s..s + k as usize).all(bit));
-    let run_ok = crate::slice::find_run(words, k) == run_ref;
-    let positions_ok = crate::slice::positions(words).eq(set.iter().copied());
+    let run_ok = words.find_run(k) == run_ref;
+    let positions_ok = words.positions().eq(set());
+    let bits_ok = (0..total).all(|p| words.bit(p) == bit(p));
     rank_ok
         && select_ok
         && next_ok
         && run_ok
         && positions_ok
-        && crate::slice::popcount(words) == set.len()
+        && bits_ok
+        && words.count_ones() == set().count()
 }
 
-/// Tiny fixed-capacity position list so the slice reference stays
-/// `no_std` (slices in the laws are at most 4 words wide).
-mod alloc_free {
-    pub(super) struct Positions {
-        buf: [usize; 512],
-        len: usize,
-    }
-    impl Positions {
-        pub(super) fn iter(&self) -> core::slice::Iter<'_, usize> {
-            self.buf[..self.len].iter()
-        }
-        pub(super) fn get(&self, i: usize) -> Option<&usize> {
-            self.buf[..self.len].get(i)
-        }
-        pub(super) const fn len(&self) -> usize {
-            self.len
-        }
-    }
-    impl FromIterator<usize> for Positions {
-        fn from_iter<I: IntoIterator<Item = usize>>(it: I) -> Self {
-            let mut p = Self {
-                buf: [0; 512],
-                len: 0,
-            };
-            for v in it {
-                p.buf[p.len] = v;
-                p.len += 1;
-            }
-            p
-        }
-    }
+/// `set_bit` and `clear_bit` change bit `i` and no other: `scratch`
+/// takes a copy of `words` (same length, asserted), `i` in the bits.
+///
+/// # Panics
+///
+/// If `scratch` and `words` differ in length.
+#[must_use]
+pub fn slice_bit_writes_touch_one_bit<W: Word>(words: &[W], scratch: &mut [W], i: usize) -> bool {
+    assert_eq!(words.len(), scratch.len(), "scratch must match words");
+    let total = words.len() * W::BITS as usize;
+    let others_kept = |s: &[W]| {
+        (0..total)
+            .filter(|&p| p != i)
+            .all(|p| s.bit(p) == words.bit(p))
+    };
+    scratch.copy_from_slice(words);
+    scratch.set_bit(i);
+    let set = scratch.bit(i) && others_kept(scratch);
+    scratch.clear_bit(i);
+    set && !scratch.bit(i) && others_kept(scratch)
 }
 
 // --- permute --------------------------------------------------------------
@@ -655,6 +1408,27 @@ pub fn find_escaped_matches_reference<W: Word>(words: &[W], prev_ends_odd: bool)
     true
 }
 
+/// `prefix_xor_carry` over a chain of words is the prefix parity of the
+/// concatenation, bit by bit, the carry in and out included.
+#[must_use]
+pub fn prefix_xor_carry_matches_reference<W: Word>(words: &[W], carry_in: bool) -> bool {
+    let (mut carry, mut parity) = (carry_in, carry_in);
+    for &w in words {
+        let (x, next) = w.prefix_xor_carry(carry);
+        for i in 0..W::BITS {
+            parity ^= w.bit(i);
+            if x.bit(i) != parity {
+                return false;
+            }
+        }
+        if next != parity {
+            return false;
+        }
+        carry = next;
+    }
+    true
+}
+
 // --- algebra: composition and homomorphism laws ------------------------------
 //
 // The first hand-collected "identity family" (doc 13 §9.2, layer 3):
@@ -794,11 +1568,11 @@ pub fn block_starts_laws<W: Word>(rows: &[W], w1: u32, h1: u32, w2: u32, h2: u32
 #[must_use]
 pub fn rank9_matches_slice(dir: &Rank9<'_>, i: usize, k: usize) -> bool {
     let bits = dir.bits();
-    let rank = crate::slice::rank(bits, i);
+    let rank = bits.rank(i);
     dir.rank(i) == rank
         && dir.rank0(i) == i.min(dir.len()) - rank
-        && dir.select(k) == crate::slice::select(bits, k)
-        && dir.count_ones() == crate::slice::popcount(bits)
+        && dir.select(k) == bits.select(k)
+        && dir.count_ones() == bits.count_ones()
 }
 
 /// `select` inverts `rank` on set bits: for `k < count_ones()`,
@@ -860,4 +1634,404 @@ pub fn board8_slides_match_reference(pieces: u64, empty: u64, dir: Dir) -> bool 
         }
     }
     board8::slide(pieces, empty, dir) == expect
+}
+
+// --- lanes ------------------------------------------------------------
+
+/// Every [`Lanes`] operation against its per-lane scalar definition.
+///
+/// On `lhs` and `rhs` with shift `n` and lookup `table`; `rhs` doubles as
+/// the index vector of `shuffle` and the weights of `mul_add_pairs`, and
+/// `concat_shift` is checked for every offset.
+#[must_use]
+pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) -> bool {
+    let lanes = L::LANES;
+    let mask = |c: bool| if c { 0xFF } else { 0 };
+    let lut = |v: u8| {
+        if v & 0x80 == 0 {
+            table[usize::from(v & 15)]
+        } else {
+            0
+        }
+    };
+    let bits = lhs.to_bitmask();
+    let lanewise = (0..lanes).all(|i| {
+        let (x, y) = (lhs.lane(i), rhs.lane(i));
+        let lane_bit = u32::try_from(i).is_ok_and(|i| bits.bit(i));
+        lhs.and(rhs).lane(i) == x & y
+            && lhs.or(rhs).lane(i) == x | y
+            && lhs.xor(rhs).lane(i) == x ^ y
+            && lhs.not().lane(i) == !x
+            && lhs.add(rhs).lane(i) == x.wrapping_add(y)
+            && lhs.sub(rhs).lane(i) == x.wrapping_sub(y)
+            && lhs.shl(n).lane(i) == if n >= 8 { 0 } else { x << n }
+            && lhs.shr(n).lane(i) == if n >= 8 { 0 } else { x >> n }
+            && lhs.cmp_eq(rhs).lane(i) == mask(x == y)
+            && lhs.cmp_le(rhs).lane(i) == mask(x <= y)
+            && lhs.cmp_lt(rhs).lane(i) == mask(x < y)
+            && lhs.cmp_ge(rhs).lane(i) == mask(x >= y)
+            && lhs.cmp_gt(rhs).lane(i) == mask(x > y)
+            && lhs.min(rhs).lane(i) == x.min(y)
+            && lhs.max(rhs).lane(i) == x.max(y)
+            && lhs.blend(rhs, lhs.cmp_le(rhs)).lane(i) == if x <= y { y } else { x }
+            && lhs.lut16(table).lane(i) == lut(x)
+            && lane_bit == (x & 0x80 != 0)
+            && lhs.add_sat(rhs).lane(i) == x.saturating_add(y)
+            && lhs.sub_sat(rhs).lane(i) == x.saturating_sub(y)
+            && lhs.shuffle(rhs).lane(i)
+                == if y & 0x80 == 0 {
+                    lhs.lane(usize::from(y) % lanes)
+                } else {
+                    0
+                }
+    });
+    let concat = (0..=2 * lanes + 1).all(|k| {
+        let r = lhs.concat_shift(rhs, k);
+        (0..lanes).all(|i| {
+            let j = i + k;
+            r.lane(i)
+                == if j < lanes {
+                    lhs.lane(j)
+                } else if j < 2 * lanes {
+                    rhs.lane(j - lanes)
+                } else {
+                    0
+                }
+        })
+    });
+    let (lo, hi) = (lhs.unpack_lo(rhs), lhs.unpack_hi(rhs));
+    let unpack = (0..lanes / 2).all(|k| {
+        lo.lane(2 * k) == lhs.lane(k)
+            && lo.lane(2 * k + 1) == rhs.lane(k)
+            && hi.lane(2 * k) == lhs.lane(lanes / 2 + k)
+            && hi.lane(2 * k + 1) == rhs.lane(lanes / 2 + k)
+    });
+    let sad = lhs.sum_abs_diff(rhs)
+        == (0..lanes)
+            .map(|i| u32::from(lhs.lane(i).abs_diff(rhs.lane(i))))
+            .sum::<u32>();
+    let products = lhs.mul_add_pairs(rhs);
+    let madd = (0..lanes / 2).all(|k| {
+        let term = |j: usize| i32::from(lhs.lane(j)) * i32::from(rhs.lane(j).cast_signed());
+        let sum = (term(2 * k) + term(2 * k + 1)).clamp(i32::from(i16::MIN), i32::from(i16::MAX));
+        // Clamped into range, so the narrowing is exact.
+        #[allow(clippy::cast_possible_truncation)]
+        let bytes = (sum as i16).to_le_bytes();
+        products.lane(2 * k) == bytes[0] && products.lane(2 * k + 1) == bytes[1]
+    });
+    lanewise
+        && concat
+        && unpack
+        && sad
+        && madd
+        && L::splat(0x5A).lane(lanes - 1) == 0x5A
+        && L::zero() == L::splat(0)
+        && lane_maps_match_reference(lhs, rhs, n, table)
+}
+
+/// Two table lookups are one: on lanes with the top bit clear,
+/// `lut16(lut16(x, a), b) == lut16(x, b ∘ a)`, the composed table
+/// applying PSHUFB's zero-on-top-bit rule to `a`'s entries.
+#[must_use]
+pub fn lut16_composes<L: Lanes>(x: L, a: [u8; 16], b: [u8; 16]) -> bool {
+    let x = x.and(L::splat(0x7F));
+    let mut composed = [0u8; 16];
+    for (c, &v) in composed.iter_mut().zip(a.iter()) {
+        *c = if v & 0x80 == 0 {
+            b[usize::from(v & 15)]
+        } else {
+            0
+        };
+    }
+    x.lut16(a).lut16(b) == x.lut16(composed)
+}
+
+/// The lane algebra and the word algebra agree where they meet: a
+/// compare folded to bits is the SWAR byte test of [`Bits`], and the
+/// count of matching lanes is [`Bits::count_bytes_eq`].
+#[must_use]
+pub fn lanes_agree_with_bits(x: u64, b: u8) -> bool {
+    let lanes = U8x8::new(x);
+    let eq = lanes.cmp_eq(U8x8::splat(b)).to_bitmask();
+    eq.count_ones() == x.count_bytes_eq(b)
+        && lanes.cmp_eq(U8x8::zero()).to_bitmask() == U8x8::new(x.zero_bytes()).to_bitmask()
+        && lanes.cmp_lt(U8x8::splat(0x80)).to_bitmask() == U8x8::new(x.bytes_lt(0x80)).to_bitmask()
+}
+
+/// The sixteen-lane carrier, whatever it compiles to, is two eight-lane
+/// SWAR carriers side by side.
+#[must_use]
+pub fn u8x16_agrees_with_halves(lhs: (u64, u64), rhs: (u64, u64), n: u32, table: [u8; 16]) -> bool {
+    let wide = |p: (u64, u64)| U8x16::from_halves(p.0, p.1);
+    let narrow = |p: (u64, u64)| (U8x8::new(p.0), U8x8::new(p.1));
+    let (x, y) = (wide(lhs), wide(rhs));
+    let ((xl, xh), (yl, yh)) = (narrow(lhs), narrow(rhs));
+    let pair = |l: U8x8, h: U8x8| (l.bits(), h.bits());
+    let mut matrix = [0u8; 8];
+    matrix.copy_from_slice(&table[..8]);
+    let map = Affine8::new(u64::from_le_bytes(matrix), table[8]);
+    x.and(y).halves() == pair(xl.and(yl), xh.and(yh))
+        && x.or(y).halves() == pair(xl.or(yl), xh.or(yh))
+        && x.xor(y).halves() == pair(xl.xor(yl), xh.xor(yh))
+        && x.not().halves() == pair(xl.not(), xh.not())
+        && x.add(y).halves() == pair(xl.add(yl), xh.add(yh))
+        && x.sub(y).halves() == pair(xl.sub(yl), xh.sub(yh))
+        && x.shl(n).halves() == pair(xl.shl(n), xh.shl(n))
+        && x.shr(n).halves() == pair(xl.shr(n), xh.shr(n))
+        && x.cmp_eq(y).halves() == pair(xl.cmp_eq(yl), xh.cmp_eq(yh))
+        && x.cmp_le(y).halves() == pair(xl.cmp_le(yl), xh.cmp_le(yh))
+        && x.lut16(table).halves() == pair(xl.lut16(table), xh.lut16(table))
+        && x.to_bitmask() == u16::from(xl.to_bitmask()) | u16::from(xh.to_bitmask()) << 8
+        && x.add_sat(y).halves() == pair(xl.add_sat(yl), xh.add_sat(yh))
+        && x.sub_sat(y).halves() == pair(xl.sub_sat(yl), xh.sub_sat(yh))
+        && x.mul_add_pairs(y).halves() == pair(xl.mul_add_pairs(yl), xh.mul_add_pairs(yh))
+        && x.sum_abs_diff(y) == xl.sum_abs_diff(yl) + xh.sum_abs_diff(yh)
+        && x.affine(map).halves() == pair(xl.affine(map), xh.affine(map))
+        && x.reverse_bits().halves() == pair(xl.reverse_bits(), xh.reverse_bits())
+        && x.sra(n).halves() == pair(xl.sra(n), xh.sra(n))
+        && x.rotl(n).halves() == pair(xl.rotl(n), xh.rotl(n))
+        && x.avg_round(y).halves() == pair(xl.avg_round(yl), xh.avg_round(yh))
+        && x.avg_floor(y).halves() == pair(xl.avg_floor(yl), xh.avg_floor(yh))
+        && x.ternary(y, x.not(), table[9]).halves()
+            == pair(
+                xl.ternary(yl, xl.not(), table[9]),
+                xh.ternary(yh, xh.not(), table[9]),
+            )
+        && x.lane(3) == xl.lane(3)
+        && x.lane(11) == xh.lane(3)
+}
+
+// --- ternary and sign-bit tests ---------------------------------------
+
+/// [`Bits::ternary`] agrees with the bit-by-bit reading of the table.
+#[must_use]
+pub fn ternary_is_truth_table<W: Word>(a: W, b: W, c: W, table: u8) -> bool {
+    a.ternary(b, c, table) == reference::ternary(a, b, c, table)
+}
+
+/// The table of a function is the function at `(0xF0, 0xCC, 0xAA)`.
+///
+/// For a handful of named functions, `ternary` with that table is the
+/// function, and the overflow tests of Hacker's Delight 2-13 come out
+/// as the immediates `0x42` and `0x18`.
+#[must_use]
+pub fn truth_table_names_the_function<W: Word>(a: W, b: W, c: W) -> bool {
+    fn mux<W: Word>(m: W, x: W, y: W) -> W {
+        m.and(x).or(m.not().and(y))
+    }
+    fn majority<W: Word>(a: W, b: W, c: W) -> W {
+        a.and(b).or(a.and(c)).or(b.and(c))
+    }
+    fn xor3<W: Word>(a: W, b: W, c: W) -> W {
+        a.xor(b).xor(c)
+    }
+    fn add_overflow<W: Word>(a: W, b: W, s: W) -> W {
+        a.xor(b).not().and(a.xor(s))
+    }
+    fn sub_overflow<W: Word>(a: W, b: W, d: W) -> W {
+        a.xor(b).and(a.xor(d))
+    }
+    a.ternary(b, c, truth_table(mux::<u8>)) == mux(a, b, c)
+        && a.ternary(b, c, truth_table(majority::<u8>)) == majority(a, b, c)
+        && a.ternary(b, c, truth_table(xor3::<u8>)) == xor3(a, b, c)
+        && truth_table(add_overflow::<u8>) == 0x42
+        && truth_table(sub_overflow::<u8>) == 0x18
+        && a.ternary(b, c, 0x42) == add_overflow(a, b, c)
+        && a.ternary(b, c, 0x18) == sub_overflow(a, b, c)
+}
+
+/// Signed overflow from three sign bits agrees with the sign comparison.
+///
+/// For addition the operands agree in sign and the sum does not; for
+/// subtraction they differ and the difference disagrees with the
+/// minuend; and both tests are the ternary immediates `0x42` and `0x18`.
+#[must_use]
+pub fn signed_overflow_matches_sign_test<W: Word>(a: W, b: W) -> bool {
+    let top = |w: W| w.bit(W::BITS - 1);
+    let (sum, diff) = (a.wrapping_add(b), a.wrapping_sub(b));
+    a.signed_add_overflows(b) == (top(a) == top(b) && top(sum) != top(a))
+        && a.signed_sub_overflows(b) == (top(a) != top(b) && top(diff) != top(a))
+        && a.signed_add_overflows(b) == top(a.ternary(b, sum, 0x42))
+        && a.signed_sub_overflows(b) == top(a.ternary(b, diff, 0x18))
+}
+
+// --- affine -----------------------------------------------------------
+
+/// An [`Affine8`] map agrees with its bit-by-bit definition: on one
+/// byte (`apply`), on every byte of a word (`apply8`), through the
+/// nibble tables, and on every lane of the SWAR carrier.
+#[must_use]
+pub fn affine_matches_reference(map: Affine8, word: u64) -> bool {
+    let (lo, hi) = map.tables();
+    let by_word = map.apply8(word).to_le_bytes();
+    let by_lanes = U8x8::new(word).affine(map);
+    word.to_le_bytes().iter().enumerate().all(|(i, &x)| {
+        let want = reference::affine(map, x);
+        map.apply(x) == want
+            && by_word[i] == want
+            && by_lanes.lane(i) == want
+            && lo[usize::from(x & 15)] ^ hi[usize::from(x >> 4)] == want
+    })
+}
+
+/// Composition is matrix multiplication: `a.then(b)` applied is `b`
+/// after `a`, `compose` is the same map written the other way round,
+/// and the identity is neutral on both sides.
+#[must_use]
+pub fn affine_composes(a: Affine8, b: Affine8, x: u8) -> bool {
+    let splat = u64::from(x) * 0x0101_0101_0101_0101;
+    a.then(b).apply(x) == b.apply(a.apply(x))
+        && b.compose(a) == a.then(b)
+        && Affine8::IDENTITY.then(a) == a
+        && a.then(Affine8::IDENTITY) == a
+        && a.then(b).apply8(splat) == b.apply8(a.apply8(splat))
+}
+
+/// The named maps are the byte operations they are named after, for
+/// every shift count including those past the width.
+#[must_use]
+pub fn affine_named_maps_match_ops(x: u8, n: u32) -> bool {
+    let shl = if n >= 8 { 0 } else { x << n };
+    let shr = if n >= 8 { 0 } else { x >> n };
+    let sra = (x.cast_signed() >> n.min(7)).cast_unsigned();
+    let parity = if x.count_ones() & 1 == 1 { 0xFF } else { 0 };
+    Affine8::IDENTITY.apply(x) == x
+        && Affine8::NOT.apply(x) == !x
+        && Affine8::ZERO.apply(x) == 0
+        && Affine8::REVERSE.apply(x) == x.reverse_bits()
+        && Affine8::PARITY.apply(x) == parity
+        && Affine8::shl(n).apply(x) == shl
+        && Affine8::shr(n).apply(x) == shr
+        && Affine8::sra(n).apply(x) == sra
+        && Affine8::rotl(n).apply(x) == x.rotate_left(n)
+        && Affine8::rotr(n).apply(x) == x.rotate_right(n)
+        && Affine8::from_rows([1, 2, 4, 8, 16, 32, 64, 128], 0) == Affine8::IDENTITY
+        && (0..8).all(|i| Affine8::IDENTITY.row(i) == 1 << i)
+}
+
+/// The byte maps of [`Lanes`] against their scalar definitions, on
+/// `lhs` and `rhs` with shift `n`; the map under test is built from
+/// `table`, and so is the ternary truth table.
+#[must_use]
+pub fn lane_maps_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) -> bool {
+    let mut matrix = [0u8; 8];
+    matrix.copy_from_slice(&table[..8]);
+    let map = Affine8::new(u64::from_le_bytes(matrix), table[8]);
+    let truth = table[9];
+    let third = lhs.add(rhs);
+    (0..L::LANES).all(|i| {
+        let (x, y, z) = (lhs.lane(i), rhs.lane(i), third.lane(i));
+        lhs.affine(map).lane(i) == map.apply(x)
+            && lhs.reverse_bits().lane(i) == x.reverse_bits()
+            && lhs.sra(n).lane(i) == (x.cast_signed() >> n.min(7)).cast_unsigned()
+            && lhs.rotl(n).lane(i) == x.rotate_left(n)
+            && lhs.rotr(n).lane(i) == x.rotate_right(n)
+            && u16::from(lhs.avg_round(rhs).lane(i)) == (u16::from(x) + u16::from(y) + 1) >> 1
+            && u16::from(lhs.avg_floor(rhs).lane(i)) == u16::midpoint(u16::from(x), u16::from(y))
+            && lhs.ternary(rhs, third, truth).lane(i) == x.ternary(y, z, truth)
+    }) && L::zero().avg_round(L::zero().not()) == L::splat(0x80)
+}
+
+// --- carry-rippler and gather ------------------------------------------
+
+/// The carry-rippler is `+ 1` in the compacted domain: the next subset
+/// of `mask` after `x` is `expand(compact(x) + 1)`, and `None` exactly
+/// after the mask itself. Bits of `x` outside the mask are ignored.
+#[must_use]
+pub fn next_subset_is_increment_in_mask<W: Word>(x: W, mask: W) -> bool {
+    let s = x.and(mask);
+    let want = if s == mask {
+        None
+    } else {
+        Some(s.compact(mask).wrapping_add(W::ONE).expand(mask))
+    };
+    s.next_subset(mask) == want && x.next_subset(mask) == want
+}
+
+/// [`Bits::subsets`] enumerates every subset of `mask` exactly once,
+/// consecutive in the compacted domain, from zero to the mask. `mask`
+/// with at most 16 set bits;
+/// wider masks pass vacuously.
+#[must_use]
+pub fn subsets_enumerate_each_once<W: Word>(mask: W) -> bool {
+    let k = mask.count_ones();
+    if k > 16 {
+        return true;
+    }
+    let mut count = 0u32;
+    let mut previous = None;
+    for s in mask.subsets() {
+        count += 1;
+        let consecutive =
+            previous.is_none_or(|p: W| p.compact(mask).wrapping_add(W::ONE) == s.compact(mask));
+        if !consecutive || s.and(mask) != s {
+            return false;
+        }
+        previous = Some(s);
+    }
+    count == 1 << k && previous == Some(mask)
+}
+
+/// A gather triple with placement `place` agrees with [`Bits::compact`].
+///
+/// On every subset of the mask the result carries bit `i` of the
+/// compacted subset at bit `place(i) − target` and nothing else; since
+/// [`Bits::gather`] masks its input first, that is every input. `mask`
+/// with at most 16 set bits; wider masks pass vacuously.
+#[must_use]
+pub fn gather_is_exact_by<W: Word>(
+    mask: W,
+    factor: W,
+    target: u32,
+    place: impl Fn(u32) -> u32,
+) -> bool {
+    if mask.count_ones() > 16 {
+        return true;
+    }
+    mask.subsets().all(|s| {
+        let packed = s.compact(mask);
+        let mut want = W::ZERO;
+        for i in 0..mask.count_ones() {
+            if packed.bit(i) {
+                want = want.or(W::ONE.shl(place(i) - target));
+            }
+        }
+        s.gather(mask, factor, target) == want
+    })
+}
+/// An order-preserving gather triple agrees with [`Bits::compact`].
+///
+/// [`gather_is_exact_by`] with `place(i) = target + i`. `mask` with at
+/// most 16 set bits; wider masks pass vacuously.
+#[must_use]
+pub fn gather_is_exact<W: Word>(mask: W, factor: W, target: u32) -> bool {
+    gather_is_exact_by(mask, factor, target, |i| target + i)
+}
+
+/// Bits `stride` apart with `stride >= k` gather exactly.
+///
+/// The order-preserving factor exists iff every bit moves left and the
+/// window fits, and then the gather agrees with `compact`: the partial
+/// products `target + i + stride (j − i)` are distinct for distinct
+/// `(i, j)`, so nothing is ever added. Parameter sets the theorem does
+/// not cover pass vacuously.
+#[must_use]
+pub fn strided_gather_is_exact<W: Word>(
+    x: W,
+    start: u32,
+    stride: u32,
+    k: u32,
+    target: u32,
+) -> bool {
+    if k == 0 || stride < k || start + stride * (k - 1) >= W::BITS {
+        return true;
+    }
+    let mut mask = W::ZERO;
+    for i in 0..k {
+        mask = mask.or(W::ONE.shl(start + stride * i));
+    }
+    let fits = target + k <= W::BITS && target >= start + (stride - 1) * (k - 1);
+    W::gather_factor(mask, target).map_or(!fits, |factor| {
+        fits && x.gather(mask, factor, target) == x.compact(mask)
+    })
 }

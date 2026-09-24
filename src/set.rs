@@ -19,6 +19,7 @@ use crate::word::Word;
 /// assert_eq!(0u32.positions().len(), 0);
 /// ```
 #[derive(Clone, Debug)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
 pub struct Positions<W: Word>(pub(crate) W);
 
 impl<W: Word> Iterator for Positions<W> {
@@ -49,3 +50,46 @@ impl<W: Word> DoubleEndedIterator for Positions<W> {
 
 impl<W: Word> ExactSizeIterator for Positions<W> {}
 impl<W: Word> core::iter::FusedIterator for Positions<W> {}
+
+/// Iterator over the subsets of a mask, ascending, from zero to the mask.
+///
+/// The carry-rippler, [`Bits::next_subset`] per step; `2^count_ones(mask)`
+/// items. The way a magic-bitboard table is filled, one occupancy subset
+/// of the relevant squares at a time.
+///
+/// ```
+/// use hakmem::prelude::*;
+///
+/// let v: Vec<u8> = 0b1010u8.subsets().collect();
+/// assert_eq!(v, [0b0000, 0b0010, 0b1000, 0b1010]);
+/// assert_eq!(0u32.subsets().count(), 1);
+/// ```
+#[derive(Clone, Debug)]
+#[must_use = "iterators are lazy and do nothing unless consumed"]
+pub struct Subsets<W: Word> {
+    mask: W,
+    next: Option<W>,
+}
+
+impl<W: Word> Subsets<W> {
+    #[inline]
+    pub(crate) const fn new(mask: W) -> Self {
+        Self {
+            mask,
+            next: Some(W::ZERO),
+        }
+    }
+}
+
+impl<W: Word> Iterator for Subsets<W> {
+    type Item = W;
+
+    #[inline]
+    fn next(&mut self) -> Option<W> {
+        let current = self.next?;
+        self.next = current.next_subset(self.mask);
+        Some(current)
+    }
+}
+
+impl<W: Word> core::iter::FusedIterator for Subsets<W> {}

@@ -17,14 +17,18 @@
     # means the cell is not in that system's matrix.
     labels = {
       hakmem-test-portable-default = "tests, portable";
-      hakmem-test-bmi2-default = "tests, +bmi2,+pclmulqdq";
+      hakmem-test-bmi2-default = "tests, +bmi2,+pclmulqdq,+avx2";
       hakmem-test-bmi2-portable-feature = "tests, +bmi2 with feature portable";
+      hakmem-test-debug = "tests, debug build (debug asserts, overflow checks)";
+      hakmem-test-portable-no-default = "tests, portable, no default features (no alloc)";
+      hakmem-test-bmi2-no-default = "tests, +bmi2, no default features (no alloc)";
       hakmem-doctest-portable = "doctests, portable";
       hakmem-doctest-bmi2 = "doctests, +bmi2";
       hakmem-clippy-portable-default = "clippy, portable";
       hakmem-clippy-bmi2-default = "clippy, +bmi2";
       hakmem-clippy-bmi2-portable-feature = "clippy, +bmi2 with feature portable";
       hakmem-doc = "rustdoc, warnings as errors";
+      hakmem-public-api = "public API matches public-api.txt";
       hakmem-msrv = "MSRV build of the packaged tarball";
       hakmem-deny = "cargo-deny";
       hakmem-audit = "cargo-audit";

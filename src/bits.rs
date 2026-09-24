@@ -7,7 +7,7 @@
 //! `trailing_zeros`, `leading_zeros`, plus `pext` / `pdep` /
 //! `select_lowest` / `xor_scan` for the hardware-backed ones.
 
-use crate::set::Positions;
+use crate::set::{Positions, Subsets};
 use crate::word::Word;
 
 /// Every combinator of the algebra as a method. Blanket-implemented
@@ -23,7 +23,10 @@ use crate::word::Word;
 ///   -x`), Gray code, `find_escaped`, Kogge–Stone fills along a stride through a propagation mask.
 /// - **Compact / expand** (PEXT / PDEP): the bijection between "bits at the positions of `mask`"
 ///   and "the low `count_ones(mask)` bits".
-/// - **Basics** (HD ch. 2, HAKMEM 175): lowest-set-bit family, blend, powers of two, Gosper's hack.
+/// - **Multiply as shift-and-add**: a constant factor is a set of left shifts summed at once; when
+///   the copies never meet it is a broadcast, a scan or a gather (Kindergarten bitboards).
+/// - **Basics** (HD ch. 2, HAKMEM 175): lowest-set-bit family, blend, powers of two, Gosper's hack,
+///   the carry-rippler over the subsets of a mask.
 /// - **SWAR byte lanes** (HD 6-1): exact zero / equal / less-than tests on every byte at once; the
 ///   `strlen` / `memchr` sentences.
 /// - **Permutations**: delta swap, the primitive of every Beneš network (8×8 board permutations
@@ -111,6 +114,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("rank1"))]
     fn rank(self, i: u32) -> u32 {
         self.and(Self::low_ones(i)).count_ones()
     }
@@ -132,6 +136,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("select1"))]
     fn select(self, k: u32) -> Option<u32> {
         if k >= self.count_ones() {
             None
@@ -166,6 +171,12 @@ pub trait Bits: Word {
     fn positions(self) -> Positions<Self> {
         Positions(self)
     }
+    /// Every subset of `self` as a mask, ascending, starting at zero.
+    /// See [`Subsets`].
+    #[inline]
+    fn subsets(self) -> Subsets<Self> {
+        Subsets::new(self)
+    }
 
     // ===================================================================
     // Scans: prefix XOR / OR, Gray code, escapes, fills
@@ -189,8 +200,33 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("clmul", "prefix parity"))]
     fn prefix_xor(self) -> Self {
         self.xor_scan()
+    }
+
+    /// [`prefix_xor`](Bits::prefix_xor) over a stream of words: `carry`
+    /// is the parity of every word before, and comes back for the next.
+    /// The same shape as [`find_escaped`](Bits::find_escaped), so the
+    /// two chain block by block the same way; before this, the carry was
+    /// the top bit smeared by hand.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // A quote at bit 62 of one word and bit 1 of the next: the string
+    /// // spans the boundary.
+    /// let (a, carry) = (1u64 << 62).prefix_xor_carry(false);
+    /// let (b, carry) = 0b10u64.prefix_xor_carry(carry);
+    /// assert_eq!((a, b, carry), (0b11 << 62, 0b01, false));
+    /// ```
+    #[inline]
+    #[must_use]
+    fn prefix_xor_carry(self, carry: bool) -> (Self, bool) {
+        let x = self
+            .prefix_xor()
+            .xor(if carry { Self::ONES } else { Self::ZERO });
+        (x, x.bit(Self::BITS - 1))
     }
 
     /// Inverse of [`prefix_xor`](Bits::prefix_xor): `x ^ (x << 1)`,
@@ -204,24 +240,38 @@ pub trait Bits: Word {
     /// map to words differing in exactly one bit.
     #[inline]
     #[must_use]
+    #[doc(alias("gray code"))]
     fn gray_encode(self) -> Self {
         self.xor(self.shr(1))
     }
 
+    /// Bit `i` of the result is the XOR (parity) of bits `i..BITS`: the
+    /// scan of [`prefix_xor`](Bits::prefix_xor) run from the top. Its
+    /// inverse is [`gray_encode`](Bits::gray_encode), `x ^ (x >> 1)`.
+    /// State that depends on everything above a position, read at every
+    /// position at once: the orientation of a Hilbert curve at each
+    /// level ([`crate::hilbert`]), the Gray decode.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // Toggles at bits 2 and 6, read from the top: set on [3, 6].
+    /// let toggles: u8 = 0b0100_0100;
+    /// assert_eq!(toggles.suffix_xor(), 0b0111_1000);
+    /// ```
+    #[inline]
+    #[must_use]
+    fn suffix_xor(self) -> Self {
+        self.xor_scan_down()
+    }
+
     /// Inverse of [`gray_encode`](Bits::gray_encode): the prefix XOR
-    /// from the top, i.e. [`prefix_xor`](Bits::prefix_xor) of the
-    /// bit-reversed word, reversed back; computed directly as a
-    /// downward smear.
+    /// from the top, [`suffix_xor`](Bits::suffix_xor) under its
+    /// other name.
     #[inline]
     #[must_use]
     fn gray_decode(self) -> Self {
-        let mut x = self;
-        let mut s = 1;
-        while s < Self::BITS {
-            x = x.xor(x.shr(s));
-            s <<= 1;
-        }
-        x
+        self.suffix_xor()
     }
 
     /// Positions immediately following an odd-length run of backslashes
@@ -344,6 +394,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("pext", "compress"))]
     fn compact(self, mask: Self) -> Self {
         self.pext(mask)
     }
@@ -360,8 +411,98 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("pdep", "deposit"))]
     fn expand(self, mask: Self) -> Self {
         self.pdep(mask)
+    }
+
+    // ===================================================================
+    // Multiply as shift-and-add: broadcast, scan, gather
+    // ===================================================================
+    /// The bits of `self & mask`, in order, as the low `count_ones(mask)`
+    /// bits of the result, by one multiplication.
+    ///
+    /// Computes `(x & mask) * factor`, shifted right by `target` and
+    /// masked. A multiply by a constant is the sum of `x` shifted left
+    /// by each set bit of `factor`; when the shifted copies of the
+    /// selected bits never meet, the sum is an OR and the multiply is a
+    /// gather: PEXT by arithmetic, the Kindergarten bitboard of a file
+    /// or a diagonal as a byte index. The crate's own [`Word::splat_byte`]
+    /// (a broadcast) and the byte prefix sums of the broadword select (a
+    /// scan) are the same instruction read two other ways.
+    ///
+    /// Whether a triple is exact is a property of `mask`, `factor` and
+    /// `target`, not of the input: `laws::gather_is_exact` checks it
+    /// over every subset of the mask, and
+    /// `laws::strided_gather_is_exact` says when it must hold. When it
+    /// is, the result equals [`compact`](Bits::compact); when it is not,
+    /// carries corrupt it.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // The a-file of a bitboard (bits 0, 8, .., 56) as one byte.
+    /// let a_file = 0x0101_0101_0101_0101u64;
+    /// let factor = u64::gather_factor(a_file, 56).unwrap();
+    /// assert_eq!(factor, 0x0102_0408_1020_4080);
+    /// let occupied = 0x0000_0100_0000_0101u64; // a1, a2, a6
+    /// assert_eq!(occupied.gather(a_file, factor, 56), 0b0010_0011);
+    /// assert_eq!(
+    ///     occupied.gather(a_file, factor, 56),
+    ///     occupied.compact(a_file)
+    /// );
+    /// ```
+    #[inline]
+    #[must_use]
+    fn gather(self, mask: Self, factor: Self, target: u32) -> Self {
+        if target >= Self::BITS {
+            return Self::ZERO;
+        }
+        self.and(mask)
+            .wrapping_mul(factor)
+            .shr(target)
+            .and(Self::low_ones(mask.count_ones()))
+    }
+
+    /// The factor that sends the `i`-th set bit of `mask` (ascending)
+    /// to bit `place(i)`: one set bit per selected bit, at the distance
+    /// it has to travel; bits that travel the same distance share it.
+    /// `None` when a bit would have to move right or past the top,
+    /// which a multiply cannot do. Existence is not exactness: the
+    /// copies may still collide, see [`gather`](Bits::gather) and
+    /// `laws::gather_is_exact_by`.
+    ///
+    /// The placement need not preserve order. A bitboard's
+    /// antidiagonal read by column runs against bit order, and its
+    /// Kindergarten factor is this with `place(i) = 56 + c_i`, the
+    /// a-file again.
+    #[must_use]
+    fn gather_factor_by(mask: Self, place: impl Fn(u32) -> u32) -> Option<Self> {
+        let mut factor = Self::ZERO;
+        for (i, q) in (0..).zip(mask.positions()) {
+            let t = place(i);
+            if t < q || t >= Self::BITS {
+                return None;
+            }
+            factor = factor.or(Self::ONE.shl(t - q));
+        }
+        Some(factor)
+    }
+
+    /// The factor that moves the `i`-th set bit of `mask` to bit
+    /// `target + i`, in order: [`gather_factor_by`](Bits::gather_factor_by)
+    /// with `place(i) = target + i`.
+    ///
+    /// For a mask whose bits are `stride` apart with `stride >=
+    /// count_ones(mask)`, the gather is exact: every partial product
+    /// lands on its own bit (`laws::strided_gather_is_exact`). Files
+    /// (stride 8) and diagonals (stride 9) of a bitboard qualify; the
+    /// factor for a diagonal read by column comes out as the a-file,
+    /// `0x0101…01`, which is where the Kindergarten constants come from.
+    #[inline]
+    #[must_use]
+    fn gather_factor(mask: Self, target: u32) -> Option<Self> {
+        Self::gather_factor_by(mask, |i| target + i)
     }
 
     // ===================================================================
@@ -377,6 +518,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("blsi"))]
     fn lowest_set_mask(self) -> Self {
         self.and(Self::ZERO.wrapping_sub(self))
     }
@@ -393,6 +535,7 @@ pub trait Bits: Word {
     /// all ones for zero.
     #[inline]
     #[must_use]
+    #[doc(alias("blsmsk"))]
     fn up_to_lowest_set(self) -> Self {
         self.xor(self.wrapping_sub(Self::ONE))
     }
@@ -428,6 +571,82 @@ pub trait Bits: Word {
         self.xor(self.xor(other).and(mask))
     }
 
+    /// Any Boolean function of three words, bit by bit, from its 8-bit
+    /// truth table: bit `4 a + 2 b + c` of `table` is the result for
+    /// input bits `a` (from `self`), `b`, `c`. This is VPTERNLOG's
+    /// contract; the table of a function `f` is `f(0xF0, 0xCC, 0xAA)`
+    /// ([`truth_table`]). Provided as a Shannon expansion, at most ten
+    /// operations, which a compiler with AVX-512 folds back into the
+    /// instruction.
+    ///
+    /// ```
+    /// use hakmem::bits::truth_table;
+    /// use hakmem::prelude::*;
+    ///
+    /// let majority = |a: u8, b: u8, c: u8| (a & b) | (a & c) | (b & c);
+    /// assert_eq!(truth_table(majority), 0xE8);
+    /// assert_eq!(0b1100u32.ternary(0b1010, 0b0110, 0xE8), 0b1110);
+    /// ```
+    #[inline]
+    #[must_use]
+    #[doc(alias("vpternlog", "ternlog"))]
+    fn ternary(self, b: Self, c: Self, table: u8) -> Self {
+        let leaf = |t: u8| match t & 3 {
+            0 => Self::ZERO,
+            1 => c.not(),
+            2 => c,
+            _ => Self::ONES,
+        };
+        let on_b = |t: u8| b.and(leaf(t >> 2)).or(b.not().and(leaf(t)));
+        self.and(on_b(table >> 4)).or(self.not().and(on_b(table)))
+    }
+
+    /// Overflow of `self + other` read as two's complement, from the
+    /// sign bits alone (Hacker's Delight 2-13): the operands agree in
+    /// sign and the sum does not, so `!(x ^ y) & (x ^ (x + y))` has its
+    /// top bit set. The carrier being unsigned does not matter; the test
+    /// reads three bits. As a function of `(x, y, x + y)` its truth
+    /// table is `0x42`: one VPTERNLOG for a register of lanes.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// assert!(100u8.signed_add_overflows(100));
+    /// assert!(!100u8.signed_add_overflows(27));
+    /// for a in 0..=255u8 {
+    ///     for b in [0, 1, 0x7F, 0x80, 0xFF] {
+    ///         let checked = (a as i8).checked_add(b as i8).is_none();
+    ///         assert_eq!(a.signed_add_overflows(b), checked);
+    ///     }
+    /// }
+    /// ```
+    #[inline]
+    #[must_use]
+    fn signed_add_overflows(self, other: Self) -> bool {
+        self.xor(other)
+            .not()
+            .and(self.xor(self.wrapping_add(other)))
+            .bit(Self::BITS - 1)
+    }
+
+    /// Overflow of `self − other` read as two's complement: the operands
+    /// differ in sign and the difference disagrees with `self`, so
+    /// `(x ^ y) & (x ^ (x − y))` has its top bit set; truth table `0x18`.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// assert!(0x80u8.signed_sub_overflows(1)); // -128 - 1
+    /// assert!(!0x80u8.signed_sub_overflows(0xFF)); // -128 - (-1)
+    /// ```
+    #[inline]
+    #[must_use]
+    fn signed_sub_overflows(self, other: Self) -> bool {
+        self.xor(other)
+            .and(self.xor(self.wrapping_sub(other)))
+            .bit(Self::BITS - 1)
+    }
+
     /// Gosper's hack (HAKMEM 175): the next larger integer with the
     /// same number of set bits, or `None` when there is none in the
     /// word (or `self` is zero). Iterating from `low_ones(k)`
@@ -457,6 +676,33 @@ pub trait Bits: Word {
         Some(r.or(ones))
     }
 
+    /// The carry-rippler: the next subset of `mask` after `self`, in
+    /// increasing order, or `None` after the last (the mask itself).
+    /// `(x − mask) & mask`: subtracting the mask borrows through the
+    /// selected bits exactly as adding one would carry through them if
+    /// they were contiguous, so this is `+ 1` in the compacted domain,
+    /// `expand(compact(x) + 1)`, without the PEXT / PDEP. Bits of
+    /// `self` outside the mask are ignored.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// assert_eq!(0u8.next_subset(0b1010), Some(0b0010));
+    /// assert_eq!(0b0010u8.next_subset(0b1010), Some(0b1000));
+    /// assert_eq!(0b1000u8.next_subset(0b1010), Some(0b1010));
+    /// assert_eq!(0b1010u8.next_subset(0b1010), None);
+    /// ```
+    #[inline]
+    #[must_use]
+    fn next_subset(self, mask: Self) -> Option<Self> {
+        let s = self.and(mask);
+        if s == mask {
+            None
+        } else {
+            Some(s.wrapping_sub(mask).and(mask))
+        }
+    }
+
     /// `true` for exactly one set bit.
     #[inline]
     #[must_use]
@@ -484,6 +730,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("next_power_of_two"))]
     fn round_up_pow2(self) -> Option<Self> {
         if self.shr(1).is_zero() {
             return Some(Self::ONE);
@@ -499,6 +746,7 @@ pub trait Bits: Word {
     /// `⌊log₂ self⌋`; `None` for zero.
     #[inline]
     #[must_use]
+    #[doc(alias("ilog2"))]
     fn log2_floor(self) -> Option<u32> {
         self.last_set()
     }
@@ -659,3 +907,23 @@ pub trait Bits: Word {
 }
 
 impl<W: Word> Bits for W {}
+
+/// The truth table of a Boolean function of three words: `f(0xF0, 0xCC, 0xAA)`.
+///
+/// This is the immediate VPTERNLOG and [`Bits::ternary`] take. Bit `k` of
+/// those three bytes is bit 2, 1 and 0 of `k`, so across their eight bit
+/// positions they enumerate the eight input combinations, and the
+/// function evaluated once on them is its own table.
+///
+/// ```
+/// use hakmem::bits::truth_table;
+///
+/// assert_eq!(truth_table(|a, b, c| (a & b) | (a & c) | (b & c)), 0xE8);
+/// assert_eq!(truth_table(|a, b, s| !(a ^ b) & (a ^ s)), 0x42); // signed add overflows
+/// assert_eq!(truth_table(|a, b, d| (a ^ b) & (a ^ d)), 0x18); // signed sub overflows
+/// ```
+#[inline]
+#[must_use]
+pub fn truth_table(f: impl Fn(u8, u8, u8) -> u8) -> u8 {
+    f(0xF0, 0xCC, 0xAA)
+}

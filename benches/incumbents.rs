@@ -1,8 +1,8 @@
 //! hakmem against the crates people use today.
 //!
 //! - `select64`: `Bits::select` vs `broadword::select1_raw` (Tov's crate, used by `succinct`).
-//! - `edit_distance`: `myers::edit_distance` vs `strsim::levenshtein` (chars, the default choice)
-//!   and `triple_accel::levenshtein` / `levenshtein_exp` (SIMD Myers, the fast choice).
+//! - `edit_distance`: `myers::distance_in` vs `strsim::levenshtein` (chars, the default choice) and
+//!   `triple_accel::levenshtein` / `levenshtein_exp` (SIMD Myers, the fast choice).
 //!
 //! Run plain and with `RUSTFLAGS="-C target-feature=+bmi2,+pclmulqdq"`;
 //! `triple_accel` detects AVX2 at run time on its own.
@@ -13,7 +13,7 @@
 use std::hint::black_box;
 
 use criterion::{BenchmarkId, Criterion, criterion_group, criterion_main};
-use hakmem::myers::edit_distance;
+use hakmem::myers::distance_in;
 use hakmem::{Bits, Wide};
 
 fn xorshift(mut s: u64) -> impl FnMut() -> u64 {
@@ -87,7 +87,7 @@ fn bench_edit_distance(c: &mut Criterion) {
                 BenchmarkId::new("hakmem_u64", &id),
                 &(&p, &t),
                 |b, (p, t)| {
-                    b.iter(|| edit_distance::<u64>(black_box(p), black_box(t)));
+                    b.iter(|| distance_in::<u64>(black_box(p), black_box(t)));
                 },
             );
         }
@@ -96,7 +96,7 @@ fn bench_edit_distance(c: &mut Criterion) {
                 BenchmarkId::new("hakmem_u128", &id),
                 &(&p, &t),
                 |b, (p, t)| {
-                    b.iter(|| edit_distance::<u128>(black_box(p), black_box(t)));
+                    b.iter(|| distance_in::<u128>(black_box(p), black_box(t)));
                 },
             );
         }
@@ -105,7 +105,7 @@ fn bench_edit_distance(c: &mut Criterion) {
                 BenchmarkId::new("hakmem_wide4", &id),
                 &(&p, &t),
                 |b, (p, t)| {
-                    b.iter(|| edit_distance::<Wide<4>>(black_box(p), black_box(t)));
+                    b.iter(|| distance_in::<Wide<4>>(black_box(p), black_box(t)));
                 },
             );
         }
@@ -113,7 +113,7 @@ fn bench_edit_distance(c: &mut Criterion) {
             BenchmarkId::new("hakmem_wide8", &id),
             &(&p, &t),
             |b, (p, t)| {
-                b.iter(|| edit_distance::<Wide<8>>(black_box(p), black_box(t)));
+                b.iter(|| distance_in::<Wide<8>>(black_box(p), black_box(t)));
             },
         );
         group.bench_with_input(
@@ -163,7 +163,7 @@ fn bench_similar_strings(c: &mut Criterion) {
                 BenchmarkId::new("hakmem_u64", &id),
                 &(&a, &b),
                 |bb, (a, b)| {
-                    bb.iter(|| edit_distance::<u64>(black_box(a), black_box(b)));
+                    bb.iter(|| distance_in::<u64>(black_box(a), black_box(b)));
                 },
             );
         }
@@ -172,7 +172,7 @@ fn bench_similar_strings(c: &mut Criterion) {
                 BenchmarkId::new("hakmem_u128", &id),
                 &(&a, &b),
                 |bb, (a, b)| {
-                    bb.iter(|| edit_distance::<u128>(black_box(a), black_box(b)));
+                    bb.iter(|| distance_in::<u128>(black_box(a), black_box(b)));
                 },
             );
         }
@@ -180,7 +180,7 @@ fn bench_similar_strings(c: &mut Criterion) {
             BenchmarkId::new("hakmem_wide8", &id),
             &(&a, &b),
             |bb, (a, b)| {
-                bb.iter(|| edit_distance::<Wide<8>>(black_box(a), black_box(b)));
+                bb.iter(|| distance_in::<Wide<8>>(black_box(a), black_box(b)));
             },
         );
         group.bench_with_input(

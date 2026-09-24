@@ -35,7 +35,13 @@ write() {
 }
 
 overall=success
+# A skipped job did not run a check. When the cache holds every cell the
+# matrix is empty, and GitHub reports it as one skipped job named
+# `matrix.check`, which used to paint the whole badge red: CI failing
+# because there was nothing left to fail.
+rm -f "$out/matrix.check.json"
 while IFS=$'\t' read -r name conclusion; do
+  [ "$conclusion" = skipped ] && continue
   read -r message colour < <(badge "$conclusion")
   write "" "$message" "$colour" "$name"
   [ "$conclusion" = success ] || overall=failure

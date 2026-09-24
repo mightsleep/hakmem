@@ -55,8 +55,7 @@ fn bench_rank_select(c: &mut Criterion) {
 
         let mut counts = vec![0; Rank9::counts_len(bits.len())];
         let mut select = vec![0; Rank9::select_len(bits.len())];
-        Rank9::build(&bits, &mut counts, &mut select);
-        let ours = Rank9::new(&bits, &counts, &select);
+        let ours = Rank9::build(&bits, &mut counts, &mut select);
         let ones = ours.count_ones();
 
         let bv: BitVec = (0..n).map(|i| bit(&bits, i)).collect();

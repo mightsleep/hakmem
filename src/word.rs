@@ -7,7 +7,8 @@
 //!
 //! This module is the **only** place hardware selection happens. Each
 //! primitive with a fast path ([`pext`](Word::pext), [`pdep`](Word::pdep),
-//! [`select_lowest`](Word::select_lowest), [`xor_scan`](Word::xor_scan))
+//! [`select_lowest`](Word::select_lowest), [`xor_scan`](Word::xor_scan),
+//! [`xor_scan_down`](Word::xor_scan_down))
 //! picks the instruction when the matching `target_feature` is enabled
 //! at compile time and the `portable` cargo feature is off; otherwise a
 //! broadword definition with the same contract. The laws in
@@ -27,7 +28,35 @@
 /// Shift amounts passed to [`shl`](Word::shl) / [`shr`](Word::shr)
 /// must be `< BITS`; combinators in this crate uphold that by
 /// construction and debug-assert it, and a carrier may assume it.
-pub trait Word: Copy + Eq + core::fmt::Debug {
+///
+/// `BITS` is a multiple of 8 and at most `2^16`: the byte combinators
+/// read bytes, and [`expand_broadword`] keeps one mask per halving
+/// round. A wider carrier is a compile error, not a surprise:
+///
+/// ```compile_fail,E0080
+/// use hakmem::prelude::*;
+///
+/// // 1025 limbs, 65 600 bits: the halving rounds would need a 17th mask.
+/// let x = Wide::<1025>::ONES;
+/// let _ = hakmem::word::expand_broadword(x, x);
+/// ```
+///
+/// A word is a plain value: ordered as the unsigned integer it spells,
+/// printable in binary and hex (`{:b}` is how bits want to be read),
+/// hashable, shareable, `'static`. Asked for now because asking later
+/// would break every carrier written meanwhile.
+pub trait Word:
+    Copy
+    + Ord
+    + core::hash::Hash
+    + core::fmt::Debug
+    + core::fmt::Binary
+    + core::fmt::LowerHex
+    + core::fmt::UpperHex
+    + Send
+    + Sync
+    + 'static
+{
     /// Width in bits.
     const BITS: u32;
     /// All bits clear.
@@ -75,15 +104,19 @@ pub trait Word: Copy + Eq + core::fmt::Debug {
 
     /// Number of set bits (POPCNT).
     #[must_use]
+    #[doc(alias("popcount", "popcnt"))]
     fn count_ones(self) -> u32;
     /// Index of the lowest set bit; `BITS` when zero (TZCNT).
     #[must_use]
+    #[doc(alias("tzcnt", "ctz"))]
     fn trailing_zeros(self) -> u32;
     /// Number of leading zero bits; `BITS` when zero (LZCNT).
     #[must_use]
+    #[doc(alias("lzcnt", "clz"))]
     fn leading_zeros(self) -> u32;
     /// Clears the lowest set bit (BLSR); identity on zero.
     #[must_use]
+    #[doc(alias("blsr"))]
     fn clear_lowest_set(self) -> Self {
         self.and(self.wrapping_sub(Self::ONE))
     }
@@ -104,9 +137,10 @@ pub trait Word: Copy + Eq + core::fmt::Debug {
         expand_broadword(self, mask)
     }
 
-    /// Position of the `k`-th set bit. Precondition `k < popcount`;
-    /// provided as a loop of `k` steps, so override it;
-    /// the result is unspecified otherwise. BMI2: `trailing_zeros(pdep(1 << k,
+    /// Position of the `k`-th set bit (from 0), or `BITS` when there is
+    /// none: the answer `trailing_zeros` gives for zero, which is where
+    /// clearing `k` lowest set bits leaves you. The provided loop takes `k`
+    /// steps, so a carrier overrides it. BMI2: `trailing_zeros(pdep(1 << k,
     /// self))`; portable: Vigna's broadword select.
     #[must_use]
     fn select_lowest(self, k: u32) -> u32 {
@@ -123,6 +157,15 @@ pub trait Word: Copy + Eq + core::fmt::Debug {
     #[must_use]
     fn xor_scan(self) -> Self {
         xor_smear(self)
+    }
+
+    /// Suffix XOR: bit `i` of the result is the parity of bits
+    /// `i..BITS`. The Gray decode. PCLMULQDQ: the high half of the
+    /// carry-less multiply by all-ones is the exclusive suffix parity,
+    /// one XOR from the inclusive; portable: log-depth smear downward.
+    #[must_use]
+    fn xor_scan_down(self) -> Self {
+        xor_smear_down(self)
     }
 
     /// Mask with the `n` lowest bits set, `n <= BITS`.
@@ -219,7 +262,9 @@ pub fn compress_broadword<W: Word>(x: W, mut mask: W) -> W {
 #[inline]
 #[must_use]
 pub fn expand_broadword<W: Word>(x: W, mask: W) -> W {
-    // Room for any carrier up to 2^16 bits.
+    // One mask a halving round, 16 rounds for 2^16 bits. Past that the
+    // array ran out at run time; now the build does.
+    const { assert!(W::BITS <= 1 << 16, "expand_broadword: BITS above 2^16") };
     let mut moves = [W::ZERO; 16];
     let mut m = mask;
     let mut mk = mask.not().shl(1);
@@ -251,6 +296,17 @@ fn xor_smear<W: Word>(mut x: W) -> W {
     x
 }
 
+/// Log-depth XOR smear downward: `x ^= x >> 1; x ^= x >> 2; …`.
+#[inline]
+fn xor_smear_down<W: Word>(mut x: W) -> W {
+    let mut s = 1;
+    while s < W::BITS {
+        x = x.xor(x.shr(s));
+        s <<= 1;
+    }
+    x
+}
+
 const ONES_STEP_4: u64 = 0x1111_1111_1111_1111;
 const ONES_STEP_8: u64 = 0x0101_0101_0101_0101;
 const MSBS_STEP_8: u64 = 0x8080_8080_8080_8080;
@@ -265,10 +321,11 @@ const INCR_STEP_8: u64 = 0x8040_2010_0804_0201;
 /// see `benches/select.rs` for how it compares with PDEP and with a
 /// clear-lowest-bit loop on a given microarchitecture.
 ///
-/// Precondition: `k < count_ones(x)`.
+/// 64 when `k >= count_ones(x)`.
 ///
 /// ```
 /// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 2), 7);
+/// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 3), 64);
 /// ```
 #[must_use]
 pub fn select_broadword64(x: u64, k: u32) -> u32 {
@@ -278,6 +335,12 @@ pub fn select_broadword64(x: u64, k: u32) -> u32 {
     s = (s & (0x3 * ONES_STEP_4)) + ((s >> 2) & (0x3 * ONES_STEP_4));
     s = (s + (s >> 4)) & (0x0F * ONES_STEP_8);
     let byte_sums = s.wrapping_mul(ONES_STEP_8);
+    // The top byte is the whole count, so asking past it costs a compare
+    // the algorithm had already paid for. Without it the answer is a
+    // shift by 64, which Rust calls a panic and x86 calls a shift by 0.
+    if u64::from(k) >= byte_sums >> 56 {
+        return 64;
+    }
 
     // Phase 2: the byte holding the answer is the number of bytes whose
     // prefix sum is <= k. Compare all eight at once: with the MSB
@@ -349,8 +412,13 @@ mod bmi2 {
 mod clmul {
     //! PCLMULQDQ fast path for prefix XOR: a carry-less multiply by
     //! all-ones XORs every left shift of the operand together, which is
-    //! exactly the prefix parity. Same soundness argument as `bmi2`.
-    use core::arch::x86_64::{__m128i, _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x};
+    //! exactly the prefix parity. The high half of the same 128-bit
+    //! product holds every right shift combined by XOR, bit `i` the
+    //! parity of bits `i + 1..64`: the exclusive suffix parity, one
+    //! XOR from the suffix scan. Same soundness argument as `bmi2`.
+    use core::arch::x86_64::{
+        __m128i, _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x, _mm_unpackhi_epi64,
+    };
 
     #[inline]
     pub(super) fn prefix_xor64(x: u64) -> u64 {
@@ -361,6 +429,19 @@ mod clmul {
             let a: __m128i = _mm_set_epi64x(0, x.cast_signed());
             let ones: __m128i = _mm_set_epi64x(0, -1);
             _mm_cvtsi128_si64(_mm_clmulepi64_si128(a, ones, 0)).cast_unsigned()
+        }
+    }
+
+    #[inline]
+    pub(super) fn suffix_xor64(x: u64) -> u64 {
+        // SAFETY: as above; `unpackhi` moves the high lane down, a
+        // register shuffle.
+        unsafe {
+            let a: __m128i = _mm_set_epi64x(0, x.cast_signed());
+            let ones: __m128i = _mm_set_epi64x(0, -1);
+            let p = _mm_clmulepi64_si128(a, ones, 0);
+            let exclusive = _mm_cvtsi128_si64(_mm_unpackhi_epi64(p, p)).cast_unsigned();
+            exclusive ^ x
         }
     }
 }
@@ -504,7 +585,9 @@ impl Word for u64 {
             not(feature = "portable")
         ))]
         {
-            bmi2::pdep64(1 << k, self).trailing_zeros()
+            // Past the last set bit PDEP deposits nothing and TZCNT says 64,
+            // as long as `1 << k` is not asked to exist first.
+            bmi2::pdep64(1u64.checked_shl(k).unwrap_or(0), self).trailing_zeros()
         }
         #[cfg(not(all(
             target_arch = "x86_64",
@@ -532,6 +615,25 @@ impl Word for u64 {
         )))]
         {
             xor_smear(self)
+        }
+    }
+    #[inline]
+    fn xor_scan_down(self) -> Self {
+        #[cfg(all(
+            target_arch = "x86_64",
+            target_feature = "pclmulqdq",
+            not(feature = "portable")
+        ))]
+        {
+            clmul::suffix_xor64(self)
+        }
+        #[cfg(not(all(
+            target_arch = "x86_64",
+            target_feature = "pclmulqdq",
+            not(feature = "portable")
+        )))]
+        {
+            xor_smear_down(self)
         }
     }
 }
@@ -579,13 +681,21 @@ impl Word for u32 {
     }
     #[inline]
     fn select_lowest(self, k: u32) -> u32 {
-        u64::from(self).select_lowest(k)
+        // Zero-extended, "none" comes back as 64.
+        u64::from(self).select_lowest(k).min(Self::BITS)
     }
     // The prefix of a zero-extended word is the prefix of the word.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
     fn xor_scan(self) -> Self {
         u64::from(self).xor_scan() as Self
+    }
+    // The zero extension contributes no parity: the suffix of the
+    // extended word, truncated, is the suffix of the word.
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    fn xor_scan_down(self) -> Self {
+        u64::from(self).xor_scan_down() as Self
     }
 }
 
@@ -633,6 +743,15 @@ impl Word for u128 {
         let carry = 0u64.wrapping_sub(u64::from(lo.count_ones() & 1));
         Self::from(lo.xor_scan()) | (Self::from(hi.xor_scan() ^ carry) << 64)
     }
+    /// Suffix of each half, with the high half's parity carried into
+    /// every bit of the low half.
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    fn xor_scan_down(self) -> Self {
+        let (lo, hi) = (self as u64, (self >> 64) as u64);
+        let carry = 0u64.wrapping_sub(u64::from(hi.count_ones() & 1));
+        Self::from(lo.xor_scan_down() ^ carry) | (Self::from(hi.xor_scan_down()) << 64)
+    }
 }
 
 /// Narrow carriers delegate the hardware-backed primitives to `u32` /
@@ -658,12 +777,17 @@ macro_rules! impl_word_narrow {
             }
             #[inline]
             fn select_lowest(self, k: u32) -> u32 {
-                u64::from(self).select_lowest(k)
+                u64::from(self).select_lowest(k).min(Self::BITS)
             }
             #[allow(clippy::cast_possible_truncation)]
             #[inline]
             fn xor_scan(self) -> Self {
                 u64::from(self).xor_scan() as $t
+            }
+            #[allow(clippy::cast_possible_truncation)]
+            #[inline]
+            fn xor_scan_down(self) -> Self {
+                u64::from(self).xor_scan_down() as $t
             }
         }
     )*};

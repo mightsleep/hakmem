@@ -1,11 +1,12 @@
 [package]
 name = "hakmem"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
-# MSRV: edition 2024 needs 1.85, cast_signed/cast_unsigned 1.87. Checked in CI
+# MSRV: edition 2024 needs 1.85, cast_signed/cast_unsigned 1.87, the GFNI
+# intrinsics 1.89. Checked in CI
 # against the `cargo package` tarball (nix/msrv.nix).
-rust-version = "1.87"
-description = "Bit tricks as a lawful algebra: rank/select, runs, PEXT/PDEP, Morton codes, SWAR byte lanes, Myers edit distance, one trait, property-tested laws, no_std."
+rust-version = "1.89"
+description = "Bit tricks as a lawful algebra: rank/select, runs, PEXT/PDEP, Morton codes, byte lanes (SWAR, SSSE3, GFNI, NEON), Myers edit distance, property-tested laws, no_std."
 license = "MIT OR Apache-2.0"
 authors = ["Michal <acannix@proton.me>"]
 repository = "https://github.com/mightsleep/hakmem"
@@ -14,14 +15,15 @@ categories = ["algorithms", "no-std"]
 exclude = ["/.github", "/nix", "/flake.*"]
 
 [features]
-default = []
+default = ["alloc"]
 # Disable every hardware fast path (BMI2 PEXT/PDEP, PCLMULQDQ) even when
 # the target feature is enabled. For microarchitectures where the
 # instruction exists but is microcoded (PDEP/PEXT on AMD Zen 1 and Zen 2:
 # ~18 cycles, hundreds of uops) the broadword definitions are faster.
 portable = []
 # Owning conveniences over the caller-owned structures: `rank9::Rank9Buf`.
-# Off by default; the crate itself never allocates.
+# On by default, as std users expect; `default-features = false` is the
+# crate with no allocation at all, which is how it builds for embedded.
 alloc = []
 
 [dependencies]
@@ -37,7 +39,9 @@ triple_accel = "0.4"   # SIMD-accelerated Myers Levenshtein on bytes
 sux = { version = "0.14", default-features = false }   # Vigna: rank9 / select9
 sucds = "0.9"            # Rank9Sel
 vers-vecs = "1"          # RsVec
-
+# Incumbents for benches/hilbert.rs: 2D Hilbert curves.
+fast_hilbert = "2.1"     # 512-byte transition table, three levels a step
+lindel = "0.1"           # Skilling's transpose, one bit a step
 [[bench]]
 name = "select"
 harness = false
@@ -54,6 +58,10 @@ harness = false
 name = "incumbents"
 harness = false
 
+[[bench]]
+name = "hilbert"
+harness = false
+
 [lints.rust]
 unsafe_op_in_unsafe_fn = "warn"
 missing_docs = "warn"
@@ -63,7 +71,6 @@ unreachable_pub = "warn"
 pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 missing_errors_doc = "allow"
-missing_panics_doc = "allow"
 module_name_repetitions = "allow"
 
 [package.metadata.docs.rs]

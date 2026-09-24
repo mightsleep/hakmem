@@ -10,8 +10,12 @@
     inherit (config.rust) craneLib craneLibMsrv;
     src = lib.cleanSourceWith {
       src = ./..;
-      # README.md is in the crate through `include_str!`; nothing else from docs.
-      filter = path: type: craneLib.filterCargoSources path type || baseNameOf path == "README.md";
+      # README.md is in the crate through `include_str!`; proptest's saved
+      # failures ride along to be replayed; nothing else from docs.
+      filter = path: type:
+        craneLib.filterCargoSources path type
+        || baseNameOf path == "README.md"
+        || lib.hasSuffix ".proptest-regressions" (baseNameOf path);
       name = "source";
     };
 

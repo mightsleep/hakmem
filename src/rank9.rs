@@ -20,7 +20,7 @@
 //! span is long enough to hold every position). Then one SWAR compare
 //! of the packed 9-bit counts and one in-word [`Bits::select`]. No
 //! loop depends on the data. The laws in [`crate::laws`] pin both to
-//! the linear scans of [`crate::slice`].
+//! the linear scans of [`Words`](crate::slice::Words).
 //!
 //! ```
 //! use hakmem::rank9::Rank9;
@@ -28,8 +28,7 @@
 //! let bits = [0b1011u64, u64::MAX, 0];
 //! let mut counts = vec![0; Rank9::counts_len(bits.len())];
 //! let mut select = vec![0; Rank9::select_len(bits.len())];
-//! Rank9::build(&bits, &mut counts, &mut select);
-//! let dir = Rank9::new(&bits, &counts, &select);
+//! let dir = Rank9::build(&bits, &mut counts, &mut select);
 //!
 //! assert_eq!(dir.count_ones(), 67);
 //! assert_eq!(dir.rank(2), 2);
@@ -154,28 +153,50 @@ impl<'a> Rank9<'a> {
         3 * Self::blocks(words) + 2
     }
 
-    /// Fill `counts` and `select` for `bits`: one pass over the bits for
-    /// the counts and the inventory, one over the inventory for the pool.
-    /// An empty `select` builds the rank part only.
+    /// Fills `counts` and `select` for `bits` and returns the directory
+    /// over them: one pass over the bits for the counts and the
+    /// inventory, one over the inventory for the pool. An empty `select`
+    /// builds the rank part only.
+    ///
+    /// ```
+    /// use hakmem::rank9::Rank9;
+    ///
+    /// let bits = [0b1011u64, u64::MAX, 0];
+    /// let mut counts = vec![0; Rank9::counts_len(bits.len())];
+    /// let mut select = vec![0; Rank9::select_len(bits.len())];
+    /// let dir = Rank9::build(&bits, &mut counts, &mut select);
+    /// assert_eq!((dir.rank(64), dir.select(3)), (3, Some(64)));
+    /// ```
     ///
     /// # Panics
     ///
     /// If `counts` is shorter than [`counts_len`](Self::counts_len), or
     /// `select` is neither empty nor at least [`select_len`](Self::select_len).
-    pub fn build(bits: &[u64], counts: &mut [u64], select: &mut [u64]) {
+    pub fn build(bits: &'a [u64], counts: &'a mut [u64], select: &'a mut [u64]) -> Self {
+        Self::fill(bits, counts, select);
+        Self::from_parts(bits, counts, select)
+    }
+
+    /// The length checks [`build`](Self::build) and
+    /// [`from_parts`](Self::from_parts) share, with one wording for both.
+    fn check_lengths(bits: usize, counts: usize, select: usize) {
+        assert!(
+            counts >= Self::counts_len(bits),
+            "counts needs {} words, has {counts}",
+            Self::counts_len(bits),
+        );
+        assert!(
+            select == 0 || select >= Self::select_len(bits),
+            "select needs {} words or none, has {select}",
+            Self::select_len(bits),
+        );
+    }
+
+    /// [`build`](Self::build) without the view, for owners that keep the
+    /// directories and view them later.
+    fn fill(bits: &[u64], counts: &mut [u64], select: &mut [u64]) {
         let blocks = Self::blocks(bits.len());
-        assert!(
-            counts.len() >= Self::counts_len(bits.len()),
-            "counts needs {} words, has {}",
-            Self::counts_len(bits.len()),
-            counts.len()
-        );
-        assert!(
-            select.is_empty() || select.len() >= Self::select_len(bits.len()),
-            "select needs {} words or none, has {}",
-            Self::select_len(bits.len()),
-            select.len()
-        );
+        Self::check_lengths(bits.len(), counts.len(), select.len());
         let (inventory, pool) = if select.is_empty() {
             (&mut [][..], &mut [][..])
         } else {
@@ -294,24 +315,19 @@ impl<'a> Rank9<'a> {
         }
     }
 
-    /// View a directory that [`build`](Self::build) filled for these
-    /// same `bits`. The contents are trusted; the lengths are checked.
+    /// The directory over `counts` and `select` that
+    /// [`build`](Self::build) filled for these same `bits` earlier, kept
+    /// or loaded back. The contents are trusted, the lengths checked:
+    /// directories from other bits answer wrong without saying so.
     ///
     /// # Panics
     ///
     /// If `counts` is too short for `bits`, or `select` is neither empty
     /// nor long enough.
     #[must_use]
-    pub fn new(bits: &'a [u64], counts: &'a [u64], select: &'a [u64]) -> Self {
+    pub fn from_parts(bits: &'a [u64], counts: &'a [u64], select: &'a [u64]) -> Self {
         let blocks = Self::blocks(bits.len());
-        assert!(
-            counts.len() >= Self::counts_len(bits.len()),
-            "counts too short"
-        );
-        assert!(
-            select.is_empty() || select.len() >= Self::select_len(bits.len()),
-            "select too short"
-        );
+        Self::check_lengths(bits.len(), counts.len(), select.len());
         let (inventory, pool) = if select.is_empty() {
             (&[][..], &[][..])
         } else {
@@ -543,7 +559,7 @@ mod tests {
 }
 
 /// [`Rank9`] with the directory allocated for you: one call from a bit
-/// slice to rank and select. Needs the `alloc` feature; the view type
+/// slice to rank and select. Behind the `alloc` feature, on by default; the view type
 /// stays the whole API, this only owns its two buffers.
 ///
 /// ```
@@ -584,7 +600,7 @@ impl<'a> Rank9Buf<'a> {
     fn build(bits: &'a [u64], select_words: usize) -> Self {
         let mut counts = alloc::vec![0; Rank9::counts_len(bits.len())].into_boxed_slice();
         let mut select = alloc::vec![0; select_words].into_boxed_slice();
-        Rank9::build(bits, &mut counts, &mut select);
+        Rank9::fill(bits, &mut counts, &mut select);
         Self {
             bits,
             counts,
@@ -595,7 +611,7 @@ impl<'a> Rank9Buf<'a> {
     /// The borrowed view, for anything not forwarded here.
     #[must_use]
     pub fn view(&self) -> Rank9<'_> {
-        Rank9::new(self.bits, &self.counts, &self.select)
+        Rank9::from_parts(self.bits, &self.counts, &self.select)
     }
 
     /// See [`Rank9::rank`].

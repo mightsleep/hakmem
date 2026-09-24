@@ -9,13 +9,14 @@
   }: {
     devShells.default = pkgs.mkShell {
       buildInputs = with pkgs; [
-        config.rust.nightly
+        config.rust.nightlyDev
         cargo-nextest
         cargo-semver-checks
         cargo-fuzz
       ];
       shellHook = ''
         echo "hakmem dev shell, $(rustc --version); MSRV ${config.rust.msrvVersion}"
+        echo "aarch64 std present: cargo check --target aarch64-unknown-linux-gnu --all-targets"
       '';
     };
   };

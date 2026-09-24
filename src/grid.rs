@@ -31,6 +31,10 @@ use crate::word::Word;
 /// // 2×2 blocks start at (0, 3..=5) and (1, 2..=4).
 /// assert_eq!(out, [0b0011_1000, 0b0001_1100, 0, 0]);
 /// ```
+///
+/// # Panics
+///
+/// If `out` and `rows` differ in length.
 pub fn block_starts<W: Word>(rows: &[W], w: u32, h: u32, out: &mut [W]) {
     assert_eq!(rows.len(), out.len(), "block_starts: out must match rows");
     debug_assert!(
@@ -76,6 +80,10 @@ pub fn block_starts<W: Word>(rows: &[W], w: u32, h: u32, out: &mut [W]) {
 /// assert_eq!(find_block(&rows, 3, 3, &mut scratch), Some((0, 3)));
 /// assert_eq!(find_block(&rows, 4, 3, &mut scratch), None);
 /// ```
+///
+/// # Panics
+///
+/// If `scratch` and `rows` differ in length.
 #[must_use]
 pub fn find_block<W: Word>(rows: &[W], w: u32, h: u32, scratch: &mut [W]) -> Option<(usize, u32)> {
     block_starts(rows, w, h, scratch);
@@ -85,19 +93,48 @@ pub fn find_block<W: Word>(rows: &[W], w: u32, h: u32, scratch: &mut [W]) -> Opt
         .find_map(|(r, &row)| row.first_set().map(|c| (r, c)))
 }
 
-/// Sets (`true`) or clears every cell of the `w × h` block at
-/// `(row, col)`. The block must lie inside the grid.
-pub fn set_block<W: Word>(rows: &mut [W], row: usize, col: u32, w: u32, h: u32, set: bool) {
+/// Sets every cell of the `w × h` block at `(row, col)`. The block must
+/// lie inside the grid (debug-asserted).
+///
+/// ```
+/// use hakmem::grid::{clear_block, fill_block};
+///
+/// let mut rows = [0u8; 4];
+/// fill_block(&mut rows, 1, 2, 3, 2);
+/// assert_eq!(rows, [0, 0b1_1100, 0b1_1100, 0]);
+/// clear_block(&mut rows, 2, 3, 1, 1);
+/// assert_eq!(rows, [0, 0b1_1100, 0b1_0100, 0]);
+/// ```
+///
+/// # Panics
+///
+/// If the block reaches past the last row.
+pub fn fill_block<W: Word>(rows: &mut [W], row: usize, col: u32, w: u32, h: u32) {
+    let mask = block_mask::<W>(rows.len(), row, col, w, h);
+    for cell in &mut rows[row..row + h as usize] {
+        *cell = cell.or(mask);
+    }
+}
+
+/// Clears every cell of the `w × h` block at `(row, col)`, as
+/// [`fill_block`] sets them.
+///
+/// # Panics
+///
+/// If the block reaches past the last row.
+pub fn clear_block<W: Word>(rows: &mut [W], row: usize, col: u32, w: u32, h: u32) {
+    let mask = block_mask::<W>(rows.len(), row, col, w, h);
+    for cell in &mut rows[row..row + h as usize] {
+        *cell = cell.and(mask.not());
+    }
+}
+
+/// The block's columns in one row. It used to be one function with a
+/// `bool` for "fill", which read at the call site as `true`.
+fn block_mask<W: Word>(len: usize, row: usize, col: u32, w: u32, h: u32) -> W {
     debug_assert!(
-        col + w <= W::BITS && row + h as usize <= rows.len(),
+        col + w <= W::BITS && row + h as usize <= len,
         "block outside grid"
     );
-    let mask = W::low_ones(w).shl(col);
-    for cell in &mut rows[row..row + h as usize] {
-        *cell = if set {
-            cell.or(mask)
-        } else {
-            cell.and(mask.not())
-        };
-    }
+    W::low_ones(w).shl(col)
 }

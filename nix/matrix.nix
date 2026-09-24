@@ -15,11 +15,16 @@
     isX86 = lib.hasPrefix "x86_64" system;
 
     # cleanCargoSource keeps only .rs and Cargo.*; README.md enters the crate
-    # through `include_str!`, so it must pass too. Nothing else: an edit in
-    # docs/ or CHANGELOG.md must not change a single derivation.
+    # through `include_str!`, so it must pass too, and so must proptest's
+    # saved failures, or CI never replays them and they fail again for
+    # the first time. Nothing else: an edit in docs/ or CHANGELOG.md must
+    # not change a single derivation.
     src = lib.cleanSourceWith {
       src = ./..;
-      filter = path: type: craneLib.filterCargoSources path type || baseNameOf path == "README.md";
+      filter = path: type:
+        craneLib.filterCargoSources path type
+        || baseNameOf path == "README.md"
+        || lib.hasSuffix ".proptest-regressions" (baseNameOf path);
       name = "source";
     };
     version = (craneLib.crateNameFromCargoToml {cargoToml = ../Cargo.toml;}).version;
@@ -38,12 +43,14 @@
         ++ lib.optionals isX86 [
           {
             name = "bmi2";
-            rustflags = "-C target-feature=+bmi2,+pclmulqdq";
+            # AVX2 rides along: the 3D Hilbert batch kernel is its only user,
+            # and every runner has it.
+            rustflags = "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx2";
             # A builder without BMI2 would die with SIGILL; fail with a
             # readable message instead.
             guard = ''
-              grep -qw bmi2 /proc/cpuinfo && grep -qw pclmulqdq /proc/cpuinfo \
-                || { echo "builder CPU lacks bmi2/pclmulqdq; cannot run this cell" >&2; exit 1; }
+              grep -qw bmi2 /proc/cpuinfo && grep -qw pclmulqdq /proc/cpuinfo && grep -qw ssse3 /proc/cpuinfo && grep -qw avx2 /proc/cpuinfo \
+                || { echo "builder CPU lacks bmi2/pclmulqdq/avx2; cannot run this cell" >&2; exit 1; }
             '';
           }
         ];
@@ -57,8 +64,10 @@
           args = "--features portable";
         }
         {
-          name = "alloc";
-          args = "--features alloc";
+          # `alloc` is on by default; this is the crate an embedded
+          # user gets, with nothing that allocates.
+          name = "no-default";
+          args = "--no-default-features";
         }
       ];
     };
@@ -123,6 +132,21 @@
           RUSTFLAGS = c.hw.rustflags;
         });
 
+    # One cell in debug: the `debug_assert!`s and the overflow checks run
+    # nowhere else, and the README tells users to run their tests this
+    # way. The exhaustive sweeps skip themselves here, which is the one
+    # thing the release cells already do better.
+    debugTest = let
+      dev = common // {CARGO_PROFILE = "dev";};
+    in
+      craneLib.cargoNextest (dev
+        // {
+          pname = "hakmem-test-debug";
+          cargoArtifacts = craneLib.buildDepsOnly (dev // {pname = "hakmem-deps-debug";});
+          partitions = 1;
+          partitionType = "count";
+        });
+
     baseline = lib.head combos;
 
     tests = lib.listToAttrs (map (c: lib.nameValuePair "hakmem-test-${cellName c}" (testFor c)) combos);
@@ -138,6 +162,7 @@
       // clippies
       // doctests
       // {
+        hakmem-test-debug = debugTest;
         # rustdoc as docs.rs will see it: no dependencies, warnings are errors.
         hakmem-doc = craneLib.cargoDoc (common
           // {

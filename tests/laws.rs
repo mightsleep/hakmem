@@ -47,6 +47,10 @@ macro_rules! laws_for {
                 fn prefix_xor_matches_reference(x in $strategy) {
                     prop_assert!(laws::prefix_xor_matches_reference(x));
                 }
+                #[test]
+                fn suffix_xor_laws(x in $strategy) {
+                    prop_assert!(laws::suffix_xor_laws(x));
+                }
                 // set view
                 #[test]
                 fn rank_is_monotone(x in $strategy, i in 0..BITS) {
@@ -67,6 +71,15 @@ macro_rules! laws_for {
                 #[test]
                 fn select_matches_reference(x in $strategy, k in 0..BITS) {
                     prop_assert!(laws::select_matches_reference(x, k));
+                }
+                #[test]
+                fn order_is_unsigned(a in $strategy, b in $strategy) {
+                    prop_assert!(laws::order_is_unsigned(a, b));
+                    prop_assert!(laws::order_is_unsigned(a, a));
+                }
+                #[test]
+                fn select_lowest_is_total(x in $strategy, k in prop_oneof![0..BITS + 2, any::<u32>()]) {
+                    prop_assert!(laws::select_lowest_is_total(x, k));
                 }
                 // compact / expand
                 #[test]
@@ -112,6 +125,12 @@ macro_rules! laws_for {
                 fn slice_ops_match_reference(words in prop::collection::vec($strategy, 1..=4), i in 0usize..(4 * BITS as usize + 8), k in 1..=BITS) {
                     prop_assert!(laws::slice_ops_match_reference(&words, i, k));
                 }
+                #[test]
+                fn slice_bit_writes_touch_one_bit(words in prop::collection::vec($strategy, 1..=4), i in any::<usize>()) {
+                    let i = i % (words.len() * BITS as usize);
+                    let mut scratch = words.clone();
+                    prop_assert!(laws::slice_bit_writes_touch_one_bit(&words, &mut scratch, i));
+                }
                 // permute / fill
                 #[test]
                 fn delta_swap_is_involution(x in $strategy, m in $strategy, s in 1..BITS) {
@@ -147,6 +166,10 @@ macro_rules! laws_for {
                 #[test]
                 fn find_escaped_matches_reference(words in prop::collection::vec($strategy, 1..=4), c in any::<bool>()) {
                     prop_assert!(laws::find_escaped_matches_reference(&words, c));
+                }
+                #[test]
+                fn prefix_xor_carry_matches_reference(words in prop::collection::vec($strategy, 1..=4), c in any::<bool>()) {
+                    prop_assert!(laws::prefix_xor_carry_matches_reference(&words, c));
                 }
                 // algebra: composition / homomorphisms
                 #[test]
@@ -225,6 +248,66 @@ macro_rules! laws_for {
                 #[test]
                 fn morton_aligned_block_is_contiguous(x in $strategy, y in $strategy) {
                     prop_assert!(laws::morton_aligned_block_is_contiguous(x, y));
+                }
+                // Hilbert
+                #[test]
+                fn hilbert_matches_reference(x in $strategy, y in $strategy, order in 0..=BITS / 2) {
+                    prop_assert!(laws::hilbert_matches_reference(x, y, order));
+                }
+                #[test]
+                fn hilbert_roundtrip(x in $strategy, y in $strategy) {
+                    prop_assert!(laws::hilbert_roundtrip(x, y));
+                }
+                #[test]
+                fn hilbert_consecutive_are_adjacent(h in $strategy) {
+                    prop_assert!(laws::hilbert_consecutive_are_adjacent(h));
+                }
+                #[test]
+                fn hilbert_order_laws(x in $strategy, y in $strategy, order in 0..BITS / 2) {
+                    prop_assert!(laws::hilbert_order_laws(x, y, order));
+                }
+                #[test]
+                fn hilbert3_matches_reference(h in $strategy) {
+                    prop_assert!(laws::hilbert3_matches_reference(h));
+                }
+                #[test]
+                fn hilbert3_roundtrip(x in $strategy, y in $strategy, z in $strategy) {
+                    prop_assert!(laws::hilbert3_roundtrip(x, y, z));
+                }
+                #[test]
+                fn hilbert3_consecutive_are_adjacent(h in $strategy) {
+                    prop_assert!(laws::hilbert3_consecutive_are_adjacent(h));
+                }
+                #[test]
+                fn hilbert3_order_laws(x in $strategy, y in $strategy, z in $strategy, order in 0..BITS / 3) {
+                    prop_assert!(laws::hilbert3_order_laws(x, y, z, order));
+                }
+                // ternary and sign bits
+                #[test]
+                fn ternary_is_truth_table(a in $strategy, b in $strategy, c in $strategy, t in any::<u8>()) {
+                    prop_assert!(laws::ternary_is_truth_table(a, b, c, t));
+                }
+                #[test]
+                fn truth_table_names_the_function(a in $strategy, b in $strategy, c in $strategy) {
+                    prop_assert!(laws::truth_table_names_the_function(a, b, c));
+                }
+                #[test]
+                fn signed_overflow_matches_sign_test(a in $strategy, b in $strategy) {
+                    prop_assert!(laws::signed_overflow_matches_sign_test(a, b));
+                }
+                // carry-rippler and gather
+                #[test]
+                fn next_subset_is_increment_in_mask(x in $strategy, m in $strategy) {
+                    prop_assert!(laws::next_subset_is_increment_in_mask(x, m));
+                }
+                #[test]
+                fn subsets_enumerate_each_once(m in $strategy) {
+                    let small = <$t as hakmem::Word>::low_ones(12.min(BITS));
+                    prop_assert!(laws::subsets_enumerate_each_once(hakmem::Word::and(m, small)));
+                }
+                #[test]
+                fn strided_gather_is_exact(x in $strategy, start in 0..BITS, stride in 1..BITS, k in 1u32..=8, target in 0..BITS) {
+                    prop_assert!(laws::strided_gather_is_exact(x, start, stride, k, target));
                 }
             }
         }
@@ -314,6 +397,272 @@ mod broadword_compress {
     }
 }
 
+// The batch Hilbert conversions against the per-key ones, on every
+// length around the batch sizes (16 and 32 keys on NEON, 64 on
+// AVX-512), so each hardware path and its tail is covered.
+mod hilbert2_in_place {
+    use hakmem::laws;
+    use proptest::prelude::*;
+
+    fn xorshift(n: usize, mut s: u64) -> Vec<u64> {
+        (0..n)
+            .map(|_| {
+                s ^= s << 13;
+                s ^= s >> 7;
+                s ^= s << 17;
+                s
+            })
+            .collect()
+    }
+
+    #[test]
+    fn every_length_to_200() {
+        for n in 0..=200 {
+            let codes = xorshift(n, 0x9E37_79B9_7F4A_7C15 ^ n as u64);
+            let mut scratch = vec![0; n];
+            assert!(
+                laws::hilbert2_in_place_matches_per_key_u64(&codes, &mut scratch),
+                "n={n}"
+            );
+            // Truncation is the point: the low halves as u32 codes.
+            #[allow(clippy::cast_possible_truncation)]
+            let codes32: Vec<u32> = codes.iter().map(|&c| c as u32).collect();
+            let mut scratch32 = vec![0; n];
+            assert!(
+                laws::hilbert2_in_place_matches_per_key_u32(&codes32, &mut scratch32),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn columns_3d() {
+        // Every length to 200 and around the groups of 64 and 512;
+        // coordinates full width, so the bits above 21 must drop.
+        let lengths = (0..=200).chain([511, 512, 513, 575, 577, 1024, 4096 + 64 * 3 + 7]);
+        for n in lengths {
+            let seed = 0x9E37_79B9_7F4A_7C15 ^ n as u64;
+            let (xs, ys, zs) = (
+                xorshift(n, seed),
+                xorshift(n, seed ^ 1),
+                xorshift(n, seed ^ 2),
+            );
+            let (mut keys, mut out) = (vec![0; n], vec![0; 3 * n]);
+            assert!(
+                laws::hilbert3_columns_match_per_point(&xs, &ys, &zs, &mut keys, &mut out),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn hilbert2_columns() {
+        // Past the Morton batches (16, 32), the in-place batches (64) and
+        // the decode's blocks of 256; coordinates full width.
+        for n in (0..=200).chain([255, 256, 257, 511, 513, 1024 + 7]) {
+            let seed = 0xD1B5_4A32_D192_ED03 ^ n as u64;
+            let (xs, ys) = (xorshift(n, seed), xorshift(n, seed ^ 1));
+            let (mut keys, mut out) = (vec![0; n], vec![0; 2 * n]);
+            assert!(
+                laws::hilbert2_columns_match_per_point_u64(&xs, &ys, &mut keys, &mut out),
+                "n={n}"
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let (xs, ys): (Vec<u32>, Vec<u32>) = (
+                xs.iter().map(|&v| v as u32).collect(),
+                ys.iter().map(|&v| v as u32).collect(),
+            );
+            let (mut keys, mut out) = (vec![0; n], vec![0; 2 * n]);
+            assert!(
+                laws::hilbert2_columns_match_per_point_u32(&xs, &ys, &mut keys, &mut out),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn morton2_columns() {
+        // Every length to 200 and past the batches of 16 and 32 points;
+        // coordinates full width, so the high halves must drop.
+        for n in (0..=200).chain([255, 256, 257, 1024 + 7]) {
+            let seed = 0x2545_F491_4F6C_DD1D ^ n as u64;
+            let (xs, ys) = (xorshift(n, seed), xorshift(n, seed ^ 1));
+            let (mut codes, mut out) = (vec![0; n], vec![0; 2 * n]);
+            assert!(
+                laws::morton2_columns_match_per_point_u64(&xs, &ys, &mut codes, &mut out),
+                "n={n}"
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let (xs, ys): (Vec<u32>, Vec<u32>) = (
+                xs.iter().map(|&v| v as u32).collect(),
+                ys.iter().map(|&v| v as u32).collect(),
+            );
+            let (mut codes, mut out) = (vec![0; n], vec![0; 2 * n]);
+            assert!(
+                laws::morton2_columns_match_per_point_u32(&xs, &ys, &mut codes, &mut out),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn group_boundaries_3d() {
+        // The `u64` plane kernel takes 512 keys at a time, then whole
+        // groups of 64, then leaves the rest to the per-key form; 200
+        // never reaches the first of those.
+        for n in [
+            511,
+            512,
+            513,
+            575,
+            576,
+            577,
+            1023,
+            1024,
+            1025,
+            4096 + 64 * 3 + 7,
+        ] {
+            let codes = xorshift(n, 0x9E37_79B9_7F4A_7C15 ^ n as u64);
+            let mut scratch = vec![0; n];
+            assert!(
+                laws::hilbert3_in_place_matches_per_key_u64(&codes, &mut scratch),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_length_to_200_3d() {
+        for n in 0..=200 {
+            let codes = xorshift(n, 0x2545_F491_4F6C_DD1D ^ n as u64);
+            let mut scratch = vec![0; n];
+            assert!(
+                laws::hilbert3_in_place_matches_per_key_u64(&codes, &mut scratch),
+                "n={n}"
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let codes32: Vec<u32> = codes.iter().map(|&c| c as u32).collect();
+            let mut scratch32 = vec![0; n];
+            assert!(
+                laws::hilbert3_in_place_matches_per_key_u32(&codes32, &mut scratch32),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
+    fn every_order() {
+        for n in [7usize, 130] {
+            let codes = xorshift(n, 0xD1B5_4A32_D192_ED03 ^ n as u64);
+            // Truncation is the point: the low halves as u32 codes.
+            #[allow(clippy::cast_possible_truncation)]
+            let codes32: Vec<u32> = codes.iter().map(|&c| c as u32).collect();
+            let (mut a, mut b) = (vec![0; n], vec![0; n]);
+            for order in 0..=32 {
+                assert!(
+                    laws::hilbert2_in_place_order_matches_per_key_u64(&codes, &mut a, order),
+                    "2D u64 n={n} order={order}"
+                );
+            }
+            for order in 0..=21 {
+                assert!(
+                    laws::hilbert3_in_place_order_matches_per_key_u64(&codes, &mut a, order),
+                    "3D u64 n={n} order={order}"
+                );
+            }
+            for order in 0..=16 {
+                assert!(
+                    laws::hilbert2_in_place_order_matches_per_key_u32(&codes32, &mut b, order),
+                    "2D u32 n={n} order={order}"
+                );
+            }
+            for order in 0..=10 {
+                assert!(
+                    laws::hilbert3_in_place_order_matches_per_key_u32(&codes32, &mut b, order),
+                    "3D u32 n={n} order={order}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn structured_words() {
+        for &w in &[
+            0u64,
+            u64::MAX,
+            0x5555_5555_5555_5555,
+            0xAAAA_AAAA_AAAA_AAAA,
+            1,
+            1 << 63,
+        ] {
+            let codes = vec![w; 130];
+            let mut scratch = vec![0; 130];
+            assert!(
+                laws::hilbert2_in_place_matches_per_key_u64(&codes, &mut scratch),
+                "w={w:#x}"
+            );
+            #[allow(clippy::cast_possible_truncation)]
+            let codes32 = vec![w as u32; 130];
+            let mut scratch32 = vec![0; 130];
+            assert!(
+                laws::hilbert2_in_place_matches_per_key_u32(&codes32, &mut scratch32),
+                "w={w:#x}"
+            );
+        }
+    }
+
+    proptest! {
+        #[test]
+        fn u64_codes(codes in prop::collection::vec(any::<u64>(), 0..=300)) {
+            let mut scratch = vec![0; codes.len()];
+            prop_assert!(laws::hilbert2_in_place_matches_per_key_u64(&codes, &mut scratch));
+        }
+
+        #[test]
+        fn u32_codes(codes in prop::collection::vec(any::<u32>(), 0..=300)) {
+            let mut scratch = vec![0; codes.len()];
+            prop_assert!(laws::hilbert2_in_place_matches_per_key_u32(&codes, &mut scratch));
+        }
+
+        #[test]
+        fn hilbert2_columns_any(points in prop::collection::vec((any::<u64>(), any::<u64>()), 0..=600)) {
+            let xs: Vec<u64> = points.iter().map(|p| p.0).collect();
+            let ys: Vec<u64> = points.iter().map(|p| p.1).collect();
+            let (mut keys, mut out) = (vec![0; xs.len()], vec![0; 2 * xs.len()]);
+            prop_assert!(laws::hilbert2_columns_match_per_point_u64(&xs, &ys, &mut keys, &mut out));
+        }
+
+        #[test]
+        fn morton2_columns_any(points in prop::collection::vec((any::<u64>(), any::<u64>()), 0..=300)) {
+            let xs: Vec<u64> = points.iter().map(|p| p.0).collect();
+            let ys: Vec<u64> = points.iter().map(|p| p.1).collect();
+            let (mut codes, mut out) = (vec![0; xs.len()], vec![0; 2 * xs.len()]);
+            prop_assert!(laws::morton2_columns_match_per_point_u64(&xs, &ys, &mut codes, &mut out));
+        }
+
+        #[test]
+        fn columns_3d_any(points in prop::collection::vec((any::<u64>(), any::<u64>(), any::<u64>()), 0..=700)) {
+            let xs: Vec<u64> = points.iter().map(|p| p.0).collect();
+            let ys: Vec<u64> = points.iter().map(|p| p.1).collect();
+            let zs: Vec<u64> = points.iter().map(|p| p.2).collect();
+            let (mut keys, mut out) = (vec![0; xs.len()], vec![0; 3 * xs.len()]);
+            prop_assert!(laws::hilbert3_columns_match_per_point(&xs, &ys, &zs, &mut keys, &mut out));
+        }
+
+        #[test]
+        fn u64_codes_3d(codes in prop::collection::vec(any::<u64>(), 0..=300)) {
+            let mut scratch = vec![0; codes.len()];
+            prop_assert!(laws::hilbert3_in_place_matches_per_key_u64(&codes, &mut scratch));
+        }
+
+        #[test]
+        fn u32_codes_3d(codes in prop::collection::vec(any::<u32>(), 0..=300)) {
+            let mut scratch = vec![0; codes.len()];
+            prop_assert!(laws::hilbert3_in_place_matches_per_key_u32(&codes, &mut scratch));
+        }
+    }
+}
+
 // The rank9 directory against the linear scans it indexes, on dense and
 // on sparse bit slices, across block and sample boundaries.
 mod rank9 {
@@ -324,8 +673,7 @@ mod rank9 {
     fn with_dir(words: &[u64], f: impl FnOnce(&Rank9<'_>)) {
         let mut counts = vec![0; Rank9::counts_len(words.len())];
         let mut select = vec![0; Rank9::select_len(words.len())];
-        Rank9::build(words, &mut counts, &mut select);
-        f(&Rank9::new(words, &counts, &select));
+        f(&Rank9::build(words, &mut counts, &mut select));
     }
 
     /// Mostly empty words, some full, some single bits: long empty
@@ -378,5 +726,341 @@ mod board8 {
         fn single_piece_slides_match_reference(sq in 0u32..64, empty in any::<u64>(), d in 0usize..8) {
             prop_assert!(laws::board8_slides_match_reference(1 << sq, empty, Dir::ALL[d]));
         }
+    }
+}
+
+// Byte lanes: both carriers against the per-lane definitions, the table
+// composition, the bridge to the word algebra, and the wide carrier
+// against its two SWAR halves (which on x86 with SSSE3 and on aarch64
+// pits the vector instructions against the scalar definitions).
+mod lanes {
+    use hakmem::affine::Affine8;
+    use hakmem::lanes::{Lanes, U8x8, U8x16};
+    use hakmem::laws;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn u8x8_matches_reference(a in any::<u64>(), b in any::<u64>(), n in 0u32..10, t in any::<[u8; 16]>()) {
+            prop_assert!(laws::lanes_match_reference(U8x8::new(a), U8x8::new(b), n, t));
+        }
+
+        #[test]
+        fn u8x16_matches_reference(a in any::<[u8; 16]>(), b in any::<[u8; 16]>(), n in 0u32..10, t in any::<[u8; 16]>()) {
+            prop_assert!(laws::lanes_match_reference(U8x16::load(&a), U8x16::load(&b), n, t));
+        }
+
+        #[test]
+        fn lut16_composes(x in any::<[u8; 16]>(), a in any::<[u8; 16]>(), b in any::<[u8; 16]>()) {
+            prop_assert!(laws::lut16_composes(U8x16::load(&x), a, b));
+            prop_assert!(laws::lut16_composes(U8x8::load(&x[..8]), a, b));
+        }
+
+        #[test]
+        fn lanes_agree_with_bits(x in any::<u64>(), b in any::<u8>()) {
+            prop_assert!(laws::lanes_agree_with_bits(x, b));
+        }
+
+        #[test]
+        fn u8x16_agrees_with_halves(a in any::<(u64, u64)>(), b in any::<(u64, u64)>(), n in 0u32..10, t in any::<[u8; 16]>()) {
+            prop_assert!(laws::u8x16_agrees_with_halves(a, b, n, t));
+        }
+
+        #[test]
+        fn affine_matches_reference(m in any::<u64>(), add in any::<u8>(), w in any::<u64>()) {
+            prop_assert!(laws::affine_matches_reference(Affine8::new(m, add), w));
+        }
+
+        #[test]
+        fn affine_composes(a in any::<(u64, u8)>(), b in any::<(u64, u8)>(), x in any::<u8>()) {
+            prop_assert!(laws::affine_composes(Affine8::new(a.0, a.1), Affine8::new(b.0, b.1), x));
+        }
+
+        #[test]
+        fn affine_named_maps_match_ops(x in any::<u8>(), n in 0u32..12) {
+            prop_assert!(laws::affine_named_maps_match_ops(x, n));
+        }
+    }
+}
+
+/// The Kindergarten constants. Every file gathers into a byte with the
+/// derived factor. Every diagonal and antidiagonal gathers by column
+/// onto the top rank with the a-file factor, exactly, the antidiagonal
+/// against bit order; the literature's b-file factor lands one column
+/// up and drops the h-file off the top, which is exact once that cell
+/// is left out, as the six-inner-bits index does.
+#[test]
+fn kindergarten_gathers_are_exact() {
+    use hakmem::prelude::*;
+    const A_FILE: u64 = 0x0101_0101_0101_0101;
+    const B_FILE: u64 = 0x0202_0202_0202_0202;
+    let square = |r: u32, c: u32| 1u64 << (8 * r + c);
+    for f in 0..8 {
+        let file: u64 = (0..8).map(|r| square(r, f)).fold(0, |m, b| m | b);
+        let factor = u64::gather_factor(file, 56).unwrap();
+        assert!(laws::gather_is_exact(file, factor, 56), "file {f}");
+        assert_eq!(factor, 0x0102_0408_1020_4080 >> f, "file {f}");
+    }
+    for d in -7i32..=7 {
+        for anti in [false, true] {
+            // Cells in bit order (rank ascending), with their columns.
+            let cells: Vec<(u32, u32)> = (0..8i32)
+                .filter_map(|r| {
+                    let c = if anti { d + 7 - r } else { r + d };
+                    (0..8)
+                        .contains(&c)
+                        .then(|| (r.cast_unsigned(), c.cast_unsigned()))
+                })
+                .collect();
+            let mask = cells
+                .iter()
+                .map(|&(r, c)| square(r, c))
+                .fold(0u64, |m, b| m | b);
+            let c_min = cells.iter().map(|&(_, c)| c).min().unwrap();
+            let target = 56 + c_min;
+            let place = |i: u32| 56 + cells[i as usize].1;
+            let factor = u64::gather_factor_by(mask, place).unwrap();
+            assert_eq!(factor & !A_FILE, 0, "d={d} anti={anti}");
+            assert!(
+                laws::gather_is_exact_by(mask, factor, target, place),
+                "d={d} anti={anti}"
+            );
+            assert!(
+                laws::gather_is_exact_by(mask, A_FILE, target, place),
+                "d={d} anti={anti} a-file"
+            );
+            if !anti {
+                assert_eq!(u64::gather_factor(mask, target), Some(factor), "d={d}");
+                assert!(laws::gather_is_exact(mask, A_FILE, target), "d={d} a-file");
+            }
+            // The b-file variant: one column up, h-file left out.
+            let inner: Vec<(u32, u32)> = cells.iter().copied().filter(|&(_, c)| c < 7).collect();
+            if inner.is_empty() {
+                continue;
+            }
+            let mask = inner
+                .iter()
+                .map(|&(r, c)| square(r, c))
+                .fold(0u64, |m, b| m | b);
+            let target = 57 + inner.iter().map(|&(_, c)| c).min().unwrap();
+            let place = |i: u32| 57 + inner[i as usize].1;
+            assert!(
+                laws::gather_is_exact_by(mask, B_FILE, target, place),
+                "d={d} anti={anti} b-file"
+            );
+        }
+    }
+}
+
+mod cover {
+    use hakmem::laws;
+    use hakmem::prelude::{Hilbert2, Morton2};
+    use proptest::prelude::*;
+
+    /// Budgets from one range to more than any rectangle's exact cover.
+    const BUDGETS: [usize; 7] = [1, 2, 3, 5, 16, 64, 2048];
+
+    fn check(x: (u16, u16), y: (u16, u16)) {
+        for budget in BUDGETS {
+            let mut out = vec![(0u16, 0u16); budget];
+            assert!(
+                laws::morton2_cover_matches_cells(x, y, &mut out),
+                "Morton {x:?} {y:?} {budget}"
+            );
+            assert!(
+                laws::hilbert2_cover_matches_cells(x, y, &mut out),
+                "Hilbert {x:?} {y:?} {budget}"
+            );
+        }
+    }
+
+    #[test]
+    fn edges_and_corners() {
+        let cases = [
+            ((0, 255), (0, 255)),
+            ((0, 0), (0, 0)),
+            ((255, 255), (255, 255)),
+            ((1, 254), (1, 254)),
+            ((3, 200), (100, 101)),
+            ((17, 17), (0, 255)),
+            ((5, 4), (0, 9)),
+            ((0, 400), (250, 300)),
+            ((128, 127), (128, 127)),
+        ];
+        for (x, y) in cases {
+            check(x, y);
+        }
+    }
+
+    #[test]
+    fn ties_at_the_threshold() {
+        // A column one cell wide is 256 runs whose gaps repeat; budgets
+        // between one and two times fewer put the threshold among equal
+        // gaps, where only some of them may close.
+        for x in [0u16, 7, 200] {
+            for budget in (128..256).step_by(9) {
+                let mut out = vec![(0u16, 0u16); budget];
+                assert!(
+                    laws::morton2_cover_matches_cells((x, x), (0, 255), &mut out),
+                    "Morton {x} {budget}"
+                );
+                assert!(
+                    laws::hilbert2_cover_matches_cells((x, x), (0, 255), &mut out),
+                    "Hilbert {x} {budget}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn intersects_corners() {
+        let cases = [
+            ((0u16, 65_535u16), (0u16, 255u16), (0u16, 255u16)),
+            ((0, 0), (0, 0), (0, 0)),
+            ((1, 1), (0, 0), (0, 0)),
+            ((65_535, 65_535), (255, 255), (255, 255)),
+            ((100, 50), (0, 255), (0, 255)),
+            ((4, 11), (0, 1), (0, 1)),
+            ((0, 65_535), (7, 3), (0, 9)),
+            ((12_345, 12_346), (0, 300), (0, 300)),
+        ];
+        for (k, x, y) in cases {
+            assert!(
+                laws::morton2_intersects_matches_cells(k, x, y),
+                "Morton {k:?} {x:?} {y:?}"
+            );
+            assert!(
+                laws::hilbert2_intersects_matches_cells(k, x, y),
+                "Hilbert {k:?} {x:?} {y:?}"
+            );
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(96))]
+        #[test]
+        fn intersects_random(a in any::<u16>(), b in any::<u16>(), p in 0u16..300, q in 0u16..300, r in 0u16..300, s in 0u16..300) {
+            let (k, x, y) = ((a.min(b), a.max(b)), (p.min(q), p.max(q)), (r.min(s), r.max(s)));
+            prop_assert!(laws::morton2_intersects_matches_cells(k, x, y));
+            prop_assert!(laws::hilbert2_intersects_matches_cells(k, x, y));
+        }
+
+        #[test]
+        fn intersects_short_intervals(a in any::<u16>(), len in 0u16..64, p in 0u16..256, q in 0u16..256, r in 0u16..256, s in 0u16..256) {
+            // Short intervals keep the answer from being always yes.
+            let k = (a, a.saturating_add(len));
+            let (x, y) = ((p.min(q), p.max(q)), (r.min(s), r.max(s)));
+            prop_assert!(laws::morton2_intersects_matches_cells(k, x, y));
+            prop_assert!(laws::hilbert2_intersects_matches_cells(k, x, y));
+        }
+
+        #[test]
+        fn random_rectangles(a in 0u16..300, b in 0u16..300, c in 0u16..300, d in 0u16..300) {
+            check((a.min(b), a.max(b)), (c.min(d), c.max(d)));
+        }
+
+
+        /// `u32` (16 levels) and `u128` (64) end on a step of one level,
+        /// which `u16` and `u64` never take.
+        #[test]
+        fn intersects_u32_cells(
+            x0 in 0u32..65_000, w in 0u32..20, y0 in 0u32..65_000, h in 0u32..20,
+            c in any::<(u16, u16)>(), len in prop_oneof![0u32..4, 0u32..5000, any::<u32>()],
+        ) {
+            let (x, y) = ((x0, x0 + w), (y0, y0 + h));
+            // Around a cell of the rectangle half the time, anywhere otherwise.
+            let (cx, cy) = (x0 + u32::from(c.0) % (w + 1), y0 + u32::from(c.1) % (h + 1));
+            for k in [Morton2::<u32>::encode(cx, cy).code(), Hilbert2::<u32>::encode(cx, cy).index(), u32::from(c.0) << 16 | u32::from(c.1)] {
+                let keys = (k.saturating_sub(len / 2), k.saturating_add(len / 2));
+                prop_assert!(laws::morton2_intersects_matches_cells(keys, x, y));
+                prop_assert!(laws::hilbert2_intersects_matches_cells(keys, x, y));
+            }
+        }
+
+        #[test]
+        fn intersects_u32_u128_against_cover(
+            a in any::<u16>(), b in any::<u16>(), c in any::<u16>(), d in any::<u16>(),
+            budget in 1usize..48,
+            points in prop::collection::vec((any::<u16>(), any::<u16>()), 32),
+        ) {
+            let x = (u32::from(a.min(b)), u32::from(a.max(b)));
+            let y = (u32::from(c.min(d)), u32::from(c.max(d)));
+            let pts: Vec<(u32, u32)> = points.iter().map(|&(p, q)| (u32::from(p).clamp(x.0, x.1), u32::from(q).clamp(y.0, y.1))).collect();
+            let mut out = vec![(0u32, 0u32); budget];
+            prop_assert!(laws::morton2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+            prop_assert!(laws::hilbert2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+            // The same rectangle scaled to the u128 grid.
+            let wide = |v: (u32, u32)| (u128::from(v.0) << 40, (u128::from(v.1) << 40) | 0xFF_FFFF_FFFF);
+            let (x, y) = (wide(x), wide(y));
+            let pts: Vec<(u128, u128)> = pts.iter().map(|&(p, q)| (u128::from(p) << 40 | 7, u128::from(q) << 40)).collect();
+            let mut out = vec![(0u128, 0u128); budget];
+            prop_assert!(laws::morton2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+            prop_assert!(laws::hilbert2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+        }
+
+        #[test]
+        fn wide_rectangles(
+            a in any::<u32>(), b in any::<u32>(), c in any::<u32>(), d in any::<u32>(),
+            budget in 1usize..64,
+            points in prop::collection::vec((any::<u32>(), any::<u32>()), 64),
+        ) {
+            let (x, y) = ((u64::from(a.min(b)), u64::from(a.max(b))), (u64::from(c.min(d)), u64::from(c.max(d))));
+            // Corners, edges and the given points, clamped into the box
+            // half of the time so most are inside.
+            let mut pts: Vec<(u64, u64)> = vec![(x.0, y.0), (x.1, y.0), (x.0, y.1), (x.1, y.1)];
+            for (i, &(p, q)) in points.iter().enumerate() {
+                let (p, q) = (u64::from(p), u64::from(q));
+                pts.push(if i % 2 == 0 { (p.clamp(x.0, x.1), q.clamp(y.0, y.1)) } else { (p, q) });
+            }
+            let mut out = vec![(0u64, 0u64); budget];
+            prop_assert!(laws::morton2_cover_holds_points(x, y, &pts, &mut out));
+            prop_assert!(laws::hilbert2_cover_holds_points(x, y, &pts, &mut out));
+            prop_assert!(laws::morton2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+            prop_assert!(laws::hilbert2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+        }
+    }
+}
+
+/// The slice law on slices of nothing but ones, where random words
+/// seldom go: the reference once kept 512 positions and four `Wide<3>`
+/// hold 3072.
+#[test]
+fn slice_law_on_dense_slices() {
+    use hakmem::prelude::*;
+    use hakmem::wide::Wide;
+    fn check<W: Word>() {
+        let words = [W::ONES; 4];
+        let bits = W::BITS as usize;
+        for i in [0, 1, bits, 4 * bits - 1, 4 * bits, 4 * bits + 3] {
+            for k in [1, W::BITS] {
+                assert!(
+                    hakmem::laws::slice_ops_match_reference(&words, i, k),
+                    "{} bits, i {i}, k {k}",
+                    W::BITS
+                );
+            }
+        }
+    }
+    check::<u8>();
+    check::<u64>();
+    check::<u128>();
+    check::<Wide<3>>();
+}
+
+proptest! {
+    /// `Wide<2>` prints as the `u128` it spells, in every base and with
+    /// the prefix; the limbs used to print as an array of two numbers.
+    #[test]
+    fn wide_formats_as_u128(v in any::<u128>()) {
+        use hakmem::wide::Wide;
+        #[allow(clippy::cast_possible_truncation)]
+        let w = Wide::from_limbs([v as u64, (v >> 64) as u64]);
+        prop_assert_eq!(format!("{w:b}"), format!("{v:b}"));
+        prop_assert_eq!(format!("{w:x}"), format!("{v:x}"));
+        prop_assert_eq!(format!("{w:X}"), format!("{v:X}"));
+        prop_assert_eq!(format!("{w:#x}"), format!("{v:#x}"));
+        prop_assert_eq!(format!("{w:#b}"), format!("{v:#b}"));
+        let key = hakmem::Morton2::<u128>::from_code(v);
+        prop_assert_eq!(format!("{key:b}"), format!("{v:b}"));
     }
 }

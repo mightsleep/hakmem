@@ -80,6 +80,12 @@ fn u8_indexed_laws() {
             assert!(laws::select_is_rank_inverse(x, i), "x={x} k={i}");
             assert!(laws::select_matches_reference(x, i), "x={x} k={i}");
         }
+        for k in [8, 9, 255, u32::MAX] {
+            assert!(laws::select_lowest_is_total(x, k), "x={x} k={k}");
+        }
+        for k in 0..8 {
+            assert!(laws::select_lowest_is_total(x, k), "x={x} k={k}");
+        }
     }
 }
 
@@ -88,6 +94,7 @@ fn u8_indexed_laws() {
 fn u8_binary_laws_all_pairs() {
     for x in u8::MIN..=u8::MAX {
         for m in u8::MIN..=u8::MAX {
+            assert!(laws::order_is_unsigned(x, m), "x={x} m={m}");
             assert!(laws::compact_matches_reference(x, m), "x={x} m={m}");
             assert!(laws::expand_matches_reference(x, m), "x={x} m={m}");
             assert!(laws::compact_expand_roundtrip(x, m), "x={x} m={m}");
@@ -150,6 +157,9 @@ fn u16_indexed_laws() {
             assert!(laws::select_is_rank_inverse(x, i), "x={x} k={i}");
             assert!(laws::select_matches_reference(x, i), "x={x} k={i}");
         }
+        for k in [0, 7, 15, 16, 17, 64, u32::MAX] {
+            assert!(laws::select_lowest_is_total(x, k), "x={x} k={k}");
+        }
     }
 }
 
@@ -185,6 +195,73 @@ fn u16_morton_all_coordinates() {
                 laws::morton_aligned_block_is_contiguous(x, y),
                 "x={x} y={y}"
             );
+        }
+    }
+}
+
+/// Every cell of every curve up to order 8 on `u16`, and every index of
+/// the full 256 × 256 curve: the scan-and-fill kernels against the
+/// textbook loops, and the path property at every step.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u16_hilbert_all_orders_all_cells() {
+    for order in 0..=8u32 {
+        let side = 1u32 << order;
+        for x in 0..side {
+            for y in 0..side {
+                // Fits: side <= 256.
+                #[allow(clippy::cast_possible_truncation)]
+                let (x, y) = (x as u16, y as u16);
+                assert!(
+                    laws::hilbert_matches_reference(x, y, order),
+                    "order={order} x={x} y={y}"
+                );
+                if order < 8 {
+                    assert!(
+                        laws::hilbert_order_laws(x, y, order),
+                        "order={order} x={x} y={y}"
+                    );
+                }
+            }
+        }
+    }
+    for h in u16::MIN..=u16::MAX {
+        assert!(laws::hilbert_consecutive_are_adjacent(h), "h={h}");
+        assert!(laws::hilbert_roundtrip(h, h.rotate_left(7)), "h={h}");
+    }
+    for x in u8::MIN..=u8::MAX {
+        for y in u8::MIN..=u8::MAX {
+            assert!(laws::hilbert_matches_reference(x, y, 4), "x={x} y={y}");
+            assert!(laws::hilbert_roundtrip(x, y), "x={x} y={y}");
+        }
+    }
+}
+
+/// Every index of the 32 × 32 × 32 curve on `u16`, and every cell of
+/// every order up to 5: the 3D decode scan against the twelve-state
+/// machine, the path property, the order rotation.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u16_hilbert3_all_indices_all_orders() {
+    for h in 0..(1u16 << 15) {
+        assert!(laws::hilbert3_matches_reference(h), "h={h}");
+        assert!(laws::hilbert3_consecutive_are_adjacent(h), "h={h}");
+    }
+    for order in 0..5u32 {
+        let side = 1u32 << order;
+        for x in 0..side {
+            for y in 0..side {
+                for z in 0..side {
+                    // Fits: side <= 16.
+                    #[allow(clippy::cast_possible_truncation)]
+                    let (x, y, z) = (x as u16, y as u16, z as u16);
+                    assert!(
+                        laws::hilbert3_order_laws(x, y, z, order),
+                        "order={order} ({x},{y},{z})"
+                    );
+                    assert!(laws::hilbert3_roundtrip(x, y, z), "({x},{y},{z})");
+                }
+            }
         }
     }
 }
@@ -275,6 +352,7 @@ fn u8_u16_catalogue_all_inputs() {
         assert!(laws::pow2_helpers_match_reference(x), "x={x}");
         assert!(laws::longest_run_matches_reference(x), "x={x}");
         assert!(laws::gray_code_laws(x), "x={x}");
+        assert!(laws::suffix_xor_laws(x), "x={x}");
         for c in [false, true] {
             assert!(laws::find_escaped_matches_reference(&[x], c), "x={x} c={c}");
         }
@@ -295,6 +373,7 @@ fn u8_u16_catalogue_all_inputs() {
         assert!(laws::pow2_helpers_match_reference(x), "x={x}");
         assert!(laws::longest_run_matches_reference(x), "x={x}");
         assert!(laws::gray_code_laws(x), "x={x}");
+        assert!(laws::suffix_xor_laws(x), "x={x}");
         assert!(
             laws::basics_match_reference(x, x.rotate_left(5), x.rotate_left(11)),
             "x={x}"
@@ -410,6 +489,209 @@ fn u8_u16_broadword_compress_expand_match_loop() {
                 expand_loop(x, m),
                 "expand x={x:#b} m={m:#b}"
             );
+        }
+    }
+}
+
+/// Every pair of byte values in every lane of the SWAR carrier, every
+/// shift, and every lane value through the table lookup. The lane ops
+/// are lane-independent by construction, so pairs cover the space.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8x8_lanes_all_byte_pairs() {
+    use hakmem::lanes::{Lanes, U8x8};
+    let table = [
+        0x00, 0x81, 0x7F, 0x10, 0xFF, 0x0F, 0x80, 0x01, 0x55, 0xAA, 0x3C, 0xC3, 0x02, 0x40, 0xFE,
+        0x7E,
+    ];
+    for a in 0..=255u8 {
+        // `a` in the even lanes, its complement in the odd ones, so the
+        // borrow and carry between neighbouring lanes is exercised too.
+        let x = U8x8::load(&[a, !a, a, !a, a, !a, a, !a]);
+        for b in 0..=255u8 {
+            let y = U8x8::load(&[b, b, !b, !b, b, !b, b, !b]);
+            for n in 0..9 {
+                assert!(
+                    laws::lanes_match_reference(x, y, n, table),
+                    "a={a:#04x} b={b:#04x} n={n}"
+                );
+            }
+        }
+    }
+}
+
+/// Two's-complement overflow from three sign bits, against the
+/// standard library's checked arithmetic on the signed twin: every
+/// pair of bytes, and every `u16` against the structured masks.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn signed_overflow_matches_checked_arithmetic() {
+    for a in u8::MIN..=u8::MAX {
+        for b in u8::MIN..=u8::MAX {
+            let (x, y) = (a.cast_signed(), b.cast_signed());
+            assert_eq!(
+                a.signed_add_overflows(b),
+                x.checked_add(y).is_none(),
+                "a={a} b={b}"
+            );
+            assert_eq!(
+                a.signed_sub_overflows(b),
+                x.checked_sub(y).is_none(),
+                "a={a} b={b}"
+            );
+            assert!(laws::signed_overflow_matches_sign_test(a, b), "a={a} b={b}");
+        }
+    }
+    let masks = masks16();
+    for a in u16::MIN..=u16::MAX {
+        for &b in &masks {
+            let (x, y) = (a.cast_signed(), b.cast_signed());
+            assert_eq!(
+                a.signed_add_overflows(b),
+                x.checked_add(y).is_none(),
+                "a={a} b={b}"
+            );
+            assert_eq!(
+                a.signed_sub_overflows(b),
+                x.checked_sub(y).is_none(),
+                "a={a} b={b}"
+            );
+        }
+    }
+}
+
+/// Every truth table on every pair of bytes, with a third operand from
+/// a small structured set; and the named functions on all pairs.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8_ternary_all_tables_all_pairs() {
+    for table in u8::MIN..=u8::MAX {
+        for a in u8::MIN..=u8::MAX {
+            for b in u8::MIN..=u8::MAX {
+                for c in [0x00, 0xFF, 0x0F, 0xF0, 0x55, 0xAA, a ^ b, a.wrapping_add(b)] {
+                    assert!(
+                        laws::ternary_is_truth_table(a, b, c, table),
+                        "a={a} b={b} c={c} table={table:#04x}"
+                    );
+                }
+            }
+        }
+    }
+    for a in u8::MIN..=u8::MAX {
+        for b in u8::MIN..=u8::MAX {
+            assert!(laws::truth_table_names_the_function(
+                a,
+                b,
+                a.wrapping_mul(b)
+            ));
+        }
+    }
+}
+
+/// The GF(2) affine maps: the named ones on every byte and shift
+/// count, and a spread of random maps on every byte, alone, composed,
+/// and as lanes of the SWAR carrier.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn affine_all_bytes() {
+    use hakmem::affine::Affine8;
+    let mut maps = vec![
+        Affine8::IDENTITY,
+        Affine8::NOT,
+        Affine8::ZERO,
+        Affine8::REVERSE,
+        Affine8::PARITY,
+    ];
+    for n in 0..9 {
+        maps.extend([
+            Affine8::shl(n),
+            Affine8::shr(n),
+            Affine8::sra(n),
+            Affine8::rotl(n),
+        ]);
+    }
+    let mut s: u64 = 0x9E37_79B9_7F4A_7C15;
+    for _ in 0..64 {
+        s ^= s << 13;
+        s ^= s >> 7;
+        s ^= s << 17;
+        // The low byte is as random as any.
+        #[allow(clippy::cast_possible_truncation)]
+        maps.push(Affine8::new(s, s as u8));
+    }
+    for x in u8::MIN..=u8::MAX {
+        for n in 0..12 {
+            assert!(laws::affine_named_maps_match_ops(x, n), "x={x} n={n}");
+        }
+        let word = (u64::from(x) * 0x0101_0101_0101_0101) ^ 0xF0E1_D2C3_B4A5_9687;
+        for &a in &maps {
+            assert!(laws::affine_matches_reference(a, word), "x={x} a={a:?}");
+            for &b in &maps {
+                assert!(laws::affine_composes(a, b, x), "x={x} a={a:?} b={b:?}");
+            }
+        }
+    }
+}
+
+/// The carry-rippler on every `u8` pair and every `u8` mask, and every
+/// `u16` mask with at most 12 bits; the strided gather theorem on every
+/// `u8` parameter set.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8_u16_subsets_and_gathers() {
+    for m in u8::MIN..=u8::MAX {
+        assert!(laws::subsets_enumerate_each_once(m), "m={m}");
+        for x in u8::MIN..=u8::MAX {
+            assert!(laws::next_subset_is_increment_in_mask(x, m), "x={x} m={m}");
+        }
+    }
+    for m in u16::MIN..=u16::MAX {
+        if m.count_ones() <= 12 {
+            assert!(laws::subsets_enumerate_each_once(m), "m={m}");
+        }
+    }
+    for x in u8::MIN..=u8::MAX {
+        for start in 0..8 {
+            for stride in 1..8 {
+                for k in 1..=8 {
+                    for target in 0..8 {
+                        assert!(
+                            laws::strided_gather_is_exact(x, start, stride, k, target),
+                            "x={x} start={start} stride={stride} k={k} target={target}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// `intersects` on the 16 × 16 grid of `u8`: every rectangle against
+/// intervals of every start and five lengths. Four levels is a step of
+/// three and a step of one, the step the wider tests never take.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn intersects_u8_every_rectangle() {
+    for x0 in 0..16u8 {
+        for x1 in x0..16 {
+            for y0 in 0..16u8 {
+                for y1 in y0..16 {
+                    for a in 0..=255u8 {
+                        for len in [0u8, 1, 4, 17, 100] {
+                            let k = (a, a.saturating_add(len));
+                            let (x, y) = ((x0, x1), (y0, y1));
+                            assert!(
+                                laws::morton2_intersects_matches_cells(k, x, y),
+                                "Morton {k:?} {x:?} {y:?}"
+                            );
+                            assert!(
+                                laws::hilbert2_intersects_matches_cells(k, x, y),
+                                "Hilbert {k:?} {x:?} {y:?}"
+                            );
+                        }
+                    }
+                }
+            }
         }
     }
 }

@@ -24,6 +24,10 @@ in {
         type = t.package;
         description = "Nightly toolchain: rustc, cargo, clippy, rustfmt (nightly options in rustfmt.toml), rust-src, rust-analyzer.";
       };
+      nightlyDev = lib.mkOption {
+        type = t.package;
+        description = "The nightly toolchain plus the aarch64 std, for the dev shell: cross `cargo check` of the NEON paths.";
+      };
       miri = lib.mkOption {
         type = t.package;
         description = "Nightly toolchain with the miri component.";
@@ -34,8 +38,8 @@ in {
       };
       msrvVersion = lib.mkOption {
         type = t.str;
-        default = "1.87.0";
-        description = "hakmem's MSRV (edition 2024 needs 1.85, cast_signed 1.87). Must match rust-version in Cargo.toml.";
+        default = "1.89.0";
+        description = "hakmem's MSRV (edition 2024 needs 1.85, cast_signed 1.87, the GFNI intrinsics 1.89). Must match rust-version in Cargo.toml.";
       };
       craneLib = lib.mkOption {
         type = t.raw;
@@ -56,11 +60,20 @@ in {
         fenixPkgs.latest.rust-src
         fenixPkgs.latest.rust-analyzer
       ];
+      # The dev shell only: the CI derivations hash `nightly`, and a target
+      # std they never use would rebuild every cell once.
+      nightlyDev = fenixPkgs.combine [
+        config.rust.nightly
+        # `cargo check --target aarch64-unknown-linux-gnu`: the NEON branch
+        # of `lanes` type-checks locally instead of in CI. No linker, check
+        # only; running the tests still needs the arm runner.
+        fenixPkgs.targets.aarch64-unknown-linux-gnu.latest.rust-std
+      ];
       miri = fenixPkgs.latest.withComponents ["rustc" "cargo" "rust-src" "miri"];
       msrv =
         (fenixPkgs.toolchainOf {
           channel = config.rust.msrvVersion;
-          sha256 = "sha256-KUm16pHj+cRedf8vxs/Hd2YWxpOrWZ7UOrwhILdSJBU=";
+          sha256 = "sha256-+9FmLhAOezBZCOziO0Qct1NOrfpjNsXxc/8I0c7BdKE=";
         })
         .minimalToolchain;
       craneLib = (inputs.crane.mkLib pkgs).overrideToolchain (_: config.rust.nightly);
