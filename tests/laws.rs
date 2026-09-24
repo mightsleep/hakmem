@@ -875,8 +875,42 @@ mod cover {
         }
     }
 
+    #[test]
+    fn intersects_corners() {
+        let cases = [
+            ((0u16, 65_535u16), (0u16, 255u16), (0u16, 255u16)),
+            ((0, 0), (0, 0), (0, 0)),
+            ((1, 1), (0, 0), (0, 0)),
+            ((65_535, 65_535), (255, 255), (255, 255)),
+            ((100, 50), (0, 255), (0, 255)),
+            ((4, 11), (0, 1), (0, 1)),
+            ((0, 65_535), (7, 3), (0, 9)),
+            ((12_345, 12_346), (0, 300), (0, 300)),
+        ];
+        for (k, x, y) in cases {
+            assert!(laws::morton2_intersects_matches_cells(k, x, y), "Morton {k:?} {x:?} {y:?}");
+            assert!(laws::hilbert2_intersects_matches_cells(k, x, y), "Hilbert {k:?} {x:?} {y:?}");
+        }
+    }
+
     proptest! {
         #![proptest_config(ProptestConfig::with_cases(96))]
+        #[test]
+        fn intersects_random(a in any::<u16>(), b in any::<u16>(), p in 0u16..300, q in 0u16..300, r in 0u16..300, s in 0u16..300) {
+            let (k, x, y) = ((a.min(b), a.max(b)), (p.min(q), p.max(q)), (r.min(s), r.max(s)));
+            prop_assert!(laws::morton2_intersects_matches_cells(k, x, y));
+            prop_assert!(laws::hilbert2_intersects_matches_cells(k, x, y));
+        }
+
+        #[test]
+        fn intersects_short_intervals(a in any::<u16>(), len in 0u16..64, p in 0u16..256, q in 0u16..256, r in 0u16..256, s in 0u16..256) {
+            // Short intervals keep the answer from being always yes.
+            let k = (a, a.saturating_add(len));
+            let (x, y) = ((p.min(q), p.max(q)), (r.min(s), r.max(s)));
+            prop_assert!(laws::morton2_intersects_matches_cells(k, x, y));
+            prop_assert!(laws::hilbert2_intersects_matches_cells(k, x, y));
+        }
+
         #[test]
         fn random_rectangles(a in 0u16..300, b in 0u16..300, c in 0u16..300, d in 0u16..300) {
             check((a.min(b), a.max(b)), (c.min(d), c.max(d)));
@@ -899,6 +933,8 @@ mod cover {
             let mut out = vec![(0u64, 0u64); budget];
             prop_assert!(laws::morton2_cover_holds_points(x, y, &pts, &mut out));
             prop_assert!(laws::hilbert2_cover_holds_points(x, y, &pts, &mut out));
+            prop_assert!(laws::morton2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+            prop_assert!(laws::hilbert2_intersects_agrees_with_cover(x, y, &pts, &mut out));
         }
     }
 }

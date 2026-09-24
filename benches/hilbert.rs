@@ -503,6 +503,22 @@ fn bench_cover(c: &mut Criterion) {
             })
             .collect();
         let mut g = c.benchmark_group(format!("cover/sides to 2^{side_bits}"));
+        // Granules of 2^40 keys at random: the pruning test.
+        let spans: Vec<(u64, u64)> = w.iter().take(rects.len()).map(|&k| (k, k.saturating_add(1 << 40))).collect();
+        g.bench_function("Morton2 intersects", |b| {
+            b.iter(|| {
+                for (&(x, y), &s) in rects.iter().zip(&spans) {
+                    black_box(Morton2::<u64>::intersects(black_box(s), x, y));
+                }
+            });
+        });
+        g.bench_function("Hilbert2 intersects", |b| {
+            b.iter(|| {
+                for (&(x, y), &s) in rects.iter().zip(&spans) {
+                    black_box(Hilbert2::<u64>::intersects(black_box(s), x, y));
+                }
+            });
+        });
         for budget in [16usize, 64] {
             let mut out = vec![(0u64, 0u64); budget];
             g.bench_function(format!("Morton2, {budget} ranges"), |b| {

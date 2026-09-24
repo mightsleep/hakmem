@@ -289,3 +289,59 @@ pub(crate) fn cover<W: Word + Ord, C: Quadrants>(
     walk::<W, C, _>(&r, top_level, stop, key, origin, frame, &mut merge);
     merge.n
 }
+
+/// Whether the node at `level` whose first key is `key`, square at
+/// `(ox, oy)`, shares a cell with the rectangle whose key lies in
+/// `a..=b`. A node is an interval of keys and a square of cells at once:
+/// disjoint from either, no; inside either while meeting the other, yes;
+/// else its children. Only the nodes on the paths of `a` and `b` are
+/// partly inside `a..=b`, so the walk is two paths down, not a tree.
+fn meets<W: Word + Ord, C: Quadrants>(
+    r: &Rect<W>,
+    (a, b): (W, W),
+    level: u32,
+    key: W,
+    (ox, oy): (W, W),
+    frame: u8,
+) -> bool {
+    let last = key.or(W::low_ones(2 * level));
+    if last < a || key > b {
+        return false;
+    }
+    let reach = W::low_ones(level);
+    let (ex, ey) = (ox.wrapping_add(reach), oy.wrapping_add(reach));
+    if ox > r.x1 || ex < r.x0 || oy > r.y1 || ey < r.y0 {
+        return false;
+    }
+    // A cell of the node meets both; a single cell is inside both here.
+    if (a <= key && last <= b) || (r.x0 <= ox && ex <= r.x1 && r.y0 <= oy && ey <= r.y1) {
+        return true;
+    }
+    let below = level - 1;
+    (0..4u8).any(|digit| {
+        let (dx, dy, next) = C::child(frame, digit);
+        let child_key = key.or(small::<W>(digit).shl(2 * below));
+        let child = (
+            ox.or(small::<W>(dx).shl(below)),
+            oy.or(small::<W>(dy).shl(below)),
+        );
+        meets::<W, C>(r, (a, b), below, child_key, child, next)
+    })
+}
+
+/// Whether some cell of `x0..=x1` × `y0..=y1` has its key in `a..=b`.
+pub(crate) fn intersects<W: Word + Ord, C: Quadrants>(
+    levels: u32,
+    top: u8,
+    (a, b): (W, W),
+    (x0, x1): (W, W),
+    (y0, y1): (W, W),
+) -> bool {
+    let side = W::low_ones(levels);
+    let (x1, y1) = (x1.min(side), y1.min(side));
+    if a > b || x0 > x1 || y0 > y1 {
+        return false;
+    }
+    let r = Rect { x0, x1, y0, y1 };
+    meets::<W, C>(&r, (a, b), levels, W::ZERO, (W::ZERO, W::ZERO), top)
+}

@@ -336,6 +336,21 @@ impl<W: Word + Ord> Morton2<W> {
     pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
         crate::cover::cover::<W, ZQuadrants>(W::BITS / 2, 0, x, y, out)
     }
+
+    /// Whether some cell of the rectangle has its code in
+    /// `keys.0..=keys.1`, as [`Hilbert2::intersects`](crate::hilbert::Hilbert2::intersects).
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // Codes 4..=11 miss the 2 × 2 block at the origin, codes 0..=3.
+    /// assert!(!Morton2::<u8>::intersects((4, 11), (0, 1), (0, 1)));
+    /// assert!(Morton2::<u8>::intersects((4, 11), (0, 2), (0, 1)));
+    /// ```
+    #[must_use]
+    pub fn intersects(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
+        crate::cover::intersects::<W, ZQuadrants>(W::BITS / 2, 0, keys, x, y)
+    }
 }
 
 morton2_columns!(

@@ -595,6 +595,62 @@ cover_laws! {
         |x, y| Hilbert2::<u16>::encode(x, y).index(), |x, y| Hilbert2::<u64>::encode(x, y).index();
 }
 
+macro_rules! intersects_laws {
+    ($($curve:ident => $small:ident, $wide:ident, $encode:expr, $encode64:expr;)*) => {$(
+        /// `intersects` on the `u16` grid against the cells: true exactly
+        /// when some cell of the rectangle has its key in `keys`.
+        #[must_use]
+        pub fn $small(keys: (u16, u16), x: (u16, u16), y: (u16, u16)) -> bool {
+            use crate::prelude::*;
+            let (x1, y1) = (x.1.min(255), y.1.min(255));
+            let mut any = false;
+            for cx in x.0..=x1 {
+                for cy in y.0..=y1 {
+                    let k: u16 = $encode(cx, cy);
+                    any |= keys.0 <= k && k <= keys.1;
+                }
+            }
+            $curve::<u16>::intersects(keys, x, y) == any
+        }
+
+        /// `intersects` on the full `u64` grid against `cover`.
+        ///
+        /// Every gap
+        /// between the ranges of a cover misses the rectangle, and every
+        /// interval holding the key of one of `points` inside it meets it.
+        /// `out` is the cover's scratch.
+        #[must_use]
+        pub fn $wide(x: (u64, u64), y: (u64, u64), points: &[(u64, u64)], out: &mut [(u64, u64)]) -> bool {
+            use crate::prelude::*;
+            let n = $curve::<u64>::cover(x, y, out);
+            let gaps_miss = out[..n]
+                .windows(2)
+                .all(|w| !$curve::<u64>::intersects((w[0].1 + 1, w[1].0 - 1), x, y));
+            let ends_miss = n == 0
+                || ((out[0].0 == 0 || !$curve::<u64>::intersects((0, out[0].0 - 1), x, y))
+                    && (out[n - 1].1 == u64::MAX
+                        || !$curve::<u64>::intersects((out[n - 1].1 + 1, u64::MAX), x, y)));
+            let side = u64::from(u32::MAX);
+            let hits = points
+                .iter()
+                .filter(|p| x.0 <= p.0 && p.0 <= x.1.min(side) && y.0 <= p.1 && p.1 <= y.1.min(side))
+                .all(|&(px, py)| {
+                    let k: u64 = $encode64(px, py);
+                    $curve::<u64>::intersects((k, k), x, y)
+                        && $curve::<u64>::intersects((k.saturating_sub(1 << 40), k.saturating_add(3)), x, y)
+                });
+            gaps_miss && ends_miss && hits
+        }
+    )*};
+}
+
+intersects_laws! {
+    Morton2 => morton2_intersects_matches_cells, morton2_intersects_agrees_with_cover,
+        |x, y| Morton2::<u16>::encode(x, y).code(), |x, y| Morton2::<u64>::encode(x, y).code();
+    Hilbert2 => hilbert2_intersects_matches_cells, hilbert2_intersects_agrees_with_cover,
+        |x, y| Hilbert2::<u16>::encode(x, y).index(), |x, y| Hilbert2::<u64>::encode(x, y).index();
+}
+
 macro_rules! hilbert_in_place_order_law {
     ($($w:ty => $name2:ident, $name3:ident),* $(,)?) => {$(
         /// The batch on the curve of `order` levels is

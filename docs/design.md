@@ -245,6 +245,12 @@ from the rectangle's side and the budget would drop most of the
 counting, and is the next thing to try if a query ever waits on it
 rather than on the scan.
 
+`intersects` answers the question the other way round, for pruning a
+block of sorted keys by its ends: 20 ns a call, one descent of about
+two paths, since a node is an interval of keys and a square of cells
+at once and only the nodes on the paths of the two ends are partly in
+the interval.
+
 Without VBMI the batch is still faster than the per-key form (7.0
 against 12.3 µs for the 2D `u64` case on the same core): Morton first
 and the conversion second is two loops the compiler schedules better

@@ -485,6 +485,27 @@ impl<W: Word + Ord> Hilbert2<W> {
     pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
         crate::cover::cover::<W, HilbertQuadrants>(Self::LEVELS, 0, x, y, out)
     }
+
+    /// Whether some cell of the rectangle `x.0..=x.1` × `y.0..=y.1` has
+    /// its index in `keys.0..=keys.1`: the test that prunes a block of
+    /// data sorted on the curve by its least and greatest key (a
+    /// granule, a Parquet row group, a file), as `ClickHouse` does for
+    /// its sparse index. Answered by one descent of the quadtree, where a
+    /// node is both an interval of indices and a square of cells; only
+    /// the nodes on the paths of the two ends are partly in the interval,
+    /// so it visits a few nodes a level and decodes nothing.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // Indices 0..=3 are the 2 × 2 block at the origin.
+    /// assert!(Hilbert2::<u8>::intersects((0, 3), (1, 5), (1, 5)));
+    /// assert!(!Hilbert2::<u8>::intersects((0, 3), (2, 5), (0, 5)));
+    /// ```
+    #[must_use]
+    pub fn intersects(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
+        crate::cover::intersects::<W, HilbertQuadrants>(Self::LEVELS, 0, keys, x, y)
+    }
 }
 
 /// The batch kernels. Each returns how many keys from the front it

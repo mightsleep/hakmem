@@ -106,6 +106,16 @@ Laws cell by cell on the `u16` grid (coverage, exactness, the optimal
 merge) and by points on `u64`. 3.5 µs a rectangle for 16 Morton
 ranges, 9 for Hilbert, 12 and 30 for 64.
 
+`Hilbert2::intersects` and `Morton2::intersects`: whether a block of
+keys `a..=b` holds a cell of a rectangle, the pruning test of a sparse
+index over data sorted on the curve (ClickHouse runs it per granule,
+by cutting the interval into aligned blocks and decoding each). Here
+one descent: a node is an interval of keys and a square of cells, so
+either disjointness rules it out and either containment (with the
+other met) settles it, and only the nodes on the paths of `a` and `b`
+are partly in the interval. About 20 ns a call on `u64`; laws against
+the cells on `u16` and against `cover` on `u64`, whose gaps must miss.
+
 The batch conversions dispatch at run time on `x86_64`: each kernel
 compiled under its own `#[target_feature]`, chosen once a call by
 CPUID and XCR0 (`cpu.rs`, `core::arch` and one atomic, so still

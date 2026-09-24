@@ -328,6 +328,10 @@ extra a budget of ranges of the deepest cover that fits can hold. A
 scan of the sorted keys seeks once per range. No allocation, the work
 a few times the budget per level: 3.5 µs a rectangle for 16 Morton
 ranges on the full `u64` grid, 9 µs for 16 Hilbert ranges.
+The other way round, `intersects(keys, x, y)` says whether a block of
+keys (a granule, a row group, a file, by its least and greatest key)
+can hold a point of the rectangle: one descent where a node is an
+interval of keys and a square of cells at once, about 20 ns.
 
 ```rust
 use hakmem::prelude::*;
