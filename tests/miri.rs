@@ -108,6 +108,13 @@ fn hilbert_batch_paths() {
             laws::hilbert3_in_place_matches_per_key_u64(&codes, &mut a),
             "n={n}"
         );
+        let (mut keys, mut out) = (vec![0; n], vec![0; 3 * n]);
+        let rotated: Vec<u64> = codes.iter().map(|c| c.rotate_left(21)).collect();
+        let shifted: Vec<u64> = codes.iter().map(|c| c >> 7).collect();
+        assert!(
+            laws::hilbert3_columns_match_per_point(&codes, &rotated, &shifted, &mut keys, &mut out),
+            "n={n}"
+        );
         assert!(
             laws::hilbert2_in_place_matches_per_key_u32(&codes32, &mut b),
             "n={n}"

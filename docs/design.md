@@ -131,7 +131,13 @@ and the kernel sees words only. So the crate commits to no point type,
 the batch has the shape of `slice` and `Rank9` (words in, caller's
 storage, O(1) work a word), and a convenience form over coordinate
 slices can be added later without breaking anything, where the
-reverse would not. They are inherent functions on the concrete widths
+reverse would not. It was, for the 3D curve on `u64`:
+`Hilbert3::<u64>::encode_columns(xs, ys, zs, out)` and
+`decode_columns`, three columns of words and still no point type. The
+columns are not a convenience there but the faster form: the byte
+planes want an octant a byte, and three `vpmultishiftqb` read bit `l`
+of `x`, `l - 1` of `y` and `l - 2` of `z` into one, so the Morton code
+the keys form would be built only to be taken apart. They are inherent functions on the concrete widths
 that have a kernel (`u32`, `u64`), not on every `Word`: dispatching on
 the width of a generic `W` would need an unsafe cast of the slice, and
 the crate's only `unsafe` is intrinsic calls.
@@ -200,6 +206,7 @@ machine read as a table and applied to a register of keys at a time:
 | `Hilbert2::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through 128 entries a step, three levels a step, the frame modulo the reflection of both axes (a XOR mask on the cells, the swap bit in the index byte), three `vpternlog` around the lookup; NEON: the same reduction two levels a step, 32 entries in two registers for `tbl` | `from_morton` per key |
 | `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step, per register of keys (`u32`) or per plane of 64 keys (`u64`: `vpmultishiftqb` and three rounds of `vpermt2b` in, the same rounds and a `vpmaddubsw` / `vpmaddwd` pack out, the transposes checked at compile time); NEON: `tbl` over four registers and `tbx` over two; AVX2 alone: the machine modulo its translations, 24 entries in two PSHUFB of 16 a level, the second read through `index ^ 0x80` | `from_morton` per key |
 | `Hilbert3::into_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time); AVX2 the factored inverse, the translation in index bits 4 and 5, which PSHUFB ignores | `into_morton` per key, the algebraic scan |
+| `Hilbert3::<u64>::encode_columns` / `decode_columns` | AVX-512 VBMI and GFNI: the `u64` planes fed from three columns by `vpmultishiftqb` at offsets `l`, `l - 1`, `l - 2`, and emptied into them by the way back with the levels reversed and one `gf2p8affineqb` bit transpose a register | Morton code and the batch above |
 
 Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 1024 keys, `benches/hilbert.rs`), from coordinates to keys and back, ns a key:
@@ -210,6 +217,8 @@ Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 | 2D encode, `u16` coordinates to `u32` keys, 16 levels (the packed R-tree case) | 0.90 | 6.1 | `fast_hilbert` 8.3 |
 | 3D encode, `u64` keys, 21 levels | 1.7 | 13.1 | rawrunprotected's tables 15.2 |
 | 3D decode, `u64` keys, 21 levels | 1.8 | 8.8 | rawrunprotected's tables 15.1 |
+| 3D encode from three columns, 21 levels | 1.2 | 13.1 | rawrunprotected's tables 15.2 |
+| 3D decode to three columns, 21 levels | 1.0 | 8.8 | rawrunprotected's tables 15.1 |
 
 Without VBMI the batch is still faster than the per-key form (7.0
 against 12.3 µs for the 2D `u64` case on the same core): Morton first

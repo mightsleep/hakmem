@@ -393,6 +393,35 @@ hilbert3_in_place_law!(
     u64 => hilbert3_in_place_matches_per_key_u64,
 );
 
+/// The 3D column conversions are the per-point ones, both ways.
+///
+/// [`Hilbert3::encode_columns`](crate::hilbert3::Hilbert3::encode_columns)
+/// is [`Hilbert3::encode`](crate::hilbert3::Hilbert3::encode) per point,
+/// and [`decode_columns`](crate::hilbert3::Hilbert3::decode_columns)
+/// takes the indices back to the coordinates, masked to the 21 bits the
+/// curve has. `keys` and `out` are scratch of the columns' length
+/// (asserted); `out` holds the three decoded columns end to end.
+#[must_use]
+pub fn hilbert3_columns_match_per_point(
+    xs: &[u64],
+    ys: &[u64],
+    zs: &[u64],
+    keys: &mut [u64],
+    out: &mut [u64],
+) -> bool {
+    use crate::hilbert3::Hilbert3;
+    let n = xs.len();
+    assert!(ys.len() == n && zs.len() == n, "columns must match");
+    assert!(keys.len() == n && out.len() == 3 * n, "scratch must match the columns");
+    Hilbert3::<u64>::encode_columns(xs, ys, zs, keys);
+    let forward = (0..n).all(|i| keys[i] == Hilbert3::<u64>::encode(xs[i], ys[i], zs[i]).index());
+    let (ox, rest) = out.split_at_mut(n);
+    let (oy, oz) = rest.split_at_mut(n);
+    Hilbert3::<u64>::decode_columns(keys, ox, oy, oz);
+    let used = (1u64 << Hilbert3::<u64>::LEVELS) - 1;
+    forward && (0..n).all(|i| (ox[i], oy[i], oz[i]) == (xs[i] & used, ys[i] & used, zs[i] & used))
+}
+
 macro_rules! hilbert_in_place_order_law {
     ($($w:ty => $name2:ident, $name3:ident),* $(,)?) => {$(
         /// The batch on the curve of `order` levels is

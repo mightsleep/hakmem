@@ -65,6 +65,19 @@ loop over points still vectorises, 18.3 µs per 1024 points portable and
 13.2 with `+bmi2` against 19.0 and 15.0 for the tables, where it tied
 or trailed before.
 
+`Hilbert3::<u64>::encode_columns` and `decode_columns`: three columns of
+coordinates to indices and back, no Morton code on the way. With
+AVX-512 VBMI and GFNI the columns feed the byte planes directly, one
+`vpmultishiftqb` per axis at offsets `l`, `l - 1` and `l - 2`, which the
+rotation of the multishift makes right at `l = 0`; the way back leaves
+level `i` at byte `7 - i` and a `gf2p8affineqb` transposes each key's
+8 × 8 bits into a byte of `x`, one of `y` and one of `z`. 1.2 ns a point
+encoding and 1.0 decoding, against 1.7 and 1.8 through Morton codes
+and the batch. Elsewhere the Morton code and the batch. Laws: the
+per-point conversion both ways, full-width coordinates whose bits
+above 21 must drop, every length to 200 and around the groups; a new
+Miri run with GFNI.
+
 `hakmem::lanes`: the SIMD half of the algebra on stable Rust. `Lanes` is
 the trait for independent 8-bit lanes (bitwise, wrapping add and
 subtract, per-lane shifts, unsigned compares to masks, the 16-entry

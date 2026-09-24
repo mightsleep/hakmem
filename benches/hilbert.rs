@@ -338,6 +338,13 @@ fn bench3_batch(c: &mut Criterion) {
                 black_box(&out);
             });
         });
+        let (mut xs, mut ys, mut zs) = (vec![0u64; N], vec![0u64; N], vec![0u64; N]);
+        g.bench_function("hakmem columns", |b| {
+            b.iter(|| {
+                Hilbert3::<u64>::decode_columns(black_box(&indices), &mut xs, &mut ys, &mut zs);
+                black_box((&xs, &ys, &zs));
+            });
+        });
         g.finish();
     }
     {
@@ -365,6 +372,15 @@ fn bench3_batch(c: &mut Criterion) {
                 for (k, &(x, y, z)) in keys.iter_mut().zip(&coords) {
                     *k = tables::encode(black_box(x), black_box(y), black_box(z), 21);
                 }
+                black_box(&keys);
+            });
+        });
+        let xs: Vec<u64> = coords.iter().map(|c| c.0).collect();
+        let ys: Vec<u64> = coords.iter().map(|c| c.1).collect();
+        let zs: Vec<u64> = coords.iter().map(|c| c.2).collect();
+        g.bench_function("hakmem columns", |b| {
+            b.iter(|| {
+                Hilbert3::<u64>::encode_columns(black_box(&xs), &ys, &zs, &mut keys);
                 black_box(&keys);
             });
         });

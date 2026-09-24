@@ -417,6 +417,26 @@ mod hilbert2_in_place {
     }
 
     #[test]
+    fn columns_3d() {
+        // Every length to 200 and around the groups of 64 and 512;
+        // coordinates full width, so the bits above 21 must drop.
+        let lengths = (0..=200).chain([511, 512, 513, 575, 577, 1024, 4096 + 64 * 3 + 7]);
+        for n in lengths {
+            let seed = 0x9E37_79B9_7F4A_7C15 ^ n as u64;
+            let (xs, ys, zs) = (
+                xorshift(n, seed),
+                xorshift(n, seed ^ 1),
+                xorshift(n, seed ^ 2),
+            );
+            let (mut keys, mut out) = (vec![0; n], vec![0; 3 * n]);
+            assert!(
+                laws::hilbert3_columns_match_per_point(&xs, &ys, &zs, &mut keys, &mut out),
+                "n={n}"
+            );
+        }
+    }
+
+    #[test]
     fn group_boundaries_3d() {
         // The `u64` plane kernel takes 512 keys at a time, then whole
         // groups of 64, then leaves the rest to the per-key form; 200
@@ -533,6 +553,15 @@ mod hilbert2_in_place {
         fn u32_codes(codes in prop::collection::vec(any::<u32>(), 0..=300)) {
             let mut scratch = vec![0; codes.len()];
             prop_assert!(laws::hilbert2_in_place_matches_per_key_u32(&codes, &mut scratch));
+        }
+
+        #[test]
+        fn columns_3d_any(points in prop::collection::vec((any::<u64>(), any::<u64>(), any::<u64>()), 0..=700)) {
+            let xs: Vec<u64> = points.iter().map(|p| p.0).collect();
+            let ys: Vec<u64> = points.iter().map(|p| p.1).collect();
+            let zs: Vec<u64> = points.iter().map(|p| p.2).collect();
+            let (mut keys, mut out) = (vec![0; xs.len()], vec![0; 3 * xs.len()]);
+            prop_assert!(laws::hilbert3_columns_match_per_point(&xs, &ys, &zs, &mut keys, &mut out));
         }
 
         #[test]

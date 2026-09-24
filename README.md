@@ -293,8 +293,11 @@ step is one `vpermi2b` per register of keys (2D, three levels through
 128 entries, the frame modulo a reflection; 3D, the 96-byte encode or
 decode table); with AVX2 alone the 3D machine modulo its translations,
 two PSHUFB a level; NEON uses `tbl`; elsewhere it is the per-key
-conversion.
-Coordinates never enter the kernel.
+conversion. Coordinates never enter these kernels. For the 3D curve on
+`u64` they may, as three columns (`Hilbert3::<u64>::encode_columns`,
+`decode_columns`): with VBMI and GFNI that skips the Morton code both
+ways, 1.2 and 1.0 ns a point against 1.7 and 1.8, and elsewhere it is
+the Morton code and the batch above.
 
 ```rust
 use hakmem::prelude::*;

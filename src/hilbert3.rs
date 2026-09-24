@@ -569,6 +569,72 @@ hilbert3_batch!(
     u64 => from_morton_u64, into_morton_u64,
 );
 
+impl Hilbert3<u64> {
+    /// [`encode`](Self::encode) over three columns of coordinates into a
+    /// column of indices: `out[i]` is the index of `(xs[i], ys[i],
+    /// zs[i])`. Coordinates above 21 bits are dropped, as in `encode`.
+    ///
+    /// With AVX-512 VBMI and GFNI the coordinates go straight into the
+    /// byte planes of [`from_morton_in_place`](Self::from_morton_in_place)
+    /// and no Morton code is ever formed: one `vpmultishiftqb` per axis
+    /// reads bit `l` of `x`, `l - 1` of `y` and `l - 2` of `z` into one
+    /// byte, where they are the octant. Otherwise, and for the points
+    /// past the last group of 64, it is [`Morton3::encode`] per point and
+    /// then `from_morton_in_place`, whose own batch paths still apply.
+    ///
+    /// # Panics
+    ///
+    /// If the four slices differ in length.
+    pub fn encode_columns(xs: &[u64], ys: &[u64], zs: &[u64], out: &mut [u64]) {
+        let n = out.len();
+        assert!(
+            xs.len() == n && ys.len() == n && zs.len() == n,
+            "columns of {}, {}, {} for {n} keys",
+            xs.len(),
+            ys.len(),
+            zs.len()
+        );
+        let done = batch::encode_columns(xs, ys, zs, out);
+        let rest = &mut out[done..];
+        for (((key, &x), &y), &z) in rest.iter_mut().zip(&xs[done..]).zip(&ys[done..]).zip(&zs[done..]) {
+            *key = Morton3::<u64>::encode(x, y, z).code();
+        }
+        Self::from_morton_in_place(rest);
+    }
+
+    /// [`decode`](Self::decode) of a column of indices into three
+    /// columns of coordinates, the inverse of
+    /// [`encode_columns`](Self::encode_columns).
+    ///
+    /// With AVX-512 VBMI and GFNI the octants come out of the byte planes
+    /// with level `i` of a point at byte `7 - i`, which is a bit matrix
+    /// `gf2p8affineqb` transposes in one instruction into a byte of `x`
+    /// bits, one of `y` and one of `z`. Otherwise, and past the last
+    /// group of 64, the indices go through [`into_morton_in_place`](Self::into_morton_in_place)
+    /// in `xs`, which the Morton decode then overwrites.
+    ///
+    /// # Panics
+    ///
+    /// If the four slices differ in length.
+    pub fn decode_columns(keys: &[u64], xs: &mut [u64], ys: &mut [u64], zs: &mut [u64]) {
+        let n = keys.len();
+        assert!(
+            xs.len() == n && ys.len() == n && zs.len() == n,
+            "columns of {}, {}, {} for {n} keys",
+            xs.len(),
+            ys.len(),
+            zs.len()
+        );
+        let done = batch::decode_columns(keys, xs, ys, zs);
+        let rest = &mut xs[done..];
+        rest.copy_from_slice(&keys[done..]);
+        Self::into_morton_in_place(rest);
+        for ((x, y), z) in rest.iter_mut().zip(&mut ys[done..]).zip(&mut zs[done..]) {
+            (*x, *y, *z) = Morton3::<u64>::from_code(*x).decode();
+        }
+    }
+}
+
 /// The batch kernels; each returns how many keys from the front it
 /// converted, a whole number of batches. The intrinsics are `unsafe`
 /// solely because they require the target feature, which `cfg` makes a
@@ -697,6 +763,9 @@ mod batch {
             _mm512_slli_epi64, _mm512_srli_epi64, _mm512_storeu_si512, _mm512_ternarylogic_epi64,
         };
 
+        #[cfg(target_feature = "gfni")]
+        use core::arch::x86_64::_mm512_gf2p8affine_epi64_epi8;
+
         use super::super::{DECODE_PADDED, ENCODE_PADDED};
 
         /// A byte of the transpose is tagged `key · 8 + level`, key and
@@ -708,9 +777,10 @@ mod batch {
         /// splits their 128 bytes by bit `k` of the destination register
         /// (`to_planes`: the level; else: the key's register of eight),
         /// each register kept sorted (by key, or by `key · 8 + level`
-        /// within the register of eight).
+        /// within the register of eight; `reversed`, by `key · 8 + 7 -
+        /// level`, the row order `gf2p8affineqb` reads a matrix in).
         #[allow(clippy::cast_possible_truncation, clippy::many_single_char_names)]
-        const fn rounds(to_planes: bool) -> Rounds {
+        const fn rounds(to_planes: bool, reversed: bool) -> Rounds {
             let mut regs = [[0u16; 64]; 8];
             let mut r = 0;
             while r < 8 {
@@ -748,10 +818,11 @@ mod batch {
                                     } else {
                                         regs[r1][q - 64]
                                     };
+                                    let level = if reversed { 7 - t % 8 } else { t % 8 };
                                     let key = if to_planes {
                                         t / 8
                                     } else {
-                                        (t / 8 % 8) * 8 + t % 8
+                                        (t / 8 % 8) * 8 + level
                                     };
                                     let dest = if to_planes { t % 8 } else { t / 64 };
                                     if key == v && (dest >> k) & 1 == side {
@@ -780,6 +851,8 @@ mod batch {
                 while p < 64 {
                     let want = if to_planes {
                         p * 8 + r
+                    } else if reversed {
+                        (8 * r + p / 8) * 8 + 7 - p % 8
                     } else {
                         (8 * r + p / 8) * 8 + p % 8
                     };
@@ -794,8 +867,10 @@ mod batch {
             ctl
         }
 
-        const TO_PLANES: Rounds = rounds(true);
-        const FROM_PLANES: Rounds = rounds(false);
+        const TO_PLANES: Rounds = rounds(true, false);
+        const FROM_PLANES: Rounds = rounds(false, false);
+        #[cfg(target_feature = "gfni")]
+        const FROM_PLANES_REVERSED: Rounds = rounds(false, true);
 
         /// Groups of 64 keys in flight through the level loop.
         const GROUPS: usize = 8;
@@ -911,20 +986,17 @@ mod batch {
             }
         }
 
-        /// `B` groups of 64 keys through the machine, the levels from the
-        /// top, the groups interleaved.
+        /// `B` sets of planes through the machine, the levels from the
+        /// top, the groups interleaved: one state register would make the
+        /// loop wait on its own latency.
         #[inline(always)]
-        unsafe fn groups<const B: usize>(keys: &mut [[u64; 64]; B], table: &[u8; 128]) {
+        unsafe fn walk<const B: usize>(planes: &mut [Planes; B], table: &[u8; 128]) {
             // SAFETY: as `transpose`; the loads read the 128 table bytes.
             unsafe {
                 let lo = _mm512_loadu_si512(table.as_ptr().cast());
                 let hi = _mm512_loadu_si512(table.as_ptr().add(64).cast());
                 let seven = _mm512_set1_epi8(7);
                 let state_bits = _mm512_set1_epi8(0x78);
-                let mut planes = [[[_mm512_setzero_si512(); 8]; 3]; B];
-                for (p, k) in planes.iter_mut().zip(keys.iter()) {
-                    to_planes(k, p);
-                }
                 let mut state = [_mm512_setzero_si512(); B];
                 for l in (0..LEVELS).rev() {
                     let (j, i) = (l / 8, l % 8);
@@ -937,6 +1009,19 @@ mod batch {
                         state[b] = _mm512_and_si512(entry, state_bits);
                     }
                 }
+            }
+        }
+
+        /// `B` groups of 64 keys, in place.
+        #[inline(always)]
+        unsafe fn groups<const B: usize>(keys: &mut [[u64; 64]; B], table: &[u8; 128]) {
+            // SAFETY: as `transpose`.
+            unsafe {
+                let mut planes = [[[_mm512_setzero_si512(); 8]; 3]; B];
+                for (p, k) in planes.iter_mut().zip(keys.iter()) {
+                    to_planes(k, p);
+                }
+                walk(&mut planes, table);
                 for (p, k) in planes.iter().zip(keys.iter_mut()) {
                     from_planes(p, k);
                 }
@@ -965,6 +1050,224 @@ mod batch {
         pub(in crate::hilbert3) fn into_morton_u64(keys: &mut [u64]) -> usize {
             run(keys, &DECODE_PADDED)
         }
+
+        /// Multishift controls for block `j`, every byte `i` reading from
+        /// bit `8j + i - shift`, modulo 64.
+        #[cfg(target_feature = "gfni")]
+        #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
+        const fn column_offsets(j: usize, shift: usize) -> i64 {
+            let mut o = [0u8; 8];
+            let mut i = 0;
+            while i < 8 {
+                o[i] = ((64 + 8 * j + i - shift) % 64) as u8;
+                i += 1;
+            }
+            u64::from_le_bytes(o) as i64
+        }
+
+        /// Three columns of 64 coordinates straight to planes, no Morton
+        /// code on the way: byte `i` of a key takes `x` from bit `l`, `y`
+        /// from bit `l - 1` and `z` from bit `l - 2`, so they land at bits
+        /// 0, 1 and 2, and the multishift's rotation carries `l = 0` round
+        /// to bits 63 and 62 for nothing. Two bit selects make the octant;
+        /// the bits above it the level loop masks anyway.
+        #[cfg(target_feature = "gfni")]
+        #[inline(always)]
+        unsafe fn columns_to_planes(xs: &[u64; 64], ys: &[u64; 64], zs: &[u64; 64], planes: &mut Planes) {
+            // SAFETY: as `transpose`; the loads read the 64 coordinates of
+            // each column.
+            unsafe {
+                let load = |s: &[u64; 64], g: usize| _mm512_loadu_si512(s.as_ptr().add(8 * g).cast());
+                let bit0 = _mm512_set1_epi8(0x01);
+                let bits01 = _mm512_set1_epi8(0x03);
+                for (j, block) in planes.iter_mut().enumerate() {
+                    let cx = _mm512_set1_epi64(column_offsets(j, 0));
+                    let cy = _mm512_set1_epi64(column_offsets(j, 1));
+                    let cz = _mm512_set1_epi64(column_offsets(j, 2));
+                    let mut x: [__m512i; 8] = core::array::from_fn(|g| {
+                        let bx = _mm512_multishift_epi64_epi8(cx, load(xs, g));
+                        let by = _mm512_multishift_epi64_epi8(cy, load(ys, g));
+                        let bz = _mm512_multishift_epi64_epi8(cz, load(zs, g));
+                        // `c ? a : b`, twice
+                        let xy = _mm512_ternarylogic_epi64::<0xCA>(bit0, bx, by);
+                        _mm512_ternarylogic_epi64::<0xCA>(bits01, xy, bz)
+                    });
+                    transpose(&mut x, &TO_PLANES);
+                    *block = x;
+                }
+            }
+        }
+
+        /// Planes of octants back to three columns. The way back leaves
+        /// level `i` of a key at byte `7 - i`, and `gf2p8affineqb` with the
+        /// key as the matrix and the diagonal as the data transposes the
+        /// 8 × 8 bits: byte 0 of the result is the `x` bits of the eight
+        /// levels, byte 1 `y`, byte 2 `z`. No pack, no Morton decode.
+        #[cfg(target_feature = "gfni")]
+        #[inline(always)]
+        unsafe fn planes_to_columns(
+            planes: &Planes,
+            xs: &mut [u64; 64],
+            ys: &mut [u64; 64],
+            zs: &mut [u64; 64],
+        ) {
+            // SAFETY: as `transpose`; the stores write the 64 coordinates
+            // of each column.
+            unsafe {
+                #[allow(clippy::cast_possible_wrap)]
+                let diagonal = _mm512_set1_epi64(0x8040_2010_0804_0201_u64 as i64);
+                let mut bits = [[_mm512_setzero_si512(); 8]; 3];
+                for (j, block) in planes.iter().enumerate() {
+                    let mut x = *block;
+                    transpose(&mut x, &FROM_PLANES_REVERSED);
+                    for (b, x) in bits[j].iter_mut().zip(x) {
+                        *b = _mm512_gf2p8affine_epi64_epi8::<0>(diagonal, x);
+                    }
+                }
+                let byte0 = _mm512_set1_epi64(0xFF);
+                let bytes01 = _mm512_set1_epi64(0xFFFF);
+                let used = _mm512_set1_epi64((1 << LEVELS) - 1);
+                for g in 0..8 {
+                    let (b0, b1, b2) = (bits[0][g], bits[1][g], bits[2][g]);
+                    // Axis `a` is byte `a` of every block, moved to byte `j`;
+                    // `c ? a : b` twice, then levels 21 to 23 off.
+                    let x = _mm512_ternarylogic_epi64::<0xCA>(
+                        bytes01,
+                        _mm512_ternarylogic_epi64::<0xCA>(byte0, b0, _mm512_slli_epi64::<8>(b1)),
+                        _mm512_slli_epi64::<16>(b2),
+                    );
+                    let y = _mm512_ternarylogic_epi64::<0xCA>(
+                        bytes01,
+                        _mm512_ternarylogic_epi64::<0xCA>(byte0, _mm512_srli_epi64::<8>(b0), b1),
+                        _mm512_slli_epi64::<8>(b2),
+                    );
+                    let z = _mm512_ternarylogic_epi64::<0xCA>(
+                        bytes01,
+                        _mm512_ternarylogic_epi64::<0xCA>(
+                            byte0,
+                            _mm512_srli_epi64::<16>(b0),
+                            _mm512_srli_epi64::<8>(b1),
+                        ),
+                        b2,
+                    );
+                    _mm512_storeu_si512(xs.as_mut_ptr().add(8 * g).cast(), _mm512_and_si512(x, used));
+                    _mm512_storeu_si512(ys.as_mut_ptr().add(8 * g).cast(), _mm512_and_si512(y, used));
+                    _mm512_storeu_si512(zs.as_mut_ptr().add(8 * g).cast(), _mm512_and_si512(z, used));
+                }
+            }
+        }
+
+        #[cfg(target_feature = "gfni")]
+        #[inline(always)]
+        unsafe fn encode_groups<const B: usize>(
+            xs: &[[u64; 64]; B],
+            ys: &[[u64; 64]; B],
+            zs: &[[u64; 64]; B],
+            out: &mut [[u64; 64]; B],
+        ) {
+            // SAFETY: as `transpose`.
+            unsafe {
+                let mut planes = [[[_mm512_setzero_si512(); 8]; 3]; B];
+                for b in 0..B {
+                    columns_to_planes(&xs[b], &ys[b], &zs[b], &mut planes[b]);
+                }
+                walk(&mut planes, &ENCODE_PADDED);
+                for (p, k) in planes.iter().zip(out.iter_mut()) {
+                    from_planes(p, k);
+                }
+            }
+        }
+
+        #[cfg(target_feature = "gfni")]
+        #[inline(always)]
+        unsafe fn decode_groups<const B: usize>(
+            keys: &[[u64; 64]; B],
+            xs: &mut [[u64; 64]; B],
+            ys: &mut [[u64; 64]; B],
+            zs: &mut [[u64; 64]; B],
+        ) {
+            // SAFETY: as `transpose`.
+            unsafe {
+                let mut planes = [[[_mm512_setzero_si512(); 8]; 3]; B];
+                for (p, k) in planes.iter_mut().zip(keys.iter()) {
+                    to_planes(k, p);
+                }
+                walk(&mut planes, &DECODE_PADDED);
+                for b in 0..B {
+                    planes_to_columns(&planes[b], &mut xs[b], &mut ys[b], &mut zs[b]);
+                }
+            }
+        }
+
+        /// Whole groups of 64 points; returns how many from the front.
+        #[cfg(target_feature = "gfni")]
+        pub(in crate::hilbert3) fn encode_columns(
+            xs: &[u64],
+            ys: &[u64],
+            zs: &[u64],
+            out: &mut [u64],
+        ) -> usize {
+            let (xs, _) = xs.as_chunks::<64>();
+            let (ys, _) = ys.as_chunks::<64>();
+            let (zs, _) = zs.as_chunks::<64>();
+            let (out, _) = out.as_chunks_mut::<64>();
+            let done = out.len() * 64;
+            let (xg, xr) = xs.as_chunks::<GROUPS>();
+            let (yg, yr) = ys.as_chunks::<GROUPS>();
+            let (zg, zr) = zs.as_chunks::<GROUPS>();
+            let (og, or) = out.as_chunks_mut::<GROUPS>();
+            for (((x, y), z), o) in xg.iter().zip(yg).zip(zg).zip(og) {
+                // SAFETY: AVX-512 F, BW, VBMI and GFNI are enabled by cfg.
+                unsafe { encode_groups::<GROUPS>(x, y, z, o) }
+            }
+            for (((x, y), z), o) in xr.iter().zip(yr).zip(zr).zip(or) {
+                // SAFETY: as above.
+                unsafe {
+                    encode_groups::<1>(
+                        core::array::from_ref(x),
+                        core::array::from_ref(y),
+                        core::array::from_ref(z),
+                        core::array::from_mut(o),
+                    );
+                }
+            }
+            done
+        }
+
+        /// Whole groups of 64 points; returns how many from the front.
+        #[cfg(target_feature = "gfni")]
+        pub(in crate::hilbert3) fn decode_columns(
+            keys: &[u64],
+            xs: &mut [u64],
+            ys: &mut [u64],
+            zs: &mut [u64],
+        ) -> usize {
+            let (keys, _) = keys.as_chunks::<64>();
+            let (xs, _) = xs.as_chunks_mut::<64>();
+            let (ys, _) = ys.as_chunks_mut::<64>();
+            let (zs, _) = zs.as_chunks_mut::<64>();
+            let done = keys.len() * 64;
+            let (kg, kr) = keys.as_chunks::<GROUPS>();
+            let (xg, xr) = xs.as_chunks_mut::<GROUPS>();
+            let (yg, yr) = ys.as_chunks_mut::<GROUPS>();
+            let (zg, zr) = zs.as_chunks_mut::<GROUPS>();
+            for (((k, x), y), z) in kg.iter().zip(xg).zip(yg).zip(zg) {
+                // SAFETY: AVX-512 F, BW, VBMI and GFNI are enabled by cfg.
+                unsafe { decode_groups::<GROUPS>(k, x, y, z) }
+            }
+            for (((k, x), y), z) in kr.iter().zip(xr).zip(yr).zip(zr) {
+                // SAFETY: as above.
+                unsafe {
+                    decode_groups::<1>(
+                        core::array::from_ref(k),
+                        core::array::from_mut(x),
+                        core::array::from_mut(y),
+                        core::array::from_mut(z),
+                    );
+                }
+            }
+            done
+        }
     }
 
     #[cfg(all(
@@ -976,6 +1279,35 @@ mod batch {
         planes::{from_morton_u64, into_morton_u64},
         vbmi::{from_morton_u32, into_morton_u32},
     };
+
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx512vbmi",
+        target_feature = "gfni",
+        not(feature = "portable")
+    ))]
+    pub(super) use planes::{decode_columns, encode_columns};
+
+    /// No column kernel: the caller goes through Morton codes.
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "avx512vbmi",
+        target_feature = "gfni",
+        not(feature = "portable")
+    )))]
+    pub(super) const fn encode_columns(_: &[u64], _: &[u64], _: &[u64], _: &mut [u64]) -> usize {
+        0
+    }
+
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "avx512vbmi",
+        target_feature = "gfni",
+        not(feature = "portable")
+    )))]
+    pub(super) const fn decode_columns(_: &[u64], _: &mut [u64], _: &mut [u64], _: &mut [u64]) -> usize {
+        0
+    }
 
     #[cfg(all(
         target_arch = "aarch64",
