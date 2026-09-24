@@ -575,12 +575,22 @@ pub(crate) fn cover<W: Word + Ord, C: Quadrants>(
     merge.n
 }
 
+/// Bits `lo..=hi` of a `u64`, none when `lo > hi`; both below 64.
+#[inline]
+const fn bits(lo: u32, hi: u32) -> u64 {
+    if lo > hi { 0 } else { (u64::MAX >> (63 - hi)) & (u64::MAX << lo) }
+}
+
 /// Whether the node at `level` whose first key is `key`, square at
 /// `(ox, oy)`, shares a cell with the rectangle whose key lies in
-/// `a..=b`. A node is an interval of keys and a square of cells at once:
-/// disjoint from either, no; inside either while meeting the other, yes;
-/// else its children. Only the nodes on the paths of `a` and `b` are
-/// partly inside `a..=b`, so the walk is two paths down, not a tree.
+/// `a..=b`; the node meets both. A node is an interval of keys and a
+/// square of cells at once, and so are its descendants three levels
+/// down: those the interval meets and those inside it are two runs of
+/// bits, the rectangle's two masks as in the cover. A descendant inside
+/// either while meeting the other settles it. Only the descendants
+/// holding `a` and `b` are partly in the interval, so at most two go
+/// down, and a path is a third as long as a level at a time.
+#[allow(clippy::many_single_char_names)]
 fn meets<W: Word + Ord, C: Quadrants>(
     r: &Rect<W>,
     (a, b): (W, W),
@@ -589,29 +599,59 @@ fn meets<W: Word + Ord, C: Quadrants>(
     (ox, oy): (W, W),
     frame: u8,
 ) -> bool {
-    let last = key.or(W::low_ones(2 * level));
-    if last < a || key > b {
-        return false;
-    }
-    let reach = W::low_ones(level);
-    let (ex, ey) = (ox.wrapping_add(reach), oy.wrapping_add(reach));
-    if ox > r.x1 || ex < r.x0 || oy > r.y1 || ey < r.y0 {
-        return false;
-    }
-    // A cell of the node meets both; a single cell is inside both here.
-    if (a <= key && last <= b) || (r.x0 <= ox && ex <= r.x1 && r.y0 <= oy && ey <= r.y1) {
+    let k = level.min(3);
+    let below = level - k;
+    let span = 2 * below;
+    let n = 1u32 << (2 * k);
+    // Descendant numbers past the node do not matter beyond `n`.
+    let clamp = |v: W| {
+        if v >= small(n) {
+            n
+        } else {
+            u32::from(v.low_byte())
+        }
+    };
+    let (first_met, first_in) = if a > key {
+        let d = a.wrapping_sub(key);
+        (clamp(d.shr(span)), clamp(d.wrapping_sub(W::ONE).shr(span)) + 1)
+    } else {
+        (0, 0)
+    };
+    // The node meets `a..=b`, so `b` is at or past its first key.
+    let d = b.wrapping_sub(key);
+    let last_met = clamp(d.shr(span)).min(n - 1);
+    // One past the last descendant inside: where `b + 1` starts, or all
+    // of them when `b` is at or past the node's end.
+    let past = if d >= W::low_ones(2 * level) {
+        n
+    } else {
+        clamp(d.wrapping_add(W::ONE).shr(span)).min(n)
+    };
+    let keys_met = bits(first_met, last_met);
+    let keys_in = if past == 0 { 0 } else { bits(first_in, past - 1) };
+    let (cols, cols_in) = axis(ox, (r.x0, r.x1), below, k);
+    let (rows, rows_in) = axis(oy, (r.y0, r.y1), below, k);
+    let met = C::cells(k, frame, cols, rows);
+    let inside = C::cells(k, frame, cols_in, rows_in);
+    if met & keys_in != 0 || inside & keys_met != 0 {
         return true;
     }
-    let below = level - 1;
-    (0..4u32).any(|digit| {
-        let (dx, dy, next) = C::child(1, frame, digit);
-        let child_key = key.or(small::<W>(digit).shl(2 * below));
+    // Partly in both; none once the descendants are cells.
+    let mut rest = met & keys_met;
+    while rest != 0 {
+        let p = rest.trailing_zeros();
+        let (cx, cy, next) = C::child(k, frame, p);
+        let child_key = key.or(small::<W>(p).shl(span));
         let child = (
-            ox.or(small::<W>(dx.into()).shl(below)),
-            oy.or(small::<W>(dy.into()).shl(below)),
+            ox.or(small::<W>(cx.into()).shl(below)),
+            oy.or(small::<W>(cy.into()).shl(below)),
         );
-        meets::<W, C>(r, (a, b), below, child_key, child, next)
-    })
+        if meets::<W, C>(r, (a, b), below, child_key, child, next) {
+            return true;
+        }
+        rest &= rest - 1;
+    }
+    false
 }
 
 /// Whether some cell of `x0..=x1` × `y0..=y1` has its key in `a..=b`.

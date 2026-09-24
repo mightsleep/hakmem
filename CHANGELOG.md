@@ -124,7 +124,9 @@ by cutting the interval into aligned blocks and decoding each). Here
 one descent: a node is an interval of keys and a square of cells, so
 either disjointness rules it out and either containment (with the
 other met) settles it, and only the nodes on the paths of `a` and `b`
-are partly in the interval. About 20 ns a call on `u64`; laws against
+are partly in the interval; three levels a step, the interval and the
+rectangle each two masks of the 64 descendants. About 10 ns a call on
+`u64` (21 a level at a time); laws against
 the cells on `u16` and against `cover` on `u64`, whose gaps must miss.
 
 The batch conversions dispatch at run time on `x86_64`: each kernel

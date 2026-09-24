@@ -736,7 +736,8 @@ impl<W: Word + Ord> Hilbert2<W> {
     /// its sparse index. Answered by one descent of the quadtree, where a
     /// node is both an interval of indices and a square of cells; only
     /// the nodes on the paths of the two ends are partly in the interval,
-    /// so it visits a few nodes a level and decodes nothing.
+    /// so it visits a few nodes a step, three levels at a time, and
+    /// decodes nothing.
     ///
     /// ```
     /// use hakmem::prelude::*;
