@@ -238,8 +238,8 @@ Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 The query side, `cover` (`cover.rs`): a rectangle on the full `u64`
 grid, sides up to `2^8`, `2^16` or `2^24` cells, turns into ranges in
 about the same time whatever its size, since the depth stops where the
-budget does: 0.3 µs for 16 Morton ranges and 1.3 for 64, 1.1 and 3 for
-Hilbert (3.5, 12, 8.5 and 30 before the three changes below).
+budget does: 0.3 µs for 16 Morton ranges and 1.0 for 64, 1.0 and 2.8
+for Hilbert (3.5, 12, 8.5 and 30 before the four changes below).
 
 The depth is counted, not walked. A run of the exact cover starts at a
 cell of the rectangle whose predecessor on the curve is not in it. On
@@ -269,6 +269,30 @@ frame). A run of ones is a range of keys; only the partial children
 are descended into. Hilbert pays twice Morton's walk because it fits
 the budget a level finer, the curve having about half the runs for
 the same perimeter: a better cover for the time.
+
+The threshold between the gaps closed and those kept was a fifth of a
+Morton cover: a quickselect over up to twice the budget, its compares
+unpredictable. A branch-free partition was no faster, so it was not
+the mispredictions but the number of words. The gaps are not
+arbitrary numbers: each is a sum of the sizes of a few nodes left out,
+so they bunch at a few bit lengths. The first walk counts them by bit
+length as it writes them, the counts name the bucket the threshold is
+in and how many gaps lie below, and the quickselect runs on that
+bucket alone. That is the first level of an offset allocator's size
+classes, and the second level finishes the job: the three bits under
+the leading one split the bucket in eight, counted with the least and
+greatest gap of each. Measured on random rectangles, a bucket held one
+value 93 % of the time on Z-order but only 20 to 27 % on Hilbert (two
+values, as a rule); the class held one value every time. The threshold
+is then read off the counts, and the quickselect stays for a class of
+several values, which the unit tests make on purpose. The search
+starts at the least bit length seen, the allocator's bitmap of
+non-empty classes in one number, since the threshold sits half a bit
+length above it on average. A fifth off Morton at 64 ranges, a tenth
+off Hilbert at 16. An approximate class (close whole classes, bound
+the over-cover by `1 + 2^-3`) would drop the select entirely and
+weaken the law; with the classes exact on every measured input there
+was nothing to buy.
 
 Against the incumbents at the same number of ranges: GeoMesa's
 `zranges` (a breadth-first descent with a loose range limit) leaves
@@ -556,6 +580,27 @@ What is and is not a breaking change:
   gap closes only with `unsafe`, which the crate does not take.
 - Banded Myers is not planned; recipe 7 of the cookbook is the
   instruction sheet.
+- `cover` spends most of its time emitting runs, and the obvious fixes
+  did not move it. On Zen 5 a call retires about three instructions a
+  cycle with next to no L1 misses; a fifth of the cycles go to
+  mispredicted branches, most of them set by the shape of the
+  rectangle's edge (which child is inside, how many runs a mask has).
+  The profile blamed the store of the sink's state after every run
+  (the bounds check may panic, so it must be written) and a table of
+  gap counts bumped in memory, each gap waiting on the one before.
+  Keeping the state in registers for a mask's runs, and counting the
+  gaps in registers at the threshold instead, were both within noise,
+  Hilbert a few per cent worse; the stalls the profile showed were
+  hidden under other work. Not tried: extracting a mask's runs a fixed
+  number at a time with the extra writes overwritten later, as
+  simdjson does for structural indexes (its loops are as short and as
+  unpredictable as ours), and `vpcompressb`, too much machinery for
+  one to four runs a mask. What would change the count is less work,
+  not faster work: one walk instead of two, if the depth stops at
+  `budget` runs rather than twice that and nothing is merged (about
+  twice as fast, a coarser cover by a level; not measured how much
+  coarser), or the Hilbert counts at `s` and `s − 1` sharing their
+  path (a third of the time at 16 ranges). Open, to come back to.
 
 ## Sources
 

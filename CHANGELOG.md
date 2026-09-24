@@ -106,12 +106,15 @@ form the Klein group, so a frame is two parities). A guess from the
 perimeter and a step or two find the deepest level with at most two
 budgets of runs. Then two walks, three levels a step with the 64
 grandchildren of grandchildren as one `u64` mask per frame: one writes
-the gaps into the output as scratch, a quickselect finds the threshold
-that leaves `budget` runs, the other closes the gaps below it. The
+the gaps into the output as scratch and counts them by bit length,
+the threshold that leaves `budget` runs is found by class (bit length
+and three bits of mantissa, the classes of an offset allocator, a
+quickselect only when a class holds several values), and the other
+closes the gaps below it. The
 least over-cover that cover allows, no allocation. Laws cell by cell
 on the `u16` grid (coverage, exactness, the optimal merge), by points
 on `u64`, and the counts against the walk on every `u8` rectangle.
-0.3 µs a rectangle for 16 Morton ranges, 1.1 for Hilbert, 1.3 and 3
+0.3 µs a rectangle for 16 Morton ranges, 1.0 for Hilbert, 1.0 and 2.8
 for 64.
 
 `Hilbert2::intersects` and `Morton2::intersects`: whether a block of

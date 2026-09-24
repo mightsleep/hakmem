@@ -19,7 +19,10 @@
 //! record its gaps into the output as scratch, once to write the runs,
 //! closing every gap below the `runs - budget`-th smallest. What remains
 //! are the `budget - 1` largest gaps, the least over-cover any `budget`
-//! ranges of that cover can have.
+//! ranges of that cover can have. The threshold is found as an offset
+//! allocator finds a free block: by class, the bit length and the three
+//! bits under the leading one. Gaps are sums of a few node sizes, so
+//! the class of the threshold nearly always holds one value.
 //!
 //! The walk goes three levels at a time: a node's 64 grandchildren of
 //! grandchildren as one `u64` in curve order, those meeting the
@@ -168,6 +171,10 @@ struct Gaps<'a, W> {
     out: &'a mut [(W, W)],
     runs: usize,
     last: Option<W>,
+    /// Gaps by bit length: `lengths[b]` of them have `b` bits.
+    lengths: [u32; 129],
+    /// The least bit length among them, where the search starts.
+    least: u32,
 }
 
 impl<W: Word> Sink<W> for Gaps<'_, W> {
@@ -175,7 +182,11 @@ impl<W: Word> Sink<W> for Gaps<'_, W> {
         match self.last {
             Some(end) if end != W::ONES && end.wrapping_add(W::ONE) == first => {}
             Some(end) => {
-                set(self.out, self.runs - 1, first.wrapping_sub(end));
+                let gap = first.wrapping_sub(end);
+                set(self.out, self.runs - 1, gap);
+                let bits = bitlen(gap);
+                self.lengths[bits as usize] += 1;
+                self.least = self.least.min(bits);
                 self.runs += 1;
             }
             None => self.runs += 1,
@@ -240,6 +251,65 @@ fn select<W: Copy + Ord>(v: &mut [(W, W)], len: usize, m: usize) -> W {
             return pivot;
         }
     }
+}
+
+/// The `close`-th smallest of the first `gaps` words of `v` (from 1),
+/// and how many equal to it are among the `close` smallest.
+///
+/// The classes of an offset allocator: the bit length, counted as the
+/// gaps were written, names the bucket and how many lie below; the
+/// three bits under the leading one split the bucket in eight, counted
+/// here with the least and greatest of each. Gaps are sums of a few node
+/// sizes, and on random rectangles the class of the threshold held one
+/// value every time it was measured, which is then the answer. Only a
+/// class of several values is gathered for a select.
+// The bucket is a bit length, at most 128.
+#[allow(clippy::many_single_char_names, clippy::cast_possible_truncation)]
+fn threshold<W: Word + Ord>(
+    v: &mut [(W, W)],
+    gaps: usize,
+    (lengths, least): (&[u32; 129], u32),
+    close: usize,
+) -> (W, usize) {
+    let (mut below, mut b) = (0, least as usize);
+    while below + (lengths[b] as usize) < close {
+        below += lengths[b] as usize;
+        b += 1;
+    }
+    let mut need = close - below;
+    let bits = b as u32;
+    // Below 16 the value is its own class.
+    let class = |g: W| usize::from(if bits > 4 { g.shr(bits - 4) } else { g }.low_byte() & 7);
+    let (mut count, mut lo, mut hi) = ([0usize; 8], [W::ONES; 8], [W::ZERO; 8]);
+    for i in 0..gaps {
+        let g = get(v, i);
+        if bitlen(g) == bits {
+            let c = class(g);
+            count[c] += 1;
+            lo[c] = lo[c].min(g);
+            hi[c] = hi[c].max(g);
+        }
+    }
+    let mut c = 0;
+    while count[c] < need {
+        need -= count[c];
+        c += 1;
+    }
+    if lo[c] == hi[c] {
+        return (lo[c], need);
+    }
+    let mut k = 0;
+    for i in 0..gaps {
+        let g = get(v, i);
+        if bitlen(g) == bits && class(g) == c {
+            set(v, i, get(v, k));
+            set(v, k, g);
+            k += 1;
+        }
+    }
+    let t = select(v, k, need - 1);
+    let less = (0..k).filter(|&i| get(v, i) < t).count();
+    (t, need - less)
 }
 
 /// Writes the runs into `out`, closing every gap below `threshold` and
@@ -484,15 +554,14 @@ pub(crate) fn cover<W: Word + Ord, C: Quadrants>(
         out: &mut *out,
         runs: 0,
         last: None,
+        lengths: [0; 129],
+        least: u32::MAX,
     };
     walk::<W, C, _>(&r, top_level, stop, key, origin, frame, &mut gaps);
-    let runs = gaps.runs;
+    let (runs, lengths, least) = (gaps.runs, gaps.lengths, gaps.least);
     let budget = out.len();
     let (threshold, ties) = if runs > budget {
-        let close = runs - budget;
-        let t = select(out, runs - 1, close - 1);
-        let below = (0..runs - 1).filter(|&i| get(out, i) < t).count();
-        (t, close - below)
+        threshold(out, runs - 1, (&lengths, least), runs - budget)
     } else {
         (W::ZERO, 0)
     };
@@ -597,6 +666,65 @@ mod tests {
             let runs = C::runs(levels, r, s, &context);
             runs == super::from_usize(count.n)
         })
+    }
+
+    /// The threshold against sorting, on gaps that share classes with
+    /// other values (16 and 17, 32 and 35) so the select behind the
+    /// classes runs too.
+    #[allow(clippy::cast_possible_truncation)]
+    #[test]
+    fn threshold_matches_sorting() {
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let mut next = || {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            state
+        };
+        let pool = [
+            2u64,
+            3,
+            5,
+            7,
+            15,
+            16,
+            17,
+            18,
+            24,
+            31,
+            32,
+            35,
+            40,
+            64,
+            65,
+            1000,
+            1001,
+            1 << 40,
+        ];
+        for _ in 0..20_000 {
+            let n = 1 + (next() % 70) as usize;
+            let mut v = [(0u64, 0u64); 35];
+            let (mut lengths, mut least) = ([0u32; 129], u32::MAX);
+            let mut all = [0u64; 70];
+            for (i, slot) in all.iter_mut().enumerate().take(n) {
+                let g = if next() % 4 == 0 {
+                    2 + next() % 5000
+                } else {
+                    pool[(next() % pool.len() as u64) as usize]
+                };
+                *slot = g;
+                super::set(&mut v, i, g);
+                lengths[super::bitlen(g) as usize] += 1;
+                least = least.min(super::bitlen(g));
+            }
+            let close = 1 + (next() % n as u64) as usize;
+            let (t, ties) = super::threshold(&mut v, n, (&lengths, least), close);
+            let sorted = &mut all[..n];
+            sorted.sort_unstable();
+            let want = sorted[close - 1];
+            let below = sorted.iter().filter(|&&g| g < want).count();
+            assert_eq!((t, ties), (want, close - below), "{sorted:?} close {close}");
+        }
     }
 
     #[test]
