@@ -51,6 +51,7 @@
 
 use crate::bits::Bits;
 use crate::dilated::{Dilated, Morton2};
+use crate::cover::{Masks, Quadrants, Rect, small};
 use crate::word::Word;
 
 /// A 2D Hilbert index over the full width of `W`: `BITS / 2` levels,
@@ -425,34 +426,276 @@ hilbert2_columns!(u32, u64);
 
 /// The Hilbert curve for [`crate::cover`]: [`level`] read backwards, the
 /// quadrant of each digit in each of the four frames.
-struct HilbertQuadrants;
+pub(crate) struct HilbertQuadrants;
 
-/// `CHILDREN[frame · 4 + digit]` is `(dx, dy, frame below)`.
-const CHILDREN: [(u8, u8, u8); 16] = {
-    let mut t = [(0, 0, 0); 16];
-    let mut frame = 0;
-    while frame < 4 {
+/// `DIGITS[frame][x | y << 1]` is [`level`].
+const DIGITS: [[(u8, u8); 4]; 4] = {
+    let mut t = [[(0, 0); 4]; 4];
+    let mut f = 0;
+    while f < 4 {
         let mut q = 0;
         while q < 4 {
-            let (x, y) = (q & 1, q >> 1);
-            let (digit, below) = level(frame, x, y);
-            t[(frame * 4 + digit) as usize] = (x, y, below);
+            t[f as usize][q as usize] = level(f, q & 1, q >> 1);
             q += 1;
         }
-        frame += 1;
+        f += 1;
     }
     t
 };
 
-impl crate::cover::Quadrants for HilbertQuadrants {
-    #[inline]
-    fn child(frame: u8, digit: u8) -> (u8, u8, u8) {
-        CHILDREN[(frame * 4 + digit) as usize]
+static H_MASKS: Masks<4> = Masks::build(DIGITS);
+
+/// A step of the curve between two quadrants of a node, as a side of a
+/// rectangle sees it. `axis` 0 crosses a vertical line (a step in `x`),
+/// 1 a horizontal one; `up` whether toward the upper half. On the other
+/// axis the step sits in half `half`, at the corner cell `corner` of it
+/// (0 the first, 1 the last): the curve leaves a quadrant at the corner
+/// where the next one starts.
+#[derive(Clone, Copy)]
+struct Step {
+    axis: u8,
+    up: u8,
+    half: u8,
+    corner: u8,
+}
+
+/// The three steps of a node in each frame.
+const STEPS: [[Step; 3]; 4] = {
+    let mut t = [[Step { axis: 0, up: 0, half: 0, corner: 0 }; 3]; 4];
+    let mut f = 0;
+    while f < 4 {
+        let mut d = 0;
+        while d < 3 {
+            let (ax, ay, ag) = CHILDREN[f][d];
+            let (bx, by, _) = CHILDREN[f][d + 1];
+            // Where the first quadrant ends: the cell of its digit 3.
+            let (ex, ey, _) = CHILDREN[ag as usize][3];
+            t[f][d] = if ax == bx {
+                Step { axis: 1, up: by, half: ax, corner: ex }
+            } else {
+                Step { axis: 0, up: bx, half: ay, corner: ey }
+            };
+            d += 1;
+        }
+        f += 1;
     }
+    t
+};
+
+/// `CHILDREN[frame][digit]`: one level of [`level`] read backwards, for
+/// the tables built at compile time.
+#[allow(clippy::cast_possible_truncation)]
+const CHILDREN: [[(u8, u8, u8); 4]; 4] = {
+    let mut t = [[(0, 0, 0); 4]; 4];
+    let mut f = 0;
+    while f < 4 {
+        let mut q = 0;
+        while q < 4 {
+            let (d, below) = DIGITS[f][q];
+            t[f][d as usize] = ((q & 1) as u8, (q >> 1) as u8, below);
+            q += 1;
+        }
+        f += 1;
+    }
+    t
+};
+
+/// `PER[axis][up][frame]`: how many steps of a node cross that way.
+const PER: [[[u8; 4]; 2]; 2] = {
+    let mut t = [[[0; 4]; 2]; 2];
+    let mut f = 0;
+    while f < 4 {
+        let mut d = 0;
+        while d < 3 {
+            let s = STEPS[f][d];
+            t[s.axis as usize][s.up as usize][f] += 1;
+            d += 1;
+        }
+        f += 1;
+    }
+    t
+};
+
+/// `AT[axis][up][frame][half << 1 | corner]`: the same steps by where
+/// they sit along the side, `h` the half of the node: at `0`, `h - 1`,
+/// `h` or `2h - 1` from its first cell. Counting them is then four
+/// compares and no branch on the frame.
+const AT: [[[[u8; 4]; 4]; 2]; 2] = {
+    let mut t = [[[[0; 4]; 4]; 2]; 2];
+    let mut f = 0;
+    while f < 4 {
+        let mut d = 0;
+        while d < 3 {
+            let s = STEPS[f][d];
+            t[s.axis as usize][s.up as usize][f][(s.half << 1 | s.corner) as usize] += 1;
+            d += 1;
+        }
+        f += 1;
+    }
+    t
+};
+
+/// `NEXT[axis][frame][fixed][free]`: the frame of the child whose bit on
+/// the axis across the side is `fixed` and on the other `free`.
+#[allow(clippy::cast_possible_truncation)]
+const NEXT: [[[[u8; 2]; 2]; 4]; 2] = {
+    let mut t = [[[[0; 2]; 2]; 4]; 2];
+    let mut f = 0;
+    while f < 4 {
+        let mut a = 0;
+        while a < 2 {
+            let mut b = 0;
+            while b < 2 {
+                t[0][f][a][b] = level(f as u8, a as u8, b as u8).1;
+                t[1][f][a][b] = level(f as u8, b as u8, a as u8).1;
+                b += 1;
+            }
+            a += 1;
+        }
+        f += 1;
+    }
+    t
+};
+
+/// The frame of the node at level `l` holding the cell of index `h`: the
+/// frames of the decoder form the Klein group, so it is the parity of the
+/// digits above `l` that swap (0 and 3) and of those that flip (3).
+fn frame<W: Word>(h: W, l: u32) -> u8 {
+    if l >= W::BITS / 2 {
+        return 0;
+    }
+    let even = W::splat_byte(0x55);
+    let (hi, lo) = (h.shr(1).and(even), h.and(even));
+    let above = W::low_ones(2 * l).not().and(even);
+    let swap = hi.xor(lo).not().and(above).parity();
+    let flip = hi.and(lo).and(above).parity();
+    u8::from(swap) | u8::from(flip) << 1
+}
+
+/// All ones when `b`.
+#[inline]
+fn mask<W: Word>(b: bool) -> W {
+    W::ZERO.wrapping_sub(if b { W::ONE } else { W::ZERO })
+}
+
+/// The steps entering the rectangle across one side, the line between
+/// cells `line - 1` and `line` on `axis`, over `lo..=hi` on the other,
+/// on the grid coarsened by `s`, `levels` levels left. `up` is the
+/// direction that enters. `corners` are the indices of the rectangle's
+/// corners at the ends of the side, which name the frames.
+///
+/// Only nodes at level `tz(line) + 1` straddle the line, one column of
+/// them, and what a node contributes depends only on its frame. The
+/// ones strictly between the ends are counted by frame: the weight of a
+/// frame below `j` levels is the steps under it, and the count below a
+/// node number `c` is a sum along the path of `c`, both built from the
+/// bottom level up in four lanes. The two end nodes are counted cell
+/// by cell.
+#[allow(clippy::too_many_arguments, clippy::many_single_char_names)]
+fn side<W: Word + Ord>(
+    levels: u32,
+    s: u32,
+    axis: usize,
+    line: W,
+    up: u8,
+    (lo, hi): (W, W),
+    (lo_corner, hi_corner): (W, W),
+) -> W {
+    if line.is_zero() || !line.shr(levels).is_zero() {
+        return W::ZERO;
+    }
+    let lvl = line.trailing_zeros() + 1;
+    let node = line.shr(lvl);
+    let (c0, c1) = (lo.shr(lvl), hi.shr(lvl));
+    let next = &NEXT[axis];
+    let mut n = W::ZERO;
+    let first = c0.wrapping_add(W::ONE);
+    if c1 > first {
+        let depth = crate::cover::bitlen(c0.xor(c1));
+        let mut weight = PER[axis][up as usize].map(|v| small::<W>(v.into()));
+        let (mut to_last, mut to_first) = ([W::ZERO; 4], [W::ZERO; 4]);
+        for j in 0..depth {
+            let fixed = usize::from(node.bit(j));
+            let (a, b) = (c1.bit(j), first.bit(j));
+            let (mut w, mut l, mut f) = ([W::ZERO; 4], [W::ZERO; 4], [W::ZERO; 4]);
+            // Masked, so the lanes are selects and the indices need no
+            // bounds check.
+            let (ma, mb) = (mask::<W>(a), mask::<W>(b));
+            for g in 0..4 {
+                let [zero, one] = next[g][fixed].map(|v| usize::from(v) & 3);
+                w[g] = weight[zero].wrapping_add(weight[one]);
+                let (la, lb) = (if a { one } else { zero }, if b { one } else { zero });
+                l[g] = weight[zero].and(ma).wrapping_add(to_last[la]);
+                f[g] = weight[zero].and(mb).wrapping_add(to_first[lb]);
+            }
+            (weight, to_last, to_first) = (w, l, f);
+        }
+        let top = frame(lo_corner, lvl + depth + s) as usize;
+        n = to_last[top].wrapping_sub(to_first[top]);
+    }
+    let h = W::ONE.shl(lvl - 1);
+    let offsets = [W::ZERO, h.wrapping_sub(W::ONE), h, h.shl(1).wrapping_sub(W::ONE)];
+    let end = |c: W, corner: W| {
+        let at = AT[axis][usize::from(up)][frame(corner, lvl + s) as usize];
+        let origin = c.shl(lvl);
+        let mut n = W::ZERO;
+        for (count, offset) in at.into_iter().zip(offsets) {
+            let pos = origin.wrapping_add(offset);
+            let steps = if lo <= pos && pos <= hi { count } else { 0 };
+            n = n.wrapping_add(small::<W>(steps.into()));
+        }
+        n
+    };
+    n = n.wrapping_add(end(c0, lo_corner));
+    if c1 != c0 {
+        n = n.wrapping_add(end(c1, hi_corner));
+    }
+    n
+}
+
+impl Quadrants for HilbertQuadrants {
+    /// The indices of `(x0, y0)`, `(x1, y0)`, `(x0, y1)`, `(x1, y1)`.
+    type Context<W> = [W; 4];
 
     #[inline]
     fn digit(frame: u8, dx: u8, dy: u8) -> (u8, u8) {
         level(frame, dx, dy)
+    }
+
+    #[inline]
+    fn child(k: u32, frame: u8, p: u32) -> (u8, u8, u8) {
+        H_MASKS.child(k, frame, p)
+    }
+
+    #[inline]
+    fn cells(k: u32, frame: u8, cols: usize, rows: usize) -> u64 {
+        H_MASKS.cells(k, frame, cols, rows)
+    }
+
+    fn context<W: Word + Ord>(r: &Rect<W>) -> [W; 4] {
+        let h = |x, y| Hilbert2::<W>::encode(x, y).index();
+        [h(r.x0, r.y0), h(r.x1, r.y0), h(r.x0, r.y1), h(r.x1, r.y1)]
+    }
+
+    /// The curve is continuous, so a run starts where a step enters the
+    /// rectangle across a side, or at the origin; four sides.
+    fn runs<W: Word + Ord>(levels: u32, r: &Rect<W>, s: u32, corners: &[W; 4]) -> W {
+        let levels = levels - s;
+        let (x0, x1, y0, y1) = (r.x0.shr(s), r.x1.shr(s), r.y0.shr(s), r.y1.shr(s));
+        let top = W::low_ones(levels);
+        let [h00, h10, h01, h11] = *corners;
+        let mut n = if x0.is_zero() && y0.is_zero() { W::ONE } else { W::ZERO };
+        n = n.wrapping_add(side(levels, s, 0, x0, 1, (y0, y1), (h00, h01)));
+        n = n.wrapping_add(side(levels, s, 1, y0, 1, (x0, x1), (h00, h10)));
+        if x1 < top {
+            let line = x1.wrapping_add(W::ONE);
+            n = n.wrapping_add(side(levels, s, 0, line, 0, (y0, y1), (h10, h11)));
+        }
+        if y1 < top {
+            let line = y1.wrapping_add(W::ONE);
+            n = n.wrapping_add(side(levels, s, 1, line, 0, (x0, x1), (h01, h11)));
+        }
+        n
     }
 }
 
@@ -483,7 +726,7 @@ impl<W: Word + Ord> Hilbert2<W> {
     ///
     /// If the rectangle is not empty and `out` is.
     pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
-        crate::cover::cover::<W, HilbertQuadrants>(Self::LEVELS, 0, x, y, out)
+        crate::cover::cover::<W, HilbertQuadrants>(Self::LEVELS, x, y, out)
     }
 
     /// Whether some cell of the rectangle `x.0..=x.1` × `y.0..=y.1` has
@@ -504,7 +747,7 @@ impl<W: Word + Ord> Hilbert2<W> {
     /// ```
     #[must_use]
     pub fn intersects(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
-        crate::cover::intersects::<W, HilbertQuadrants>(Self::LEVELS, 0, keys, x, y)
+        crate::cover::intersects::<W, HilbertQuadrants>(Self::LEVELS, keys, x, y)
     }
 }
 

@@ -1,24 +1,31 @@
 //! Rectangles as ranges of keys on a quadrant-recursive curve: the query
 //! side of an index built by sorting on `Morton2` or `Hilbert2` codes.
 //!
-//! A descent of the quadtree in curve order: a node inside the rectangle
-//! is one range of keys, a node outside is none, a node across its edge
-//! is split. The ranges come out sorted, and ranges that touch are merged
-//! as they come.
-//!
 //! The exact cover of a rectangle has about one range per cell of its
 //! boundary, far more than a scan wants to restart, so the caller sets a
-//! budget: the length of the output. Two things keep to it. The depth:
-//! below some level a node across the edge is taken whole, and counting
-//! passes find the deepest level whose cover has at most twice the
-//! budget (a coarser cover never has more ranges than a finer one: each
-//! run of the finer lies in one run of the coarser). Then the merge: the
-//! last pass writes into the output and, when it is full, closes the
-//! smallest gap between neighbours, the new range's included. The ranges
-//! arrive in order, so what remains are the `budget - 1` largest gaps of
-//! that cover, which is the smallest over-cover any `budget` ranges of it
-//! can have. The work is a few times the budget per level, not the
-//! perimeter of the rectangle.
+//! budget: the length of the output. Two things keep to it.
+//!
+//! The depth: below some level `s` a node across the edge is taken
+//! whole, which is the exact cover of the rectangle rounded out to
+//! multiples of `2^s`. Its number of runs is counted without visiting a
+//! node: a run starts at a cell of the rectangle whose predecessor on the
+//! curve is not in it, and each curve has a closed form for those (see
+//! `Quadrants::runs`). The count never grows with `s` (each run of a
+//! finer cover lies in one run of a coarser), so an estimate from the
+//! perimeter and a step or two either way find the least `s` whose cover
+//! has at most twice the budget.
+//!
+//! Then the merge. The cover at that depth is walked twice, once to
+//! record its gaps into the output as scratch, once to write the runs,
+//! closing every gap below the `runs - budget`-th smallest. What remains
+//! are the `budget - 1` largest gaps, the least over-cover any `budget`
+//! ranges of that cover can have.
+//!
+//! The walk goes three levels at a time: a node's 64 grandchildren of
+//! grandchildren as one `u64` in curve order, those meeting the
+//! rectangle the AND of a mask of its columns and a mask of its rows,
+//! each looked up per frame. A run of ones in a mask is a range of keys,
+//! and only the partial children are descended into.
 
 // `unreachable_pub` wants `pub(crate)` here and clippy wants `pub`; the
 // rustc lint is the one the crate chose.
@@ -28,37 +35,129 @@ use core::cmp::Ordering;
 
 use crate::word::Word;
 
-/// A quadrant-recursive curve as the descent sees it: the child of a
-/// node in `frame` that holds digit `d` (`0..4`, curve order) sits in
-/// quadrant `(dx, dy)` and reads its own children in the frame returned.
+/// A quadrant-recursive curve as the cover sees it.
 pub(crate) trait Quadrants {
-    fn child(frame: u8, digit: u8) -> (u8, u8, u8);
-    /// The other way: the digit of quadrant `(dx, dy)` and the frame
-    /// below.
+    /// What [`runs`](Self::runs) wants to know about the rectangle once,
+    /// at every depth.
+    type Context<W>;
+
+    /// The digit of quadrant `(dx, dy)` of a node in `frame`, and the
+    /// frame of that quadrant.
     fn digit(frame: u8, dx: u8, dy: u8) -> (u8, u8);
+    /// The descendant `k` levels down, `1 ≤ k ≤ 3`, whose `k` digits
+    /// read `p`: its column and row in `0..2^k` and its frame.
+    fn child(k: u32, frame: u8, p: u32) -> (u8, u8, u8);
+    /// Of the `4^k` descendants `k` levels down, those in one of the
+    /// columns `cols` and one of the rows `rows`, as bit `p` for digits
+    /// `p`.
+    fn cells(k: u32, frame: u8, cols: usize, rows: usize) -> u64;
+
+    fn context<W: Word + Ord>(r: &Rect<W>) -> Self::Context<W>;
+    /// The number of runs of the exact cover of `r` rounded out to
+    /// multiples of `2^s`, on a curve of `levels` levels whose top frame
+    /// is 0.
+    fn runs<W: Word + Ord>(levels: u32, r: &Rect<W>, s: u32, context: &Self::Context<W>) -> W;
+}
+
+/// The tables behind [`Quadrants::child`] and [`Quadrants::cells`] for
+/// a curve of `F` frames, built from its one-level digit table; about
+/// 5 KB a frame. Subtrees of `k` levels sit at offset `CHILD[k]` in the
+/// child tables and `COLS[k]` in the column and row tables.
+pub(crate) struct Masks<const F: usize> {
+    child: [[(u8, u8, u8); 84]; F],
+    cols: [[u64; 276]; F],
+    rows: [[u64; 276]; F],
+}
+
+const CHILD: [usize; 4] = [0, 0, 4, 20];
+const COLS: [usize; 4] = [0, 0, 4, 20];
+
+impl<const F: usize> Masks<F> {
+    /// From `digit[frame][dx | dy << 1] = (digit, frame below)`.
+    #[allow(clippy::cast_possible_truncation, clippy::many_single_char_names)]
+    pub(crate) const fn build(digit: [[(u8, u8); 4]; F]) -> Self {
+        let mut t = Self {
+            child: [[(0, 0, 0); 84]; F],
+            cols: [[0; 276]; F],
+            rows: [[0; 276]; F],
+        };
+        let mut k = 1;
+        while k <= 3 {
+            let side = 1u8 << k;
+            let mut f = 0;
+            while f < F {
+                // The cells of each column and each row, then every set.
+                let (mut col, mut row) = ([0u64; 8], [0u64; 8]);
+                let mut cx = 0;
+                while cx < side {
+                    let mut cy = 0;
+                    while cy < side {
+                        let (mut p, mut g) = (0, f as u8);
+                        let mut l = k;
+                        while l > 0 {
+                            l -= 1;
+                            let q = ((cx >> l) & 1) | ((cy >> l) & 1) << 1;
+                            let (d, below) = digit[g as usize][q as usize];
+                            p = p << 2 | d as usize;
+                            g = below;
+                        }
+                        t.child[f][CHILD[k] + p] = (cx, cy, g);
+                        col[cx as usize] |= 1 << p;
+                        row[cy as usize] |= 1 << p;
+                        cy += 1;
+                    }
+                    cx += 1;
+                }
+                let mut m = 0;
+                while m < 1 << side {
+                    let mut c = 0;
+                    while c < side as usize {
+                        if m >> c & 1 == 1 {
+                            t.cols[f][COLS[k] + m] |= col[c];
+                            t.rows[f][COLS[k] + m] |= row[c];
+                        }
+                        c += 1;
+                    }
+                    m += 1;
+                }
+                f += 1;
+            }
+            k += 1;
+        }
+        t
+    }
+
+    #[inline]
+    pub(crate) const fn child(&self, k: u32, frame: u8, p: u32) -> (u8, u8, u8) {
+        self.child[frame as usize][CHILD[k as usize] + p as usize]
+    }
+
+    #[inline]
+    pub(crate) const fn cells(&self, k: u32, frame: u8, cols: usize, rows: usize) -> u64 {
+        let (f, o) = (frame as usize, COLS[k as usize]);
+        self.cols[f][o + cols] & self.rows[f][o + rows]
+    }
 }
 
 /// What a walk emits into: inclusive ranges in increasing order.
-trait Sink<W> {
-    /// `false` stops the walk.
-    fn emit(&mut self, first: W, last: W) -> bool;
-}
+trait Sink<W: Word> {
+    fn emit(&mut self, first: W, last: W);
 
-/// Counts ranges, touching ones merged, up to `limit`.
-struct Count<W> {
-    n: usize,
-    last: Option<W>,
-    limit: usize,
-}
-
-impl<W: Word> Sink<W> for Count<W> {
-    fn emit(&mut self, first: W, last: W) -> bool {
-        match self.last {
-            Some(end) if end != W::ONES && end.wrapping_add(W::ONE) == first => {}
-            _ => self.n += 1,
+    /// The runs of ones of `m`, bit `p` the range of `2^span` keys from
+    /// `key | p << span`.
+    #[inline]
+    fn emit_mask(&mut self, key: W, mut m: u64, span: u32) {
+        while m != 0 {
+            let p = m.trailing_zeros();
+            let len = (m >> p).trailing_ones();
+            let first = key.or(small::<W>(p).shl(span));
+            // `(p + len) << span` is one past the node at the top.
+            let last = key
+                .or(small::<W>(p + len - 1).shl(span))
+                .or(W::low_ones(span));
+            self.emit(first, last);
+            m &= !(u64::MAX >> (64 - len) << p);
         }
-        self.last = Some(last);
-        self.n <= self.limit
     }
 }
 
@@ -72,7 +171,7 @@ struct Gaps<'a, W> {
 }
 
 impl<W: Word> Sink<W> for Gaps<'_, W> {
-    fn emit(&mut self, first: W, last: W) -> bool {
+    fn emit(&mut self, first: W, last: W) {
         match self.last {
             Some(end) if end != W::ONES && end.wrapping_add(W::ONE) == first => {}
             Some(end) => {
@@ -82,12 +181,15 @@ impl<W: Word> Sink<W> for Gaps<'_, W> {
             None => self.runs += 1,
         }
         self.last = Some(last);
-        true
     }
 }
 
 const fn get<W: Copy>(v: &[(W, W)], i: usize) -> W {
-    if i.is_multiple_of(2) { v[i / 2].0 } else { v[i / 2].1 }
+    if i.is_multiple_of(2) {
+        v[i / 2].0
+    } else {
+        v[i / 2].1
+    }
 }
 
 fn set<W>(v: &mut [(W, W)], i: usize, x: W) {
@@ -150,7 +252,7 @@ struct Merge<'a, W> {
 }
 
 impl<W: Word + Ord> Sink<W> for Merge<'_, W> {
-    fn emit(&mut self, first: W, last: W) -> bool {
+    fn emit(&mut self, first: W, last: W) {
         if self.n > 0 {
             let end = self.out[self.n - 1].1;
             let touch = end != W::ONES && end.wrapping_add(W::ONE) == first;
@@ -163,31 +265,101 @@ impl<W: Word + Ord> Sink<W> for Merge<'_, W> {
                 });
             if close {
                 self.out[self.n - 1].1 = last;
-                return true;
+                return;
             }
         }
         self.out[self.n] = (first, last);
         self.n += 1;
-        true
     }
 }
 
-/// A small constant in `W`: the byte splatted, all but the low byte off.
-fn small<W: Word>(v: u8) -> W {
-    W::splat_byte(v).and(W::low_ones(8))
+/// A small constant in `W`: `v < 256`.
+#[allow(clippy::cast_possible_truncation)]
+#[inline]
+pub(crate) fn small<W: Word>(v: u32) -> W {
+    debug_assert!(v < 256);
+    W::splat_byte(v as u8).and(W::low_ones(8))
+}
+
+/// Bits up to the highest set one; 0 for 0.
+#[inline]
+pub(crate) fn bitlen<W: Word>(v: W) -> u32 {
+    W::BITS - v.leading_zeros()
+}
+
+/// `usize` in `W`, saturating.
+#[allow(clippy::cast_possible_truncation)]
+fn from_usize<W: Word>(v: usize) -> W {
+    if usize::BITS - v.leading_zeros() > W::BITS {
+        return W::ONES;
+    }
+    let mut w = W::ZERO;
+    let mut i = 0;
+    while i < usize::BITS && i < W::BITS {
+        w = w.or(small::<W>(((v >> i) & 0xFF) as u32).shl(i));
+        i += 8;
+    }
+    w
 }
 
 /// The rectangle, inclusive on both axes, already clipped to the grid.
-struct Rect<W> {
-    x0: W,
-    x1: W,
-    y0: W,
-    y1: W,
+pub(crate) struct Rect<W> {
+    pub(crate) x0: W,
+    pub(crate) x1: W,
+    pub(crate) y0: W,
+    pub(crate) y1: W,
 }
 
-/// A node `side = 2^level` cells wide at `(ox, oy)` whose first key is
-/// `key`, in `frame`. Children at `level - 1` down to `stop`, below which
-/// a node across the edge is emitted whole.
+/// Of the `2^k` columns `2^below` wide of a node at `o` on one axis,
+/// those meeting `a..=b` and those inside it, as masks.
+#[allow(clippy::many_single_char_names)]
+#[inline]
+fn axis<W: Word + Ord>(o: W, (a, b): (W, W), below: u32, k: u32) -> (usize, usize) {
+    if b < o {
+        return (0, 0);
+    }
+    let n = 1u32 << k;
+    // Column numbers past the node do not matter beyond `n`.
+    let clamp = |v: W| {
+        if v >= small(n) {
+            n
+        } else {
+            u32::from(v.low_byte())
+        }
+    };
+    let span = |lo: u32, hi: u32| {
+        if lo > hi {
+            0
+        } else {
+            ((2usize << hi) - 1) & !((1usize << lo) - 1)
+        }
+    };
+    let d = b.wrapping_sub(o);
+    // The last column met and one past the last one inside, which ends
+    // where `b + 1` starts.
+    let met = clamp(d.shr(below)).min(n - 1);
+    let past = clamp(d.wrapping_add(W::ONE).shr(below)).min(n);
+    let (first_met, first_in) = if a > o {
+        let d = a.wrapping_sub(o);
+        (
+            clamp(d.shr(below)),
+            clamp(d.wrapping_sub(W::ONE).shr(below)) + 1,
+        )
+    } else {
+        (0, 0)
+    };
+    let inside = if past == 0 {
+        0
+    } else {
+        span(first_in, past - 1)
+    };
+    (span(first_met, met), inside)
+}
+
+/// A node at `level` whose first key is `key`, at `(ox, oy)`, in
+/// `frame`, `level > stop`: its cover down to `stop`, below which a
+/// node across the edge is taken whole. Three levels a step, the odd
+/// ones at the top, so every step ends on `stop`.
 #[allow(clippy::too_many_arguments)]
 fn walk<W: Word + Ord, C: Quadrants, S: Sink<W>>(
     r: &Rect<W>,
@@ -197,36 +369,80 @@ fn walk<W: Word + Ord, C: Quadrants, S: Sink<W>>(
     (ox, oy): (W, W),
     frame: u8,
     sink: &mut S,
-) -> bool {
-    let reach = W::low_ones(level);
-    let (ex, ey) = (ox.wrapping_add(reach), oy.wrapping_add(reach));
-    if ox > r.x1 || ex < r.x0 || oy > r.y1 || ey < r.y0 {
-        return true;
+) {
+    let k = match (level - stop) % 3 {
+        0 => 3,
+        k => k,
+    };
+    let below = level - k;
+    let (cols, cols_in) = axis(ox, (r.x0, r.x1), below, k);
+    let (rows, rows_in) = axis(oy, (r.y0, r.y1), below, k);
+    let met = C::cells(k, frame, cols, rows);
+    let span = 2 * below;
+    if below == stop {
+        return sink.emit_mask(key, met, span);
     }
-    let inside = r.x0 <= ox && ex <= r.x1 && r.y0 <= oy && ey <= r.y1;
-    if inside || level == stop {
-        return sink.emit(key, key.or(W::low_ones(2 * level)));
-    }
-    let below = level - 1;
-    for digit in 0..4u8 {
-        let (dx, dy, next) = C::child(frame, digit);
-        let child_key = key.or(small::<W>(digit).shl(2 * below));
-        let child = (
-            ox.or(small::<W>(dx).shl(below)),
-            oy.or(small::<W>(dy).shl(below)),
-        );
-        if !walk::<W, C, S>(r, below, stop, child_key, child, next, sink) {
-            return false;
+    let inside = C::cells(k, frame, cols_in, rows_in);
+    let mut rest = met;
+    while rest != 0 {
+        let p = rest.trailing_zeros();
+        if inside >> p & 1 == 1 {
+            let run = (inside >> p).trailing_ones();
+            let first = key.or(small::<W>(p).shl(span));
+            let last = key
+                .or(small::<W>(p + run - 1).shl(span))
+                .or(W::low_ones(span));
+            sink.emit(first, last);
+            rest &= !(u64::MAX >> (64 - run) << p);
+        } else {
+            let (cx, cy, next) = C::child(k, frame, p);
+            let child_key = key.or(small::<W>(p).shl(span));
+            let child = (
+                ox.or(small::<W>(cx.into()).shl(below)),
+                oy.or(small::<W>(cy.into()).shl(below)),
+            );
+            walk::<W, C, S>(r, below, stop, child_key, child, next, sink);
+            rest &= rest - 1;
         }
     }
-    true
 }
 
-/// The cover of `x0..=x1` × `y0..=y1` on a curve of `levels` levels whose
-/// top frame is `top`, in at most `out.len()` ranges; returns how many.
+/// The least `s ≤ top` whose cover has at most `limit` runs; the cover
+/// at `top` is one node. The runs of a cover go as its perimeter over
+/// `2^s`, which gives a first guess, then single steps. On random
+/// rectangles the guess is right or one off nine times in ten, about two
+/// counts a query; long thin ones and aligned ones stray further, a count
+/// a level.
+fn depth<W: Word + Ord, C: Quadrants>(
+    levels: u32,
+    r: &Rect<W>,
+    top: u32,
+    limit: usize,
+    context: &C::Context<W>,
+) -> u32 {
+    let limit = from_usize::<W>(limit);
+    let fits = |s: u32| C::runs(levels, r, s, context) <= limit;
+    let perimeter =
+        r.x1.wrapping_sub(r.x0)
+            .wrapping_add(r.y1.wrapping_sub(r.y0));
+    let mut s = bitlen(perimeter).saturating_sub(bitlen(limit)).min(top);
+    if fits(s) {
+        while s > 0 && fits(s - 1) {
+            s -= 1;
+        }
+    } else {
+        s += 1;
+        while s < top && !fits(s) {
+            s += 1;
+        }
+    }
+    s
+}
+
+/// The cover of `x0..=x1` × `y0..=y1` on a curve of `levels` levels,
+/// top frame 0, in at most `out.len()` ranges; returns how many.
 pub(crate) fn cover<W: Word + Ord, C: Quadrants>(
     levels: u32,
-    top: u8,
     (x0, x1): (W, W),
     (y0, y1): (W, W),
     out: &mut [(W, W)],
@@ -244,36 +460,31 @@ pub(crate) fn cover<W: Word + Ord, C: Quadrants>(
     // The least aligned node holding the rectangle: above it every cover
     // is that one node, so the walks start there, found by one descent
     // along the path of a corner.
-    let top_level = W::BITS - x0.xor(x1).or(y0.xor(y1)).leading_zeros();
-    let (mut key, mut frame) = (W::ZERO, top);
+    let top_level = bitlen(x0.xor(x1).or(y0.xor(y1)));
+    let (mut key, mut frame) = (W::ZERO, 0);
     let mut level = levels;
     while level > top_level {
         level -= 1;
-        let bit = |v: W| u8::from(!v.shr(level).and(W::ONE).is_zero());
+        let bit = |v: W| u8::from(v.bit(level));
         let (digit, below) = C::digit(frame, bit(x0), bit(y0));
-        key = key.or(small::<W>(digit).shl(2 * level));
+        key = key.or(small::<W>(digit.into()).shl(2 * level));
         frame = below;
+    }
+    let context = C::context(&r);
+    let stop = depth::<W, C>(levels, &r, top_level, out.len().saturating_mul(2), &context);
+    if stop == top_level {
+        out[0] = (key, key.or(W::low_ones(2 * top_level)));
+        return 1;
     }
     let above = W::low_ones(top_level).not();
     let origin = (x0.and(above), y0.and(above));
-    // The deepest stop whose cover fits two budgets, coarse to fine: its
-    // gaps then fit the output as scratch.
-    let limit = out.len().saturating_mul(2);
-    let mut stop = top_level;
-    while stop > 0 {
-        let mut count = Count {
-            n: 0,
-            last: None,
-            limit,
-        };
-        if !walk::<W, C, _>(&r, top_level, stop - 1, key, origin, frame, &mut count) {
-            break;
-        }
-        stop -= 1;
-    }
     // The gaps of that cover, and the threshold that leaves `budget`
     // runs: the largest `budget - 1` gaps stay open.
-    let mut gaps = Gaps { out: &mut *out, runs: 0, last: None };
+    let mut gaps = Gaps {
+        out: &mut *out,
+        runs: 0,
+        last: None,
+    };
     walk::<W, C, _>(&r, top_level, stop, key, origin, frame, &mut gaps);
     let runs = gaps.runs;
     let budget = out.len();
@@ -285,7 +496,12 @@ pub(crate) fn cover<W: Word + Ord, C: Quadrants>(
     } else {
         (W::ZERO, 0)
     };
-    let mut merge = Merge { out, n: 0, threshold, ties };
+    let mut merge = Merge {
+        out,
+        n: 0,
+        threshold,
+        ties,
+    };
     walk::<W, C, _>(&r, top_level, stop, key, origin, frame, &mut merge);
     merge.n
 }
@@ -318,12 +534,12 @@ fn meets<W: Word + Ord, C: Quadrants>(
         return true;
     }
     let below = level - 1;
-    (0..4u8).any(|digit| {
-        let (dx, dy, next) = C::child(frame, digit);
+    (0..4u32).any(|digit| {
+        let (dx, dy, next) = C::child(1, frame, digit);
         let child_key = key.or(small::<W>(digit).shl(2 * below));
         let child = (
-            ox.or(small::<W>(dx).shl(below)),
-            oy.or(small::<W>(dy).shl(below)),
+            ox.or(small::<W>(dx.into()).shl(below)),
+            oy.or(small::<W>(dy.into()).shl(below)),
         );
         meets::<W, C>(r, (a, b), below, child_key, child, next)
     })
@@ -332,7 +548,6 @@ fn meets<W: Word + Ord, C: Quadrants>(
 /// Whether some cell of `x0..=x1` × `y0..=y1` has its key in `a..=b`.
 pub(crate) fn intersects<W: Word + Ord, C: Quadrants>(
     levels: u32,
-    top: u8,
     (a, b): (W, W),
     (x0, x1): (W, W),
     (y0, y1): (W, W),
@@ -343,5 +558,101 @@ pub(crate) fn intersects<W: Word + Ord, C: Quadrants>(
         return false;
     }
     let r = Rect { x0, x1, y0, y1 };
-    meets::<W, C>(&r, (a, b), levels, W::ZERO, (W::ZERO, W::ZERO), top)
+    meets::<W, C>(&r, (a, b), levels, W::ZERO, (W::ZERO, W::ZERO), 0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{Quadrants, Rect, Sink, walk};
+    use crate::dilated::ZQuadrants;
+    use crate::hilbert::HilbertQuadrants;
+    use crate::word::Word;
+
+    /// Counts runs, touching ones merged.
+    struct Count<W> {
+        n: usize,
+        last: Option<W>,
+    }
+
+    impl<W: Word> Sink<W> for Count<W> {
+        fn emit(&mut self, first: W, last: W) {
+            match self.last {
+                Some(end) if end != W::ONES && end.wrapping_add(W::ONE) == first => {}
+                _ => self.n += 1,
+            }
+            self.last = Some(last);
+        }
+    }
+
+    /// The closed form against the walk, at every depth below the top.
+    fn agree<W: Word + Ord, C: Quadrants>(r: &Rect<W>) -> bool {
+        let levels = W::BITS / 2;
+        let top = super::bitlen(r.x0.xor(r.x1).or(r.y0.xor(r.y1)));
+        let context = C::context(r);
+        (0..top).all(|s| {
+            // The walk starts at the root here; the digits above the
+            // rectangle's node are the same one key in every range.
+            let mut count = Count { n: 0, last: None };
+            walk::<W, C, _>(r, levels, s, W::ZERO, (W::ZERO, W::ZERO), 0, &mut count);
+            let runs = C::runs(levels, r, s, &context);
+            runs == super::from_usize(count.n)
+        })
+    }
+
+    #[test]
+    fn runs_every_u8_rectangle() {
+        for x0 in 0..16u8 {
+            for x1 in x0..16 {
+                for y0 in 0..16u8 {
+                    for y1 in y0..16 {
+                        let r = Rect { x0, x1, y0, y1 };
+                        assert!(agree::<u8, ZQuadrants>(&r), "Z {x0}..={x1} × {y0}..={y1}");
+                        assert!(
+                            agree::<u8, HilbertQuadrants>(&r),
+                            "H {x0}..={x1} × {y0}..={y1}"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn runs_random_u32_rectangles() {
+        let mut state = 0x9E37_79B9_7F4A_7C15u64;
+        let mut next = || {
+            state = state
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (state >> 32) as u32
+        };
+        for i in 0..4000 {
+            // Sides of every scale, walks of a few thousand nodes at most.
+            let side = |v: u32, n: u32| v & (u32::MAX >> (32 - n.max(1)));
+            let (x0, y0) = (next() >> 16, next() >> 16);
+            let n = i % 11;
+            let r = Rect {
+                x0,
+                x1: (x0 + side(next(), n)).min(0xFFFF),
+                y0,
+                y1: (y0 + side(next(), n)).min(0xFFFF),
+            };
+            assert!(
+                agree::<u32, ZQuadrants>(&r),
+                "Z {}..={} × {}..={}",
+                r.x0,
+                r.x1,
+                r.y0,
+                r.y1
+            );
+            assert!(
+                agree::<u32, HilbertQuadrants>(&r),
+                "H {}..={} × {}..={}",
+                r.x0,
+                r.x1,
+                r.y0,
+                r.y1
+            );
+        }
+    }
 }

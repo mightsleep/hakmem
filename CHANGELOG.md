@@ -96,15 +96,23 @@ stack and through the Morton columns. Skipping the Morton code as
 
 `Hilbert2::cover` and `Morton2::cover`: a rectangle as at most
 `out.len()` sorted inclusive ranges of keys holding every cell of it,
-exact when the budget allows. A descent of the quadtree in curve
-order from the least node holding the rectangle; counting passes pick
-the deepest level whose cover has at most two budgets of runs, one
-pass writes its gaps into the output as scratch, a quickselect finds
-the threshold that leaves `budget` runs, and the last pass closes the
-gaps below it: the least over-cover that cover allows, no allocation.
-Laws cell by cell on the `u16` grid (coverage, exactness, the optimal
-merge) and by points on `u64`. 3.5 µs a rectangle for 16 Morton
-ranges, 9 for Hilbert, 12 and 30 for 64.
+exact when the budget allows. The depth comes from counting, not
+walking: a run starts where the curve's predecessor leaves the
+rectangle, which on Z-order is a borrow and a count of arithmetic
+progressions per level, and on Hilbert a step entering across a side,
+counted per frame by a small automaton over one column of nodes, the
+frames read off the indices of the four corners (the decoder's frames
+form the Klein group, so a frame is two parities). A guess from the
+perimeter and a step or two find the deepest level with at most two
+budgets of runs. Then two walks, three levels a step with the 64
+grandchildren of grandchildren as one `u64` mask per frame: one writes
+the gaps into the output as scratch, a quickselect finds the threshold
+that leaves `budget` runs, the other closes the gaps below it. The
+least over-cover that cover allows, no allocation. Laws cell by cell
+on the `u16` grid (coverage, exactness, the optimal merge), by points
+on `u64`, and the counts against the walk on every `u8` rectangle.
+0.3 µs a rectangle for 16 Morton ranges, 1.1 for Hilbert, 1.3 and 3
+for 64.
 
 `Hilbert2::intersects` and `Morton2::intersects`: whether a block of
 keys `a..=b` holds a cell of a rectangle, the pruning test of a sparse

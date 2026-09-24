@@ -12,6 +12,7 @@
 //! has no `Add` impl, only [`incr`](Dilated::incr) / [`wrapping_add`](Dilated::wrapping_add)
 //! Plain integer addition on it does not compile.
 
+use crate::cover::{Masks, Quadrants, Rect};
 use crate::word::Word;
 
 /// An integer whose bits sit at positions `0, D, 2D, …` of `W`.
@@ -301,18 +302,82 @@ macro_rules! morton2_columns {
 
 /// Z-order for [`crate::cover`]: digit `d` is `x` in bit 0, `y` in bit
 /// 1, one frame.
-struct ZQuadrants;
+pub(crate) struct ZQuadrants;
 
-impl crate::cover::Quadrants for ZQuadrants {
-    #[inline]
-    fn child(_: u8, digit: u8) -> (u8, u8, u8) {
-        (digit & 1, digit >> 1, 0)
-    }
+static Z_MASKS: Masks<1> = Masks::build([[(0, 0), (1, 0), (2, 0), (3, 0)]]);
+
+impl Quadrants for ZQuadrants {
+    type Context<W> = ();
 
     #[inline]
     fn digit(_: u8, dx: u8, dy: u8) -> (u8, u8) {
         (dx | dy << 1, 0)
     }
+
+    #[inline]
+    fn child(k: u32, _: u8, p: u32) -> (u8, u8, u8) {
+        Z_MASKS.child(k, 0, p)
+    }
+
+    #[inline]
+    fn cells(k: u32, _: u8, cols: usize, rows: usize) -> u64 {
+        Z_MASKS.cells(k, 0, cols, rows)
+    }
+
+    fn context<W: Word + Ord>(_: &Rect<W>) {}
+
+    fn runs<W: Word + Ord>(levels: u32, r: &Rect<W>, s: u32, (): &()) -> W {
+        z_runs(
+            (r.x0.shr(s), r.x1.shr(s)),
+            (r.y0.shr(s), r.y1.shr(s)),
+            levels - s,
+        )
+    }
+}
+
+/// The runs of the exact Z-order cover of `x0..=x1` × `y0..=y1` on
+/// `levels` levels, without a node: a run starts at a cell whose
+/// predecessor is outside, and the predecessor of a code is a borrow.
+/// When the lowest set bit is bit `t` of `x`, the low `t` bits of both
+/// are zero and the borrow gives `(x - 1, y | low(t))`; when it is bit
+/// `t` of `y`, `(x | low(t + 1), y - 1)`. The predecessor then leaves by
+/// the near side (`x = x0`, or `y = y0`), or by the far side of the other
+/// axis, which only the last aligned block before `x1` (or `y1`) can do.
+/// Each is a count of an arithmetic progression, two per level.
+fn z_runs<W: Word + Ord>((x0, x1): (W, W), (y0, y1): (W, W), levels: u32) -> W {
+    // `v` in `a..=b` with `v ≡ r` mod `2^m`.
+    let progression = |(a, b): (W, W), r: W, m: u32| {
+        let upto = |v: W| {
+            if v < r { W::ZERO } else { v.wrapping_sub(r).shr(m).wrapping_add(W::ONE) }
+        };
+        let before = if a.is_zero() { W::ZERO } else { upto(a.wrapping_sub(W::ONE)) };
+        upto(b).wrapping_sub(before)
+    };
+    // Whether the last multiple of `2^m` in `a..=b` sticks out past `b`
+    // once its low `m` bits are filled.
+    let spills = |(a, b): (W, W), m: u32| {
+        let low = W::low_ones(m);
+        b.and(low.not()) >= a && b.and(low) != low
+    };
+    let one = |c: bool| if c { W::ONE } else { W::ZERO };
+    let mut n = one(x0.is_zero() && y0.is_zero());
+    for t in 0..levels {
+        let half = W::ONE.shl(t);
+        // Lowest set bit in x, at t: the columns with that bit, times
+        // the rows with none below it.
+        let near = x0.trailing_zeros() == t;
+        let cols = progression((x0, x1), half, t + 1).wrapping_sub(one(near));
+        let rows = progression((y0, y1), W::ZERO, t);
+        n = n.wrapping_add(if near { rows } else { W::ZERO });
+        n = n.wrapping_add(if spills((y0, y1), t) { cols } else { W::ZERO });
+        // Lowest set bit in y, at t.
+        let near = y0.trailing_zeros() == t;
+        let rows = progression((y0, y1), half, t + 1).wrapping_sub(one(near));
+        let cols = progression((x0, x1), W::ZERO, t + 1);
+        n = n.wrapping_add(if near { cols } else { W::ZERO });
+        n = n.wrapping_add(if spills((x0, x1), t + 1) { rows } else { W::ZERO });
+    }
+    n
 }
 
 impl<W: Word + Ord> Morton2<W> {
@@ -334,7 +399,7 @@ impl<W: Word + Ord> Morton2<W> {
     ///
     /// If the rectangle is not empty and `out` is.
     pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
-        crate::cover::cover::<W, ZQuadrants>(W::BITS / 2, 0, x, y, out)
+        crate::cover::cover::<W, ZQuadrants>(W::BITS / 2, x, y, out)
     }
 
     /// Whether some cell of the rectangle has its code in
@@ -349,7 +414,7 @@ impl<W: Word + Ord> Morton2<W> {
     /// ```
     #[must_use]
     pub fn intersects(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
-        crate::cover::intersects::<W, ZQuadrants>(W::BITS / 2, 0, keys, x, y)
+        crate::cover::intersects::<W, ZQuadrants>(W::BITS / 2, keys, x, y)
     }
 }
 

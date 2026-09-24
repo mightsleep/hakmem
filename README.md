@@ -325,9 +325,9 @@ into at most as many ranges of keys as the output slice holds, sorted
 and inclusive, every cell of the rectangle in one. With room for the
 exact cover they hold nothing else; with less they hold the least
 extra a budget of ranges of the deepest cover that fits can hold. A
-scan of the sorted keys seeks once per range. No allocation, the work
-a few times the budget per level: 3.5 µs a rectangle for 16 Morton
-ranges on the full `u64` grid, 9 µs for 16 Hilbert ranges.
+scan of the sorted keys seeks once per range. No allocation, and the
+depth is counted rather than searched for: 0.3 µs a rectangle for 16
+Morton ranges on the full `u64` grid, 1.1 µs for 16 Hilbert ranges.
 The other way round, `intersects(keys, x, y)` says whether a block of
 keys (a granule, a row group, a file, by its least and greatest key)
 can hold a point of the rectangle: one descent where a node is an

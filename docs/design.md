@@ -238,12 +238,44 @@ Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 The query side, `cover` (`cover.rs`): a rectangle on the full `u64`
 grid, sides up to `2^8`, `2^16` or `2^24` cells, turns into ranges in
 about the same time whatever its size, since the depth stops where the
-budget does: 3.5 µs for 16 Morton ranges and 12 for 64, 8.5 and 30 for
-Hilbert. The walks are most of it (several counting passes, each a
-little deeper, then the gaps and the write); a first depth guessed
-from the rectangle's side and the budget would drop most of the
-counting, and is the next thing to try if a query ever waits on it
-rather than on the scan.
+budget does: 0.3 µs for 16 Morton ranges and 1.3 for 64, 1.1 and 3 for
+Hilbert (3.5, 12, 8.5 and 30 before the three changes below).
+
+The depth is counted, not walked. A run of the exact cover starts at a
+cell of the rectangle whose predecessor on the curve is not in it. On
+Z-order the predecessor is a borrow: with the lowest set bit at bit
+`t` of `x`, `(x, y)` follows `(x - 1, y | low(t))`, and that leaves the
+rectangle through `x = x0` or through `y1` when the aligned block
+sticks out past it; per level and lane a product of two counts of
+arithmetic progressions, 20 ns at any depth. Hilbert is continuous, so
+a run starts where a step enters across a side. Across the line
+`x = X0 - 1/2` only the nodes at level `tz(X0) + 1` step, one column
+of them, and what each contributes depends on its frame alone. The
+nodes strictly between the ends are counted by frame (a weight per
+frame and height, and the count below a node number as a sum along its
+path, both from the bottom level up in four lanes), the two end nodes
+cell by cell. Their frames come from the indices of the rectangle's
+corners: read top down, the decoder's frames form the Klein group, so
+the frame above level `l` is the parity of the digits above it that
+swap and of those that flip. 150 to 250 ns a count. The counts fall
+as the depth grows, so a guess from the perimeter and the budget and a
+step or two either way find the depth, two counts a query on average.
+
+The walks go three levels a step: the 64 descendants of a node as one
+`u64` in curve order, those meeting the rectangle the AND of a mask of
+its columns and a mask of its rows, each looked up per frame (tables
+built at compile time from the one-level digit table, about 5 KB a
+frame). A run of ones is a range of keys; only the partial children
+are descended into. Hilbert pays twice Morton's walk because it fits
+the budget a level finer, the curve having about half the runs for
+the same perimeter: a better cover for the time.
+
+Against the incumbents at the same number of ranges: GeoMesa's
+`zranges` (a breadth-first descent with a loose range limit) leaves
+2 to 12 % more over-cover and takes 2 to 8 times as long (the walk
+that counted by walking was 1.2 to 2 times slower than it at small
+budgets); the S2 region coverer, which approximates in cells rather
+than ranges, takes 20 to 80 µs.
 
 `intersects` answers the question the other way round, for pruning a
 block of sorted keys by its ends: 20 ns a call, one descent of about
