@@ -1,6 +1,6 @@
 # Miri over the unsafe modules (BMI2 / PCLMULQDQ intrinsics in word.rs,
-# SSSE3 and GFNI in lanes.rs, VBMI and NEON batch kernels in hilbert.rs and
-# hilbert3.rs). Not a `check`: `cargo miri setup` builds a
+# SSSE3 and GFNI in lanes.rs, the AVX2 batch kernel in hilbert3.rs; not
+# yet the AVX-512 ones, see below). Not a `check`: `cargo miri setup` builds a
 # sysroot from rust-src and fetches crates, which the Nix sandbox without
 # network cannot do. Runs as an app outside the sandbox.
 #
@@ -32,19 +32,23 @@
             echo "== miri: RUSTFLAGS='$1'"
             RUSTFLAGS="$1" cargo miri test --test miri
           }
-          # Portable paths first, then the intrinsics; Miri has shims for
-          # BMI2, PCLMULQDQ, SSSE3, GFNI and AVX-512 VBMI but vpmultishiftqb,
-          # which Miri gets as a loop until rust-lang/miri#5345 (hilbert3.rs).
-          # The GFNI and VBMI cells are Miri-only: the GitHub runners are a
-          # mix of Zen 3 (no GFNI, no AVX-512) and Ice Lake, so a native
-          # cell would SIGILL at random; the interpreter does not care.
+          # Portable paths first, then the intrinsics Miri has shims for:
+          # BMI2, PCLMULQDQ, SSSE3, GFNI, AVX2. The GFNI cell is Miri-only:
+          # the GitHub runners are a mix of Zen 3 (no GFNI, no AVX-512) and
+          # Ice Lake, so a native cell would SIGILL at random.
+          #
+          # The AVX-512 VBMI kernels are not here. Miri knows a handful of
+          # AVX-512 intrinsics and stdarch moves others between LLVM
+          # intrinsics and generic SIMD from one nightly to the next, so a
+          # cell here breaks on updates nobody on this side made. Shims go
+          # upstream (rust-lang/miri#5345: vpternlogq, vpmultishiftqb; the
+          # zmm variable shifts are still missing), and the cells come back
+          # when a nightly runs them:
+          #   -C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx512vbmi
+          #   -C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx512vbmi,+gfni
           run ""
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3"
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+gfni"
-          # The batch Hilbert kernels: vpermb and vpermi2b.
-          run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx512vbmi"
-          # And with GFNI: the column kernels transpose bits with it.
-          run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx512vbmi,+gfni"
           # The 3D kernel for AVX2 without VBMI: PSHUFB and SRLV.
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx2"
         '';

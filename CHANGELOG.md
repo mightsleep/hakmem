@@ -50,9 +50,10 @@ serves 64 keys and not eight, for two transposes by `vpmultishiftqb`
 and three rounds of `vpermt2b` each way. Laws: the
 batch equals the per-key conversion both ways, on every length to 300
 (the tails of the 16-, 32- and 64-key batches) and around the 512-key
-groups of the planes. Miri runs the VBMI and
-AVX2 kernels (`nix run .#miri-hakmem`, a new cell), the `+bmi2` CI
-cell runs AVX2 natively, and the NEON kernels run on the aarch64 CI
+groups of the planes. Miri runs the AVX2 kernel
+(`nix run .#miri-hakmem`, a new cell) and not yet the VBMI ones, whose
+AVX-512 intrinsics Miri is still learning (rust-lang/miri#5345); the
+`+bmi2` CI cell runs AVX2 natively, and the NEON kernels run on the aarch64 CI
 runner. The 3D decode batches too,
 through the inverse of the encode table (a bijection of the octants per
 state, checked at compile time): 1.8 ns a key against 8.8 for the

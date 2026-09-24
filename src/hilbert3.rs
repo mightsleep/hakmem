@@ -749,46 +749,13 @@ mod batch {
     mod planes {
         use core::arch::x86_64::{
             __m512i, _mm512_and_si512, _mm512_gf2p8affine_epi64_epi8, _mm512_loadu_si512,
-            _mm512_madd_epi16, _mm512_maddubs_epi16, _mm512_permutex2var_epi8, _mm512_set1_epi8,
-            _mm512_set1_epi16, _mm512_set1_epi32, _mm512_set1_epi64, _mm512_setzero_si512,
-            _mm512_slli_epi64, _mm512_srli_epi64, _mm512_storeu_si512, _mm512_ternarylogic_epi32,
+            _mm512_madd_epi16, _mm512_maddubs_epi16, _mm512_multishift_epi64_epi8,
+            _mm512_permutex2var_epi8, _mm512_set1_epi8, _mm512_set1_epi16, _mm512_set1_epi32,
+            _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi64, _mm512_srli_epi64,
+            _mm512_storeu_si512, _mm512_ternarylogic_epi32,
         };
 
         use super::super::{DECODE_PADDED, ENCODE_PADDED};
-
-        /// `_mm512_multishift_epi64_epi8(ctrl, data)`: byte `j` of each
-        /// qword is the 8 bits of `data` from bit `ctrl.byte[j] % 64` on,
-        /// wrapping. Miri learns it in rust-lang/miri#5345; until that
-        /// lands, Miri gets the loop, the processor the instruction, and a
-        /// test the two.
-        #[inline(always)]
-        unsafe fn multishift(ctrl: __m512i, data: __m512i) -> __m512i {
-            #[cfg(not(miri))]
-            // SAFETY: the callers run with VBMI enabled.
-            unsafe {
-                core::arch::x86_64::_mm512_multishift_epi64_epi8(ctrl, data)
-            }
-            #[cfg(miri)]
-            // SAFETY: 64 bytes of integers either way.
-            unsafe {
-                use core::mem::transmute;
-                transmute::<[u64; 8], __m512i>(multishift_loop(
-                    transmute::<__m512i, [u64; 8]>(ctrl),
-                    transmute::<__m512i, [u64; 8]>(data),
-                ))
-            }
-        }
-
-        // Miri and the test call it; a normal build never does.
-        #[cfg_attr(not(any(miri, test)), allow(dead_code))]
-        fn multishift_loop(ctrl: [u64; 8], data: [u64; 8]) -> [u64; 8] {
-            core::array::from_fn(|i| {
-                let at = ctrl[i].to_le_bytes();
-                u64::from_le_bytes(
-                    at.map(|c| data[i].rotate_right(u32::from(c % 64)).to_le_bytes()[0]),
-                )
-            })
-        }
 
         /// A byte of the transpose is tagged `key · 8 + level`, key and
         /// level within one group of 64 keys and one block of 8 levels.
@@ -952,7 +919,8 @@ mod batch {
                     }
                     #[allow(clippy::cast_possible_wrap)]
                     let c = _mm512_set1_epi64(u64::from_le_bytes(offsets) as i64);
-                    let mut x: [__m512i; 8] = core::array::from_fn(|g| multishift(c, a[g]));
+                    let mut x: [__m512i; 8] =
+                        core::array::from_fn(|g| _mm512_multishift_epi64_epi8(c, a[g]));
                     transpose(&mut x, &TO_PLANES);
                     *block = x;
                 }
@@ -1111,9 +1079,9 @@ mod batch {
                     let cy = _mm512_set1_epi64(column_offsets(j, 1));
                     let cz = _mm512_set1_epi64(column_offsets(j, 2));
                     let mut x: [__m512i; 8] = core::array::from_fn(|g| {
-                        let bx = multishift(cx, load(xs, g));
-                        let by = multishift(cy, load(ys, g));
-                        let bz = multishift(cz, load(zs, g));
+                        let bx = _mm512_multishift_epi64_epi8(cx, load(xs, g));
+                        let by = _mm512_multishift_epi64_epi8(cy, load(ys, g));
+                        let bz = _mm512_multishift_epi64_epi8(cz, load(zs, g));
                         // `c ? a : b`, twice
                         let xy = _mm512_ternarylogic_epi32::<0xCA>(bit0, bx, by);
                         _mm512_ternarylogic_epi32::<0xCA>(bits01, xy, bz)
@@ -1299,41 +1267,6 @@ mod batch {
                 }
             }
             done
-        }
-
-        #[cfg(test)]
-        mod tests {
-            use core::arch::x86_64::__m512i;
-
-            use super::{multishift, multishift_loop};
-
-            #[test]
-            fn multishift_loop_is_the_instruction() {
-                if !crate::cpu::avx512vbmi() {
-                    return;
-                }
-                // xorshift64: controls past 63 and every rotation, cheaply.
-                let mut s = 0x9E37_79B9_7F4A_7C15_u64;
-                let mut next = || {
-                    s ^= s << 13;
-                    s ^= s >> 7;
-                    s ^= s << 17;
-                    s
-                };
-                for _ in 0..256 {
-                    let ctrl: [u64; 8] = core::array::from_fn(|_| next());
-                    let data: [u64; 8] = core::array::from_fn(|_| next());
-                    // SAFETY: VBMI detected above; 64 bytes of integers.
-                    let got: [u64; 8] = unsafe {
-                        use core::mem::transmute;
-                        transmute::<__m512i, [u64; 8]>(multishift(
-                            transmute::<[u64; 8], __m512i>(ctrl),
-                            transmute::<[u64; 8], __m512i>(data),
-                        ))
-                    };
-                    assert_eq!(got, multishift_loop(ctrl, data));
-                }
-            }
         }
     }
 
