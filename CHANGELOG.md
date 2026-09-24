@@ -32,15 +32,18 @@ Batch conversions, in place over a slice of keys the caller owns:
 `Hilbert2::from_morton_in_place` / `into_morton_in_place` and the same
 for `Hilbert3`, on `u32` and `u64`. The caller fills the keys with
 Morton codes from any point layout; the kernel sees words only (design
-notes section 3). With AVX-512 VBMI a step is one `vpermb` through a
-64-entry table (2D, two levels a step) or one `vpermi2b` through the
-96-byte encode table (3D, a level a step) per register of keys, the
-frame riding in the index byte; with NEON the same tables in `tbl` and
-`tbx`; otherwise the per-key conversion. On Zen 5: 2.1 ns a key for
-the 2D `u64` encode from coordinates against 11.9 for `fast_hilbert`,
-0.92 against 8.3 for 16-bit coordinates, 2.7 against 15.2 for the 3D
-tables. Laws: the batch equals the per-key conversion both ways, on
-every length to 300 (the tails of the 16-, 32- and 64-key batches).
+notes section 3). With AVX-512 VBMI a step is one `vpermi2b` per
+register of keys: in 2D through 128 entries, three levels a step, the
+frame taken modulo the reflection of both axes and carried as a XOR
+mask on the cells (the unreduced table would be 256); in 3D through
+the 96-byte encode table, a level a step, the frame riding in the
+index byte. With NEON a 64-entry 2D table (two levels a step) and the
+3D tables in `tbl` and `tbx`; otherwise the per-key conversion. On
+Zen 5: 1.6 ns a key for the 2D `u64` encode from coordinates against
+11.9 for `fast_hilbert`, 0.90 against 8.3 for 16-bit coordinates, 2.7
+against 15.2 for the 3D tables. Laws: the batch equals the per-key
+conversion both ways, on every length to 300 (the tails of the 16-,
+32- and 64-key batches).
 Miri runs the VBMI kernels (`nix run .#miri-hakmem`, a new cell); the
 NEON kernels run on the aarch64 CI runner. The 3D decode batches too,
 through the inverse of the encode table (a bijection of the octants per

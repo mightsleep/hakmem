@@ -197,7 +197,7 @@ machine read as a table and applied to a register of keys at a time:
 
 | batch | with the target feature | without |
 |---|---|---|
-| `Hilbert2::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermb` through a 64-entry table a step, two levels a step, the frame riding in the index byte; NEON: the same table in four registers for `tbl` | `from_morton` per key |
+| `Hilbert2::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through 128 entries a step, three levels a step, the frame modulo the reflection of both axes (a XOR mask on the cells, the swap bit in the index byte), three `vpternlog` around the lookup; NEON: a 64-entry table, two levels a step, in four registers for `tbl` | `from_morton` per key |
 | `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step; NEON: `tbl` over four registers and `tbx` over two | `from_morton` per key |
 | `Hilbert3::into_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time) | `into_morton` per key, the algebraic scan |
 
@@ -206,8 +206,8 @@ Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 
 | conversion | batch | per key | incumbent |
 |---|---|---|---|
-| 2D encode, `u64` keys, 32 levels | 2.1 | 5.9 | `fast_hilbert` 11.9 |
-| 2D encode, `u16` coordinates to `u32` keys, 16 levels (the packed R-tree case) | 0.92 | 6.1 | `fast_hilbert` 8.3 |
+| 2D encode, `u64` keys, 32 levels | 1.6 | 5.9 | `fast_hilbert` 11.9 |
+| 2D encode, `u16` coordinates to `u32` keys, 16 levels (the packed R-tree case) | 0.90 | 6.1 | `fast_hilbert` 8.3 |
 | 3D encode, `u64` keys, 21 levels | 2.7 | 13.1 | rawrunprotected's tables 15.2 |
 | 3D decode, `u64` keys, 21 levels | 2.7 | 8.8 | rawrunprotected's tables 15.1 |
 

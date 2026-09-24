@@ -241,19 +241,12 @@ const fn level(frame: u8, x: u8, y: u8) -> (u8, u8) {
 /// Morton code (`y x` of the upper level, then of the lower), holds
 /// `frame_below << 4 | digits`. The frame stays in bits 4 and 5, so the
 /// next index is the entry masked and the next nibble or-ed in. Sixty-four
-/// bytes: one AVX-512 register, or four NEON registers for `tbl`.
+/// bytes: four NEON registers for `tbl`.
 #[cfg_attr(
-    not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx512vbmi",
-            not(feature = "portable")
-        ),
-        all(
-            target_arch = "aarch64",
-            target_feature = "neon",
-            not(feature = "portable")
-        )
+    not(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "portable")
     )),
     allow(dead_code)
 )]
@@ -270,6 +263,48 @@ const TABLE4: [u8; 64] = {
     table
 };
 
+/// Three levels of the encode machine a byte, modulo the reflection that
+/// flips both axes: [`level`] in the frame `(swap, flip)` is [`level`]
+/// in `(swap, 0)` on the cell moved by `x ^ flip, y ^ flip`, with `flip`
+/// added below, so `flip` is a XOR mask and `swap` alone is tabled. In
+/// the cell basis `(x, x ^ y)` the reflection moves `x` only. The entry
+/// at `swap << 6 | cells`, three cells of that basis from the top, holds
+/// the high digit bits at their places (1, 3, 5), the `flip` gained
+/// below at every `x` place (0, 2, 4), and the `swap` gained at bit 6:
+/// all of the state relative, so the next state is `(state ^ entry)`
+/// masked and the next index `cells ^ state`. The low digit bits are
+/// `x ^ y`, the input itself. 128 bytes: two AVX-512 registers for
+/// `vpermi2b`, a quarter of the unreduced table.
+#[cfg_attr(
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "avx512vbmi",
+        not(feature = "portable")
+    )),
+    allow(dead_code)
+)]
+const TABLE6: [u8; 128] = {
+    let mut table = [0u8; 128];
+    let mut i = 0u8;
+    while i < 128 {
+        let swap = i >> 6;
+        let mut frame = swap;
+        let mut entry = 0u8;
+        let mut j = 3;
+        while j > 0 {
+            j -= 1;
+            let x = (i >> (2 * j)) & 1;
+            let y = x ^ ((i >> (2 * j + 1)) & 1);
+            let (digit, below) = level(frame, x, y);
+            entry |= (digit >> 1) << (2 * j + 1);
+            frame = below;
+        }
+        table[i as usize] = entry | ((frame >> 1) * 0x15) | (((frame & 1) ^ swap) << 6);
+        i += 1;
+    }
+    table
+};
+
 macro_rules! hilbert2_batch {
     ($($w:ty => $kernel:ident),* $(,)?) => {$(
         impl Hilbert2<$w> {
@@ -277,10 +312,12 @@ macro_rules! hilbert2_batch {
             /// place: each Morton code becomes the Hilbert index of the
             /// same cell.
             ///
-            /// With AVX-512 VBMI a step is one `vpermb` through a 64-entry
-            /// table per register of keys, two levels at a time, the frame
-            /// riding in the index byte; with NEON the same table is four
-            /// registers for `tbl`. Otherwise, and for the keys past the
+            /// With AVX-512 VBMI a step is one `vpermi2b` through a
+            /// 128-entry table per register of keys, three levels at a
+            /// time: the frame modulo the reflection of both axes, which
+            /// rides as a XOR mask on the cells, three `vpternlog` around
+            /// the lookup. With NEON a 64-entry table in four registers for
+            /// `tbl`, two levels at a time. Otherwise, and for the keys past the
             /// last whole batch, it is [`from_morton`](Self::from_morton)
             /// per key. Coordinates never enter: fill the slice with
             /// [`Morton2::encode`] from whatever layout the points are in.
@@ -359,74 +396,92 @@ mod batch {
     #[allow(unsafe_code)]
     mod vbmi {
         use core::arch::x86_64::{
-            __m512i, _mm512_and_si512, _mm512_loadu_si512, _mm512_or_si512,
-            _mm512_permutexvar_epi8, _mm512_set1_epi32, _mm512_set1_epi64, _mm512_setzero_si512,
-            _mm512_slli_epi32, _mm512_slli_epi64, _mm512_srli_epi32, _mm512_srli_epi64,
-            _mm512_storeu_si512,
+            _mm512_loadu_si512, _mm512_permutex2var_epi8, _mm512_set1_epi8, _mm512_set1_epi32,
+            _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi32, _mm512_slli_epi64,
+            _mm512_srli_epi32, _mm512_srli_epi64, _mm512_srlv_epi32, _mm512_srlv_epi64,
+            _mm512_storeu_si512, _mm512_ternarylogic_epi64,
         };
 
-        use super::super::TABLE4;
+        use super::super::TABLE6;
+
+        // `vpternlog` truth tables over `(a, b, c) = (0xF0, 0xCC, 0xAA)`.
+        /// `a ^ (b & c)`
+        const XOR_AND: i32 = 0x78;
+        /// `(a & c) ^ b`
+        const AND_XOR: i32 = 0x6C;
+        /// `a | (b & c)`
+        const OR_AND: i32 = 0xF8;
+        /// `(a ^ b) & c`
+        const XOR_THEN_AND: i32 = 0x28;
 
         macro_rules! kernel {
-            ($name:ident, $w:ty, $lanes:literal, $set1:ident, $srli:ident, $slli:ident) => {
+            (
+                $name:ident, $w:ty, $lanes:literal, $set1:ident, $srli:ident, $slli:ident,
+                $srlv:ident
+            ) => {
                 /// Batches of 64 keys, `64 / LANES` registers in flight.
                 pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
                     const REGS: usize = 64 / $lanes;
-                    const STEPS: u32 = <$w>::BITS / 4;
+                    const LEVELS: u32 = <$w>::BITS / 2;
+                    #[allow(clippy::cast_possible_truncation)]
+                    const STEPS: u8 = LEVELS.div_ceil(3) as u8;
+                    // Levels above the key read as cell 0; two of them
+                    // are the identity, so an odd number starts swapped.
+                    #[allow(clippy::cast_possible_truncation)]
+                    const START: u8 = (((3 * STEPS as u32 - LEVELS) & 1) << 6) as u8;
                     let (chunks, _) = keys.as_chunks_mut::<64>();
                     let done = chunks.len() * 64;
                     for chunk in chunks {
                         // SAFETY: AVX-512 F, BW and VBMI are enabled by cfg;
                         // every load and store stays inside the 64 keys of
-                        // `chunk`, unaligned forms.
+                        // `chunk` or the 128 bytes of the table.
                         unsafe {
-                            let table = _mm512_loadu_si512(TABLE4.as_ptr().cast());
-                            let nibble = $set1(15);
-                            let frame_bits = $set1(0x30);
+                            let lo = _mm512_loadu_si512(TABLE6.as_ptr().cast());
+                            let hi = _mm512_loadu_si512(TABLE6.as_ptr().add(64).cast());
+                            let cells = $set1(63);
+                            let high_digits = $set1(0x2A);
+                            let state_bits = $set1(0x55);
+                            #[allow(clippy::cast_possible_wrap)]
+                            let odd = _mm512_set1_epi8(0xAA_u8 as i8);
+                            let even = _mm512_set1_epi8(0x55);
                             let mut code = [_mm512_setzero_si512(); REGS];
                             let mut acc = [_mm512_setzero_si512(); REGS];
-                            let mut frame = [_mm512_setzero_si512(); REGS];
+                            let mut state = [$set1(START.into()); REGS];
                             for (r, c) in code.iter_mut().enumerate() {
-                                *c = _mm512_loadu_si512(chunk.as_ptr().add($lanes * r).cast());
+                                let m = _mm512_loadu_si512(chunk.as_ptr().add($lanes * r).cast());
+                                // Each level's `(x, y)` to `(x, x ^ y)`.
+                                *c = _mm512_ternarylogic_epi64::<XOR_AND>(m, $slli::<1>(m), odd);
                             }
-                            // Levels from the top, two a step; the shift is
-                            // an immediate per step, hence the unrolled match.
                             let mut step = STEPS;
                             while step > 0 {
                                 step -= 1;
+                                let shift = $set1((6 * step).into());
                                 for r in 0..REGS {
-                                    let shifted: __m512i = match step {
-                                        0 => code[r],
-                                        1 => $srli::<4>(code[r]),
-                                        2 => $srli::<8>(code[r]),
-                                        3 => $srli::<12>(code[r]),
-                                        4 => $srli::<16>(code[r]),
-                                        5 => $srli::<20>(code[r]),
-                                        6 => $srli::<24>(code[r]),
-                                        7 => $srli::<28>(code[r]),
-                                        8 => $srli::<32>(code[r]),
-                                        9 => $srli::<36>(code[r]),
-                                        10 => $srli::<40>(code[r]),
-                                        11 => $srli::<44>(code[r]),
-                                        12 => $srli::<48>(code[r]),
-                                        13 => $srli::<52>(code[r]),
-                                        14 => $srli::<56>(code[r]),
-                                        _ => $srli::<60>(code[r]),
-                                    };
-                                    let index = _mm512_or_si512(
-                                        _mm512_and_si512(shifted, nibble),
-                                        frame[r],
+                                    let index = _mm512_ternarylogic_epi64::<AND_XOR>(
+                                        $srlv(code[r], shift),
+                                        state[r],
+                                        cells,
                                     );
-                                    let entry = _mm512_permutexvar_epi8(index, table);
-                                    acc[r] = _mm512_or_si512(
-                                        $slli::<4>(acc[r]),
-                                        _mm512_and_si512(entry, nibble),
+                                    let entry = _mm512_permutex2var_epi8(lo, index, hi);
+                                    acc[r] = _mm512_ternarylogic_epi64::<OR_AND>(
+                                        $slli::<6>(acc[r]),
+                                        entry,
+                                        high_digits,
                                     );
-                                    frame[r] = _mm512_and_si512(entry, frame_bits);
+                                    state[r] = _mm512_ternarylogic_epi64::<XOR_THEN_AND>(
+                                        state[r], entry, state_bits,
+                                    );
                                 }
                             }
                             for (r, a) in acc.iter().enumerate() {
-                                _mm512_storeu_si512(chunk.as_mut_ptr().add($lanes * r).cast(), *a);
+                                // The low digit bits: `x ^ y`, the odd bits
+                                // of the rewritten code.
+                                let a = _mm512_ternarylogic_epi64::<OR_AND>(
+                                    *a,
+                                    $srli::<1>(code[r]),
+                                    even,
+                                );
+                                _mm512_storeu_si512(chunk.as_mut_ptr().add($lanes * r).cast(), a);
                             }
                         }
                     }
@@ -441,7 +496,8 @@ mod batch {
             16,
             _mm512_set1_epi32,
             _mm512_srli_epi32,
-            _mm512_slli_epi32
+            _mm512_slli_epi32,
+            _mm512_srlv_epi32
         );
         kernel!(
             from_morton_u64,
@@ -449,7 +505,8 @@ mod batch {
             8,
             _mm512_set1_epi64,
             _mm512_srli_epi64,
-            _mm512_slli_epi64
+            _mm512_slli_epi64,
+            _mm512_srlv_epi64
         );
     }
 

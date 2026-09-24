@@ -289,9 +289,9 @@ Batches of keys convert in place: fill a slice with Morton codes from
 whatever layout the points are in, then turn them into Hilbert indices
 in one call (`from_morton_in_place`, and `into_morton_in_place` back;
 the `_order` forms for a curve of fewer levels). With AVX-512 VBMI a
-step is one `vpermb` (2D, two levels through a 64-entry table) or
-`vpermi2b` (3D, the 96-byte encode or decode table) per register of
-keys; NEON uses `tbl`; elsewhere it is the per-key conversion.
+step is one `vpermi2b` per register of keys (2D, three levels through
+128 entries, the frame modulo a reflection; 3D, the 96-byte encode or
+decode table); NEON uses `tbl`; elsewhere it is the per-key conversion.
 Coordinates never enter the kernel.
 
 ```rust
