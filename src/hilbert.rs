@@ -214,11 +214,7 @@ impl<W: Word> Hilbert2<W> {
 /// `x`, `y`; returns the digit and the frame below.
 #[cfg_attr(
     not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx512vbmi",
-            not(feature = "portable")
-        ),
+        all(target_arch = "x86_64", not(feature = "portable")),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -250,11 +246,7 @@ const fn level(frame: u8, x: u8, y: u8) -> (u8, u8) {
 /// itself. `N = 2 · 4^L` entries, half of the unreduced table.
 #[cfg_attr(
     not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx512vbmi",
-            not(feature = "portable")
-        ),
+        all(target_arch = "x86_64", not(feature = "portable")),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -303,11 +295,7 @@ const TABLE4: [u8; 32] = reduced();
 /// Three levels a byte, 128 entries: two AVX-512 registers for
 /// `vpermi2b`.
 #[cfg_attr(
-    not(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        not(feature = "portable")
-    )),
+    not(all(target_arch = "x86_64", not(feature = "portable"))),
     allow(dead_code)
 )]
 const TABLE6: [u8; 128] = reduced();
@@ -393,14 +381,11 @@ hilbert2_batch!(u32 => from_morton_u32, u64 => from_morton_u64);
 /// The batch kernels. Each returns how many keys from the front it
 /// converted, a whole number of batches; the caller finishes the rest.
 /// The intrinsics are `unsafe` solely because they require the target
-/// feature, which `cfg` makes a compile-time fact, as in `word` and
-/// `lanes`.
+/// feature: on `x86_64` a kernel carries its features in
+/// `target_feature` and is called only where `crate::cpu` found them;
+/// on `aarch64` NEON is a compile-time fact.
 mod batch {
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        not(feature = "portable")
-    ))]
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     #[allow(unsafe_code)]
     mod vbmi {
         use core::arch::x86_64::{
@@ -428,6 +413,7 @@ mod batch {
                 $srlv:ident
             ) => {
                 /// Batches of 64 keys, `64 / LANES` registers in flight.
+                #[target_feature(enable = "avx512f,avx512bw,avx512vbmi")]
                 pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
                     const REGS: usize = 64 / $lanes;
                     const LEVELS: u32 = <$w>::BITS / 2;
@@ -440,7 +426,7 @@ mod batch {
                     let (chunks, _) = keys.as_chunks_mut::<64>();
                     let done = chunks.len() * 64;
                     for chunk in chunks {
-                        // SAFETY: AVX-512 F, BW and VBMI are enabled by cfg;
+                        // SAFETY: AVX-512 F, BW and VBMI are enabled on this function;
                         // every load and store stays inside the 64 keys of
                         // `chunk` or the 128 bytes of the table.
                         unsafe {
@@ -518,12 +504,35 @@ mod batch {
         );
     }
 
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        not(feature = "portable")
-    ))]
-    pub(super) use vbmi::{from_morton_u32, from_morton_u64};
+    /// `x86_64` chooses the kernel once a call, as in `hilbert3`: at
+    /// compile time when the build has the features, else at run time.
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[allow(unsafe_code)]
+    mod dispatch {
+        use super::vbmi;
+        use crate::cpu;
+
+        macro_rules! keys {
+            ($($name:ident: $w:ty;)*) => {$(
+                pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
+                    if cpu::avx512vbmi() {
+                        // SAFETY: AVX-512 F, BW and VBMI are present.
+                        unsafe { vbmi::$name(keys) }
+                    } else {
+                        0
+                    }
+                }
+            )*};
+        }
+
+        keys! {
+            from_morton_u32: u32;
+            from_morton_u64: u64;
+        }
+    }
+
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    pub(super) use dispatch::{from_morton_u32, from_morton_u64};
 
     #[cfg(all(
         target_arch = "aarch64",
@@ -650,11 +659,7 @@ mod batch {
 
     /// No batch path: the caller converts every key.
     #[cfg(not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx512vbmi",
-            not(feature = "portable")
-        ),
+        all(target_arch = "x86_64", not(feature = "portable")),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -666,11 +671,7 @@ mod batch {
     }
 
     #[cfg(not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx512vbmi",
-            not(feature = "portable")
-        ),
+        all(target_arch = "x86_64", not(feature = "portable")),
         all(
             target_arch = "aarch64",
             target_feature = "neon",

@@ -78,6 +78,15 @@ per-point conversion both ways, full-width coordinates whose bits
 above 21 must drop, every length to 200 and around the groups; a new
 Miri run with GFNI.
 
+The batch conversions dispatch at run time on `x86_64`: each kernel
+compiled under its own `#[target_feature]`, chosen once a call by
+CPUID and XCR0 (`cpu.rs`, `core::arch` and one atomic, so still
+`no_std` and without dependencies), and by the compiler alone when
+the build has the features. A build without flags gets the kernels:
+the 2D `u64` encode from coordinates 2.8 ns a point against 6.9, the
+3D columns 1.2 and 1.1 as with `target-cpu=native`. The `portable`
+feature and Miri keep the compile-time choice.
+
 `hakmem::lanes`: the SIMD half of the algebra on stable Rust. `Lanes` is
 the trait for independent 8-bit lanes (bitwise, wrapping add and
 subtract, per-lane shifts, unsigned compares to masks, the 16-entry

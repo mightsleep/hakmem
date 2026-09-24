@@ -66,7 +66,7 @@ with a law (`compact_expand_roundtrip`) instead of a type. The
 provenance a type carries is limited to masks that are structural,
 such as the stride of a dilated integer.
 
-### 2.2 Selection at compile time, never at run time
+### 2.2 Selection at compile time per word, at run time per batch
 
 For an operation of one to three cycles, run-time dispatch costs more
 than the operation. There is no branch per combinator on a CPUID
@@ -84,7 +84,17 @@ result:
   and on Zen 3, and the portable definition is faster.
 
 Run-time dispatch belongs a layer up, on whole kernels that run
-thousands of times per call, and that layer is the consumer's.
+thousands of times per call. The batch conversions are such kernels,
+so they dispatch: on `x86_64` every kernel is compiled under its own
+`#[target_feature]`, and a call asks `cpu.rs` once which one to run.
+The answer is a constant when the build has the features (the
+detection is then not even compiled) and otherwise CPUID and XCR0,
+read once through `core::arch` and cached in an atomic, so the crate
+stays `no_std` and without dependencies. Under Miri, which has no
+CPUID, and with the `portable` feature only the compile-time answer
+counts. The per-word combinators keep the rule above. Before this a
+build without `-C target-cpu` saw none of the kernels, and the 2D
+encode ran at the speed of the table crates it was written to beat.
 
 ### 2.3 Laws are the exported API
 
@@ -140,7 +150,7 @@ of `x`, `l - 1` of `y` and `l - 2` of `z` into one, so the Morton code
 the keys form would be built only to be taken apart. They are inherent functions on the concrete widths
 that have a kernel (`u32`, `u64`), not on every `Word`: dispatching on
 the width of a generic `W` would need an unsafe cast of the slice, and
-the crate's only `unsafe` is intrinsic calls.
+the crate's `unsafe` is intrinsic calls and the kernel dispatch.
 
 Free functions and types stay in their modules: `slice`, `grid`,
 `myers`, `permute::board8`, `dilated::{Dilated, Morton2}`,
@@ -248,7 +258,10 @@ measured.
 The choice lives in `word.rs`, `lanes.rs` and the batch kernels at the
 end of `hilbert.rs` and `hilbert3.rs`, and nowhere else. The `unsafe`
 in the crate is the intrinsic calls in those modules, allowed only
-when the matching `target_feature` is a compile-time fact. The safe-intrinsics route of Rust 1.87 does not
+when the matching `target_feature` is a compile-time fact, and, since
+the batch kernels dispatch, the calls into a `#[target_feature]`
+kernel that `cpu.rs` found the features for, and CPUID and XGETBV
+themselves. The safe-intrinsics route of Rust 1.87 does not
 apply: it needs `#[target_feature]` on the calling function, which a
 trait method cannot carry, and the build configuration does not count.
 Miri runs `tests/miri.rs` over both paths (`nix run .#miri-hakmem`).

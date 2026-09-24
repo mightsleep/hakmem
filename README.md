@@ -330,7 +330,12 @@ unbuilt (banded Myers over `Wide<N>`), sketched so you can.
 
 ## Hardware paths
 
-Chosen at compile time, never at run time: build with
+The batch conversions (`from_morton_in_place`, `into_morton_in_place`,
+`encode_columns`, `decode_columns`) choose their kernel at run time on
+`x86_64`: AVX-512 VBMI (and GFNI), else AVX2, else the per-key form,
+with no build flags and still `no_std`; the `portable` feature turns
+that off. Everything else is chosen at compile time, never at run
+time: build with
 `-C target-feature=+bmi2,+pclmulqdq` (or `-C target-cpu=native`) and
 `pext`/`pdep`/`select`/`prefix_xor`/`suffix_xor` become single
 instructions; without

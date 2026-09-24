@@ -9,6 +9,8 @@ extern crate alloc;
 pub mod affine;
 pub mod bits;
 pub mod cookbook;
+#[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+mod cpu;
 pub mod dilated;
 pub mod grid;
 pub mod hilbert;

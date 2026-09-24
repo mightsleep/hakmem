@@ -355,11 +355,7 @@ const ENCODE_PADDED: [u8; 128] = {
 /// [`ENCODE_PADDED`].
 #[cfg_attr(
     not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx512vbmi",
-            not(feature = "portable")
-        ),
+        all(target_arch = "x86_64", not(feature = "portable")),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -457,12 +453,7 @@ const fn m_bits(m: u8) -> u8 {
 /// the rotation's [`m_bits`] XOR the current one's: the state takes the
 /// entry by XOR, all of it relative.
 #[cfg_attr(
-    not(all(
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        not(target_feature = "avx512vbmi"),
-        not(feature = "portable")
-    )),
+    not(all(target_arch = "x86_64", not(feature = "portable"))),
     allow(dead_code)
 )]
 const fn shuffle_tables(decode: bool) -> [[u8; 16]; 2] {
@@ -637,14 +628,11 @@ impl Hilbert3<u64> {
 
 /// The batch kernels; each returns how many keys from the front it
 /// converted, a whole number of batches. The intrinsics are `unsafe`
-/// solely because they require the target feature, which `cfg` makes a
-/// compile-time fact.
+/// solely because they require the target feature: on `x86_64` a kernel
+/// carries its features in `target_feature` and is called only where
+/// `crate::cpu` found them; on `aarch64` NEON is a compile-time fact.
 mod batch {
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        not(feature = "portable")
-    ))]
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     #[allow(unsafe_code)]
     mod vbmi {
         use core::arch::x86_64::{
@@ -664,6 +652,7 @@ mod batch {
         macro_rules! kernel {
             ($name:ident, $table:ident, $w:ty, $lanes:literal, $set1:ident, $srlv:ident, $slli:ident) => {
                 /// Batches of 64 keys, `64 / LANES` registers in flight.
+                #[target_feature(enable = "avx512f,avx512bw,avx512vbmi")]
                 pub(in crate::hilbert3) fn $name(keys: &mut [$w]) -> usize {
                     const REGS: usize = 64 / $lanes;
                     #[allow(clippy::cast_possible_truncation)]
@@ -672,7 +661,7 @@ mod batch {
                     let (chunks, _) = keys.as_chunks_mut::<64>();
                     let done = chunks.len() * 64;
                     for chunk in chunks {
-                        // SAFETY: AVX-512 F, BW and VBMI are enabled by cfg;
+                        // SAFETY: AVX-512 F, BW and VBMI are enabled on this function;
                         // every load and store stays inside the 64 keys of
                         // `chunk` or the 128 bytes of the table.
                         unsafe {
@@ -747,11 +736,7 @@ mod batch {
     /// count that matters is the first kind: about 5 a key here against
     /// 8 in the lane kernel. Eight groups of 64 keys go through the
     /// level loop together, or the loop waits on its own latency.
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        not(feature = "portable")
-    ))]
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     // `inline(always)`: the planes are arrays of registers, and an
     // outlined helper takes them by memory.
     #[allow(unsafe_code, clippy::inline_always)]
@@ -763,7 +748,6 @@ mod batch {
             _mm512_slli_epi64, _mm512_srli_epi64, _mm512_storeu_si512, _mm512_ternarylogic_epi64,
         };
 
-        #[cfg(target_feature = "gfni")]
         use core::arch::x86_64::_mm512_gf2p8affine_epi64_epi8;
 
         use super::super::{DECODE_PADDED, ENCODE_PADDED};
@@ -869,7 +853,6 @@ mod batch {
 
         const TO_PLANES: Rounds = rounds(true, false);
         const FROM_PLANES: Rounds = rounds(false, false);
-        #[cfg(target_feature = "gfni")]
         const FROM_PLANES_REVERSED: Rounds = rounds(false, true);
 
         /// Groups of 64 keys in flight through the level loop.
@@ -1028,12 +1011,13 @@ mod batch {
             }
         }
 
+        #[target_feature(enable = "avx512f,avx512bw,avx512vbmi")]
         fn run(keys: &mut [u64], table: &[u8; 128]) -> usize {
             let (chunks, _) = keys.as_chunks_mut::<64>();
             let done = chunks.len() * 64;
             let (full, rest) = chunks.as_chunks_mut::<GROUPS>();
             for g in full {
-                // SAFETY: AVX-512 F, BW and VBMI are enabled by cfg.
+                // SAFETY: AVX-512 F, BW and VBMI are enabled on this function.
                 unsafe { groups::<GROUPS>(g, table) }
             }
             for c in rest {
@@ -1043,17 +1027,18 @@ mod batch {
             done
         }
 
+        #[target_feature(enable = "avx512f,avx512bw,avx512vbmi")]
         pub(in crate::hilbert3) fn from_morton_u64(keys: &mut [u64]) -> usize {
             run(keys, &ENCODE_PADDED)
         }
 
+        #[target_feature(enable = "avx512f,avx512bw,avx512vbmi")]
         pub(in crate::hilbert3) fn into_morton_u64(keys: &mut [u64]) -> usize {
             run(keys, &DECODE_PADDED)
         }
 
         /// Multishift controls for block `j`, every byte `i` reading from
         /// bit `8j + i - shift`, modulo 64.
-        #[cfg(target_feature = "gfni")]
         #[allow(clippy::cast_possible_truncation, clippy::cast_possible_wrap)]
         const fn column_offsets(j: usize, shift: usize) -> i64 {
             let mut o = [0u8; 8];
@@ -1071,7 +1056,6 @@ mod batch {
         /// 0, 1 and 2, and the multishift's rotation carries `l = 0` round
         /// to bits 63 and 62 for nothing. Two bit selects make the octant;
         /// the bits above it the level loop masks anyway.
-        #[cfg(target_feature = "gfni")]
         #[inline(always)]
         unsafe fn columns_to_planes(xs: &[u64; 64], ys: &[u64; 64], zs: &[u64; 64], planes: &mut Planes) {
             // SAFETY: as `transpose`; the loads read the 64 coordinates of
@@ -1103,7 +1087,6 @@ mod batch {
         /// key as the matrix and the diagonal as the data transposes the
         /// 8 × 8 bits: byte 0 of the result is the `x` bits of the eight
         /// levels, byte 1 `y`, byte 2 `z`. No pack, no Morton decode.
-        #[cfg(target_feature = "gfni")]
         #[inline(always)]
         unsafe fn planes_to_columns(
             planes: &Planes,
@@ -1157,7 +1140,6 @@ mod batch {
             }
         }
 
-        #[cfg(target_feature = "gfni")]
         #[inline(always)]
         unsafe fn encode_groups<const B: usize>(
             xs: &[[u64; 64]; B],
@@ -1178,7 +1160,6 @@ mod batch {
             }
         }
 
-        #[cfg(target_feature = "gfni")]
         #[inline(always)]
         unsafe fn decode_groups<const B: usize>(
             keys: &[[u64; 64]; B],
@@ -1200,7 +1181,7 @@ mod batch {
         }
 
         /// Whole groups of 64 points; returns how many from the front.
-        #[cfg(target_feature = "gfni")]
+        #[target_feature(enable = "avx512f,avx512bw,avx512vbmi,gfni")]
         pub(in crate::hilbert3) fn encode_columns(
             xs: &[u64],
             ys: &[u64],
@@ -1217,7 +1198,7 @@ mod batch {
             let (zg, zr) = zs.as_chunks::<GROUPS>();
             let (og, or) = out.as_chunks_mut::<GROUPS>();
             for (((x, y), z), o) in xg.iter().zip(yg).zip(zg).zip(og) {
-                // SAFETY: AVX-512 F, BW, VBMI and GFNI are enabled by cfg.
+                // SAFETY: AVX-512 F, BW, VBMI and GFNI are enabled on this function.
                 unsafe { encode_groups::<GROUPS>(x, y, z, o) }
             }
             for (((x, y), z), o) in xr.iter().zip(yr).zip(zr).zip(or) {
@@ -1235,7 +1216,7 @@ mod batch {
         }
 
         /// Whole groups of 64 points; returns how many from the front.
-        #[cfg(target_feature = "gfni")]
+        #[target_feature(enable = "avx512f,avx512bw,avx512vbmi,gfni")]
         pub(in crate::hilbert3) fn decode_columns(
             keys: &[u64],
             xs: &mut [u64],
@@ -1252,7 +1233,7 @@ mod batch {
             let (yg, yr) = ys.as_chunks_mut::<GROUPS>();
             let (zg, zr) = zs.as_chunks_mut::<GROUPS>();
             for (((k, x), y), z) in kg.iter().zip(xg).zip(yg).zip(zg) {
-                // SAFETY: AVX-512 F, BW, VBMI and GFNI are enabled by cfg.
+                // SAFETY: AVX-512 F, BW, VBMI and GFNI are enabled on this function.
                 unsafe { decode_groups::<GROUPS>(k, x, y, z) }
             }
             for (((k, x), y), z) in kr.iter().zip(xr).zip(yr).zip(zr) {
@@ -1268,45 +1249,6 @@ mod batch {
             }
             done
         }
-    }
-
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        not(feature = "portable")
-    ))]
-    pub(super) use {
-        planes::{from_morton_u64, into_morton_u64},
-        vbmi::{from_morton_u32, into_morton_u32},
-    };
-
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        target_feature = "gfni",
-        not(feature = "portable")
-    ))]
-    pub(super) use planes::{decode_columns, encode_columns};
-
-    /// No column kernel: the caller goes through Morton codes.
-    #[cfg(not(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        target_feature = "gfni",
-        not(feature = "portable")
-    )))]
-    pub(super) const fn encode_columns(_: &[u64], _: &[u64], _: &[u64], _: &mut [u64]) -> usize {
-        0
-    }
-
-    #[cfg(not(all(
-        target_arch = "x86_64",
-        target_feature = "avx512vbmi",
-        target_feature = "gfni",
-        not(feature = "portable")
-    )))]
-    pub(super) const fn decode_columns(_: &[u64], _: &mut [u64], _: &mut [u64], _: &mut [u64]) -> usize {
-        0
     }
 
     #[cfg(all(
@@ -1466,12 +1408,7 @@ mod batch {
     /// of 16 entries between XORs; the octants travel in the basis
     /// `to_x`, which the encode enters and the decode leaves once per
     /// key.
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        not(target_feature = "avx512vbmi"),
-        not(feature = "portable")
-    ))]
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     #[allow(unsafe_code)]
     mod avx2 {
         use core::arch::x86_64::{
@@ -1500,6 +1437,7 @@ mod batch {
                 $srli:ident, $slli:ident, $srlv:ident, $every_third:literal
             ) => {
                 /// Batches of `ROWS` registers of keys.
+                #[target_feature(enable = "avx2")]
                 pub(in crate::hilbert3) fn $name(keys: &mut [$w]) -> usize {
                     #[allow(clippy::cast_possible_truncation)]
                     const LEVELS: u8 = (<$w>::BITS / 3) as u8;
@@ -1507,7 +1445,7 @@ mod batch {
                     let done = chunks.len() * ROWS * $lanes;
                     let tables = if $decode { &DECODE } else { &ENCODE };
                     for chunk in chunks {
-                        // SAFETY: AVX2 is enabled by cfg; every load and
+                        // SAFETY: AVX2 is enabled on this function; every load and
                         // store stays inside `chunk` or the 16 bytes of a
                         // table.
                         unsafe {
@@ -1646,21 +1584,90 @@ mod batch {
         );
     }
 
-    #[cfg(all(
-        target_arch = "x86_64",
-        target_feature = "avx2",
-        not(target_feature = "avx512vbmi"),
-        not(feature = "portable")
-    ))]
-    pub(super) use avx2::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
+
+    /// `x86_64` chooses among the kernels once a call. They are compiled
+    /// whatever the build's target features, each under its own
+    /// `target_feature`; `crate::cpu` answers at compile time when the
+    /// build has the features, which makes the branch a constant, and at
+    /// run time otherwise.
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[allow(unsafe_code)]
+    mod dispatch {
+        use super::{avx2, planes, vbmi};
+        use crate::cpu;
+
+        macro_rules! keys {
+            ($($name:ident: $w:ty, $wide:ident;)*) => {$(
+                pub(in crate::hilbert3) fn $name(keys: &mut [$w]) -> usize {
+                    if cpu::avx512vbmi() {
+                        // SAFETY: AVX-512 F, BW and VBMI are present.
+                        unsafe { $wide::$name(keys) }
+                    } else if cpu::avx2() {
+                        // SAFETY: AVX2 is present.
+                        unsafe { avx2::$name(keys) }
+                    } else {
+                        0
+                    }
+                }
+            )*};
+        }
+
+        keys! {
+            from_morton_u32: u32, vbmi;
+            into_morton_u32: u32, vbmi;
+            from_morton_u64: u64, planes;
+            into_morton_u64: u64, planes;
+        }
+
+        pub(in crate::hilbert3) fn encode_columns(
+            xs: &[u64],
+            ys: &[u64],
+            zs: &[u64],
+            out: &mut [u64],
+        ) -> usize {
+            if cpu::avx512vbmi_gfni() {
+                // SAFETY: AVX-512 F, BW, VBMI and GFNI are present.
+                unsafe { planes::encode_columns(xs, ys, zs, out) }
+            } else {
+                0
+            }
+        }
+
+        pub(in crate::hilbert3) fn decode_columns(
+            keys: &[u64],
+            xs: &mut [u64],
+            ys: &mut [u64],
+            zs: &mut [u64],
+        ) -> usize {
+            if cpu::avx512vbmi_gfni() {
+                // SAFETY: as above.
+                unsafe { planes::decode_columns(keys, xs, ys, zs) }
+            } else {
+                0
+            }
+        }
+    }
+
+    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    pub(super) use dispatch::{
+        decode_columns, encode_columns, from_morton_u32, from_morton_u64, into_morton_u32,
+        into_morton_u64,
+    };
+
+    /// No column kernel: the caller goes through Morton codes.
+    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    pub(super) const fn encode_columns(_: &[u64], _: &[u64], _: &[u64], _: &mut [u64]) -> usize {
+        0
+    }
+
+    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    pub(super) const fn decode_columns(_: &[u64], _: &mut [u64], _: &mut [u64], _: &mut [u64]) -> usize {
+        0
+    }
 
     /// No batch path: the caller converts every key.
     #[cfg(not(any(
-        all(
-            target_arch = "x86_64",
-            any(target_feature = "avx512vbmi", target_feature = "avx2"),
-            not(feature = "portable")
-        ),
+        all(target_arch = "x86_64", not(feature = "portable")),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -1683,11 +1690,7 @@ mod batch {
     }
 
     #[cfg(not(any(
-        all(
-            target_arch = "x86_64",
-            any(target_feature = "avx512vbmi", target_feature = "avx2"),
-            not(feature = "portable")
-        ),
+        all(target_arch = "x86_64", not(feature = "portable")),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
