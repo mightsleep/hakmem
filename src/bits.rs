@@ -202,6 +202,30 @@ pub trait Bits: Word {
         self.xor_scan()
     }
 
+    /// [`prefix_xor`](Bits::prefix_xor) over a stream of words: `carry`
+    /// is the parity of every word before, and comes back for the next.
+    /// The same shape as [`find_escaped`](Bits::find_escaped), so the
+    /// two chain block by block the same way; before this, the carry was
+    /// the top bit smeared by hand.
+    ///
+    /// ```
+    /// use hakmem::prelude::*;
+    ///
+    /// // A quote at bit 62 of one word and bit 1 of the next: the string
+    /// // spans the boundary.
+    /// let (a, carry) = (1u64 << 62).prefix_xor_carry(false);
+    /// let (b, carry) = 0b10u64.prefix_xor_carry(carry);
+    /// assert_eq!((a, b, carry), (0b11 << 62, 0b01, false));
+    /// ```
+    #[inline]
+    #[must_use]
+    fn prefix_xor_carry(self, carry: bool) -> (Self, bool) {
+        let x = self
+            .prefix_xor()
+            .xor(if carry { Self::ONES } else { Self::ZERO });
+        (x, x.bit(Self::BITS - 1))
+    }
+
     /// Inverse of [`prefix_xor`](Bits::prefix_xor): `x ^ (x << 1)`,
     /// the positions where the prefix parity changes.
     #[inline]

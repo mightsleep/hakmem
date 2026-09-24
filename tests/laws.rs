@@ -125,6 +125,12 @@ macro_rules! laws_for {
                 fn slice_ops_match_reference(words in prop::collection::vec($strategy, 1..=4), i in 0usize..(4 * BITS as usize + 8), k in 1..=BITS) {
                     prop_assert!(laws::slice_ops_match_reference(&words, i, k));
                 }
+                #[test]
+                fn slice_bit_writes_touch_one_bit(words in prop::collection::vec($strategy, 1..=4), i in any::<usize>()) {
+                    let i = i % (words.len() * BITS as usize);
+                    let mut scratch = words.clone();
+                    prop_assert!(laws::slice_bit_writes_touch_one_bit(&words, &mut scratch, i));
+                }
                 // permute / fill
                 #[test]
                 fn delta_swap_is_involution(x in $strategy, m in $strategy, s in 1..BITS) {
@@ -160,6 +166,10 @@ macro_rules! laws_for {
                 #[test]
                 fn find_escaped_matches_reference(words in prop::collection::vec($strategy, 1..=4), c in any::<bool>()) {
                     prop_assert!(laws::find_escaped_matches_reference(&words, c));
+                }
+                #[test]
+                fn prefix_xor_carry_matches_reference(words in prop::collection::vec($strategy, 1..=4), c in any::<bool>()) {
+                    prop_assert!(laws::prefix_xor_carry_matches_reference(&words, c));
                 }
                 // algebra: composition / homomorphisms
                 #[test]

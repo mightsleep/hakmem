@@ -17,6 +17,12 @@
 //! assert_eq!(words.rank(64), 3);
 //! assert_eq!(words.select(3), Some(127));
 //! assert_eq!(words.next_set_from(4), Some(127));
+//!
+//! let mut words = [0u8; 2];
+//! words.set_bit(9);
+//! assert!(words.bit(9) && !words.bit(8));
+//! words.clear_bit(9);
+//! assert_eq!(words, [0, 0]);
 //! ```
 
 use crate::bits::Bits;
@@ -27,6 +33,28 @@ use crate::word::Word;
 pub trait Words {
     /// The word the slice is made of.
     type Word: Word;
+
+    /// Whether bit `i` is set.
+    ///
+    /// # Panics
+    ///
+    /// If `i` is past the last word.
+    #[must_use]
+    fn bit(&self, i: usize) -> bool;
+
+    /// Sets bit `i`.
+    ///
+    /// # Panics
+    ///
+    /// If `i` is past the last word.
+    fn set_bit(&mut self, i: usize);
+
+    /// Clears bit `i`.
+    ///
+    /// # Panics
+    ///
+    /// If `i` is past the last word.
+    fn clear_bit(&mut self, i: usize);
 
     /// Number of set bits in the whole slice.
     #[must_use]
@@ -77,6 +105,30 @@ pub trait Words {
 
 impl<W: Word> Words for [W] {
     type Word = W;
+
+    // `i % BITS < BITS` fits a u32.
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    fn bit(&self, i: usize) -> bool {
+        let bits = W::BITS as usize;
+        self[i / bits].bit((i % bits) as u32)
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    fn set_bit(&mut self, i: usize) {
+        let bits = W::BITS as usize;
+        let w = &mut self[i / bits];
+        *w = w.or(W::ONE.shl((i % bits) as u32));
+    }
+
+    #[allow(clippy::cast_possible_truncation)]
+    #[inline]
+    fn clear_bit(&mut self, i: usize) {
+        let bits = W::BITS as usize;
+        let w = &mut self[i / bits];
+        *w = w.and(W::ONE.shl((i % bits) as u32).not());
+    }
 
     #[inline]
     fn count_ones(&self) -> usize {

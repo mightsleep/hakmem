@@ -64,8 +64,10 @@
           args = "--features portable";
         }
         {
-          name = "alloc";
-          args = "--features alloc";
+          # `alloc` is on by default; this is the crate an embedded
+          # user gets, with nothing that allocates.
+          name = "no-default";
+          args = "--no-default-features";
         }
       ];
     };

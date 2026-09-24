@@ -559,7 +559,7 @@ mod tests {
 }
 
 /// [`Rank9`] with the directory allocated for you: one call from a bit
-/// slice to rank and select. Needs the `alloc` feature; the view type
+/// slice to rank and select. Behind the `alloc` feature, on by default; the view type
 /// stays the whole API, this only owns its two buffers.
 ///
 /// ```

@@ -1201,7 +1201,36 @@ pub fn slice_ops_match_reference<W: Word>(words: &[W], i: usize, k: u32) -> bool
     let run_ref = (0..total).find(|&s| s + k as usize <= total && (s..s + k as usize).all(bit));
     let run_ok = words.find_run(k) == run_ref;
     let positions_ok = words.positions().eq(set());
-    rank_ok && select_ok && next_ok && run_ok && positions_ok && words.count_ones() == set().count()
+    let bits_ok = (0..total).all(|p| words.bit(p) == bit(p));
+    rank_ok
+        && select_ok
+        && next_ok
+        && run_ok
+        && positions_ok
+        && bits_ok
+        && words.count_ones() == set().count()
+}
+
+/// `set_bit` and `clear_bit` change bit `i` and no other: `scratch`
+/// takes a copy of `words` (same length, asserted), `i` in the bits.
+///
+/// # Panics
+///
+/// If `scratch` and `words` differ in length.
+#[must_use]
+pub fn slice_bit_writes_touch_one_bit<W: Word>(words: &[W], scratch: &mut [W], i: usize) -> bool {
+    assert_eq!(words.len(), scratch.len(), "scratch must match words");
+    let total = words.len() * W::BITS as usize;
+    let others_kept = |s: &[W]| {
+        (0..total)
+            .filter(|&p| p != i)
+            .all(|p| s.bit(p) == words.bit(p))
+    };
+    scratch.copy_from_slice(words);
+    scratch.set_bit(i);
+    let set = scratch.bit(i) && others_kept(scratch);
+    scratch.clear_bit(i);
+    set && !scratch.bit(i) && others_kept(scratch)
 }
 
 // --- permute --------------------------------------------------------------
@@ -1375,6 +1404,27 @@ pub fn find_escaped_matches_reference<W: Word>(words: &[W], prev_ends_odd: bool)
             return false;
         }
         carry = next_carry;
+    }
+    true
+}
+
+/// `prefix_xor_carry` over a chain of words is the prefix parity of the
+/// concatenation, bit by bit, the carry in and out included.
+#[must_use]
+pub fn prefix_xor_carry_matches_reference<W: Word>(words: &[W], carry_in: bool) -> bool {
+    let (mut carry, mut parity) = (carry_in, carry_in);
+    for &w in words {
+        let (x, next) = w.prefix_xor_carry(carry);
+        for i in 0..W::BITS {
+            parity ^= w.bit(i);
+            if x.bit(i) != parity {
+                return false;
+            }
+        }
+        if next != parity {
+            return false;
+        }
+        carry = next;
     }
     true
 }

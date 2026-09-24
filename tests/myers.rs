@@ -77,3 +77,46 @@ proptest! {
         prop_assert_eq!(got, want);
     }
 }
+
+proptest! {
+    #![proptest_config(ProptestConfig::with_cases(2048))]
+    /// Occurrences against the DP: each is `distance` edits from its
+    /// text, that is the least distance of any substring ending there,
+    /// and there is one per run of adjacent ends, at the run's first
+    /// least.
+    #[test]
+    fn occurrences_match_dp(
+        pattern in prop::collection::vec(0u8..3, 1..10),
+        text in prop::collection::vec(0u8..3, 0..48),
+        k in 0u32..4,
+    ) {
+        let ends: Vec<(usize, u32)> = hakmem::myers::search::<u64>(&pattern, &text, k).unwrap().collect();
+        let mut want: Vec<(usize, (usize, u32))> = Vec::new();
+        for &(end, d) in &ends {
+            match want.last_mut() {
+                Some((last_end, best)) if *last_end + 1 == end => {
+                    *last_end = end;
+                    if d < best.1 {
+                        *best = (end, d);
+                    }
+                }
+                _ => want.push((end, (end, d))),
+            }
+        }
+        let found: Vec<_> = hakmem::myers::search::<u64>(&pattern, &text, k).unwrap().occurrences().collect();
+        prop_assert_eq!(found.len(), want.len());
+        for (o, &(_, (end, d))) in found.iter().zip(&want) {
+            prop_assert_eq!((o.end(), o.distance()), (end, d));
+            prop_assert_eq!(levenshtein_dp(&pattern, &text[o.range()]), d);
+            let least = (0..=end).map(|s| levenshtein_dp(&pattern, &text[s..end])).min().unwrap();
+            prop_assert_eq!(least, d);
+            // Of the starts that reach `d`, the length nearest the pattern's.
+            let nearest = (0..=end)
+                .filter(|&s| levenshtein_dp(&pattern, &text[s..end]) == d)
+                .map(|s| (end - s).abs_diff(pattern.len()))
+                .min()
+                .unwrap();
+            prop_assert_eq!((end - o.start()).abs_diff(pattern.len()), nearest);
+        }
+    }
+}

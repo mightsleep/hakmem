@@ -22,18 +22,29 @@ struct Peq<W: Word> {
 impl<W: Word> Peq<W> {
     /// `None` when the pattern is longer than the word.
     fn new(pattern: &[u8]) -> Option<Self> {
-        let m = u32::try_from(pattern.len()).ok()?;
-        if m > W::BITS {
-            return None;
-        }
+        let m = u32::try_from(pattern.len())
+            .ok()
+            .filter(|&m| m <= W::BITS)?;
+        Some(Self::fill(pattern.iter().copied(), m))
+    }
+
+    /// The same pattern read backwards, for walking a text from an end
+    /// towards its start. Same length, so it fits.
+    fn reversed(&self, pattern: &[u8]) -> Self {
+        debug_assert_eq!(pattern.len(), self.m as usize, "not this table's pattern");
+        Self::fill(pattern.iter().rev().copied(), self.m)
+    }
+
+    /// The table of `m <= BITS` bytes.
+    fn fill(pattern: impl Iterator<Item = u8>, m: u32) -> Self {
         let mut table = [W::ZERO; 256];
-        for (i, &c) in pattern.iter().enumerate() {
-            // `i < m <= BITS` by the check above.
+        for (i, c) in pattern.enumerate() {
+            // `i < m <= BITS`.
             #[allow(clippy::cast_possible_truncation)]
             let bit = W::ONE.shl(i as u32);
             table[usize::from(c)] = table[usize::from(c)].or(bit);
         }
-        Some(Self { table, m })
+        Self { table, m }
     }
 }
 
@@ -118,17 +129,25 @@ pub fn distance_in<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
 /// ```
 /// use hakmem::myers::search;
 ///
-/// let hits: Vec<(usize, u32)> = search::<u64>(b"world", b"hello wrold!", 1)
-///     .unwrap()
-///     .collect();
-/// // "wrold" matches with one transposition = two edits at distance 2;
-/// // at distance ≤ 1 the closest ends are after "wro"…"wrold" partials.
-/// assert!(hits.iter().all(|&(_, d)| d <= 1));
+/// // Exact: each occurrence ends once.
 /// let exact: Vec<(usize, u32)> = search::<u64>(b"lo", b"hello lo", 0).unwrap().collect();
 /// assert_eq!(exact, [(5, 0), (8, 0)]);
+/// // Two edits allowed: "helo" is one from "hello", and "hel" and "helo "
+/// // are two, so the one occurrence ends three times.
+/// let ends: Vec<(usize, u32)> = search::<u64>(b"hello", b"say helo there", 2)
+///     .unwrap()
+///     .collect();
+/// assert_eq!(ends, [(7, 2), (8, 1), (9, 2)]);
 /// ```
+///
+/// A run of ends is one occurrence; [`Search::occurrences`] keeps its
+/// best end and finds where it starts.
 #[must_use]
-pub fn search<'t, W: Word>(pattern: &[u8], text: &'t [u8], max_dist: u32) -> Option<Search<'t, W>> {
+pub fn search<'t, W: Word>(
+    pattern: &'t [u8],
+    text: &'t [u8],
+    max_dist: u32,
+) -> Option<Search<'t, W>> {
     let peq = Peq::<W>::new(pattern)?;
     if peq.m == 0 {
         return None;
@@ -136,6 +155,7 @@ pub fn search<'t, W: Word>(pattern: &[u8], text: &'t [u8], max_dist: u32) -> Opt
     let m = i64::from(peq.m);
     let col = Column::new(peq.m);
     Some(Search {
+        pattern,
         peq,
         col,
         score: m,
@@ -166,6 +186,7 @@ pub fn substring_distance<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
 /// Iterator behind [`search`].
 #[must_use = "iterators are lazy; this one has not read a byte"]
 pub struct Search<'t, W: Word> {
+    pattern: &'t [u8],
     peq: Peq<W>,
     col: Column<W>,
     score: i64,
@@ -201,6 +222,158 @@ impl<W: Word> Iterator for Search<'_, W> {
             }
         }
         None
+    }
+}
+
+impl<W: Word> core::iter::FusedIterator for Search<'_, W> {}
+
+impl<'t, W: Word> Search<'t, W> {
+    /// The occurrences behind the ends: one per run of adjacent ends,
+    /// at its best end, with where it starts.
+    ///
+    /// An approximate match ends at several neighbouring positions (one
+    /// more or one fewer byte is one more edit, often still within
+    /// `max_dist`); this keeps the least distance of each run, the first
+    /// on a tie. The start comes from walking back from that end with
+    /// the pattern reversed: after `j` bytes the score is the distance of
+    /// the pattern from `text[end - j..end]`, and the start is the `j`
+    /// with the least, the one nearest the pattern's length on a tie.
+    ///
+    /// ```
+    /// use hakmem::myers::search;
+    ///
+    /// let text = b"the quick brown fox and the quikc brown fox";
+    /// let found: Vec<_> = search::<u64>(b"quick brown fox", text, 2)
+    ///     .unwrap()
+    ///     .occurrences()
+    ///     .map(|o| (&text[o.range()], o.distance()))
+    ///     .collect();
+    /// assert_eq!(
+    ///     found,
+    ///     [(&b"quick brown fox"[..], 0), (&b"quikc brown fox"[..], 2)]
+    /// );
+    /// ```
+    pub fn occurrences(self) -> Occurrences<'t, W> {
+        let reversed = self.peq.reversed(self.pattern);
+        Occurrences {
+            search: self,
+            reversed,
+            best: None,
+            run_end: 0,
+        }
+    }
+}
+
+/// One approximate occurrence: `text[start..end]` is `distance` edits
+/// from the pattern.
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+pub struct Occurrence {
+    start: usize,
+    end: usize,
+    distance: u32,
+}
+
+impl Occurrence {
+    /// Where the occurrence starts in the text.
+    #[must_use]
+    pub const fn start(&self) -> usize {
+        self.start
+    }
+
+    /// Where it ends, exclusive.
+    #[must_use]
+    pub const fn end(&self) -> usize {
+        self.end
+    }
+
+    /// Edits between `text[start..end]` and the pattern.
+    #[must_use]
+    pub const fn distance(&self) -> u32 {
+        self.distance
+    }
+
+    /// `start..end`, to index the text with.
+    #[must_use]
+    pub const fn range(&self) -> core::ops::Range<usize> {
+        self.start..self.end
+    }
+}
+
+/// Iterator behind [`Search::occurrences`].
+#[must_use = "iterators are lazy; this one has not read a byte"]
+pub struct Occurrences<'t, W: Word> {
+    search: Search<'t, W>,
+    reversed: Peq<W>,
+    /// The best end of the run under way, and its distance.
+    best: Option<(usize, u32)>,
+    /// The last end of that run.
+    run_end: usize,
+}
+
+impl<W: Word> Occurrences<'_, W> {
+    /// The occurrence with its best end at `end`, `distance` edits away.
+    fn finish(&self, (end, distance): (usize, u32)) -> Occurrence {
+        let m = self.reversed.m as usize;
+        // An alignment of `distance` edits spans at most `m + distance`
+        // bytes of text.
+        let lo = end.saturating_sub(m + distance as usize);
+        let mut col = Column::new(self.reversed.m);
+        let mut score = i64::from(self.reversed.m);
+        let (mut best, mut len) = (score, 0usize);
+        for (j, &c) in self.search.text[lo..end].iter().rev().enumerate() {
+            score += i64::from(col.step(self.reversed.table[usize::from(c)], true));
+            let j = j + 1;
+            if score < best || (score == best && j.abs_diff(m) < len.abs_diff(m)) {
+                (best, len) = (score, j);
+            }
+        }
+        debug_assert_eq!(
+            best,
+            i64::from(distance),
+            "the walk back disagrees with the walk forward"
+        );
+        Occurrence {
+            start: end - len,
+            end,
+            distance,
+        }
+    }
+}
+
+impl<W: Word> Iterator for Occurrences<'_, W> {
+    type Item = Occurrence;
+
+    fn next(&mut self) -> Option<Occurrence> {
+        for (end, distance) in self.search.by_ref() {
+            match self.best {
+                // The run goes on: keep its least distance, first on a tie.
+                Some((_, d)) if end == self.run_end + 1 => {
+                    if distance < d {
+                        self.best = Some((end, distance));
+                    }
+                    self.run_end = end;
+                }
+                _ => {
+                    let done = self.best.replace((end, distance));
+                    self.run_end = end;
+                    if let Some(done) = done {
+                        return Some(self.finish(done));
+                    }
+                }
+            }
+        }
+        self.best.take().map(|done| self.finish(done))
+    }
+}
+
+impl<W: Word> core::iter::FusedIterator for Occurrences<'_, W> {}
+
+impl<W: Word> core::fmt::Debug for Occurrences<'_, W> {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("Occurrences")
+            .field("search", &self.search)
+            .field("best", &self.best)
+            .finish_non_exhaustive()
     }
 }
 

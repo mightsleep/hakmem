@@ -15,14 +15,15 @@ categories = ["algorithms", "no-std"]
 exclude = ["/.github", "/nix", "/flake.*"]
 
 [features]
-default = []
+default = ["alloc"]
 # Disable every hardware fast path (BMI2 PEXT/PDEP, PCLMULQDQ) even when
 # the target feature is enabled. For microarchitectures where the
 # instruction exists but is microcoded (PDEP/PEXT on AMD Zen 1 and Zen 2:
 # ~18 cycles, hundreds of uops) the broadword definitions are faster.
 portable = []
 # Owning conveniences over the caller-owned structures: `rank9::Rank9Buf`.
-# Off by default; the crate itself never allocates.
+# On by default, as std users expect; `default-features = false` is the
+# crate with no allocation at all, which is how it builds for embedded.
 alloc = []
 
 [dependencies]

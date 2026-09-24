@@ -183,6 +183,16 @@ in `{:b}`, `{:x}` and `{:X}`, default to zero, and `Wide` orders as
 an unsigned integer. `cover` and `intersects` take any range, `..`
 included, and `cover` returns the part of the buffer it filled.
 
+`examples/`: a spatial index over row groups, the primes below 10^7
+with `Rank9`, the first stage of simdjson, and fuzzy search, written the
+way a user would write them. Writing them found the next four:
+`Words::bit`, `set_bit` and `clear_bit`; `Bits::prefix_xor_carry`, the
+prefix parity over a stream of words in the shape of `find_escaped`, so
+the two chain block by block alike; `myers::Search::occurrences`, one
+`Occurrence` per run of ends at its best end, with its start found by
+walking back with the pattern reversed (the merge was the part the
+example got wrong first); and `alloc` on by default.
+
 ### Changed, for anyone on 0.1
 
 A clean break, no deprecated aliases: 0.2 is a new major for Cargo,
@@ -210,6 +220,10 @@ and the old names were wrong in ways an alias would have kept.
 - `Dilated::into_int` is `to_int`, as `Copy` types spell it.
 - The prelude trades `Positions` (name it from `hakmem::set`) for
   `Words`, `Lanes`, `Curve2` and `Curve3`.
+- `alloc` is a default feature; `default-features = false` is the
+  crate with nothing that allocates, as it was.
+- `myers::search` borrows the pattern for as long as the text: the
+  search keeps it, to find where each occurrence starts.
 
 ## 0.1.0, 2026-09-19
 

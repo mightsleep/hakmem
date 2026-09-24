@@ -353,6 +353,16 @@ let hits: usize = Hilbert2::<u64>::cover(8..=15, 8..=15, &mut ranges)
 assert_eq!(hits, 3);
 ```
 
+## Examples
+
+`examples/` holds four programs written the way a user would write them,
+each checking itself against the slow way: `geo_index` (a million
+points in row groups, a rectangle query that skips most of them),
+`primes` (the primes below ten million as a bitmap with rank and
+select), `json_structure` (the first stage of simdjson, carries across
+64-byte blocks) and `fuzzy` (the nearest words to a typo, and a phrase
+found with its typos). `cargo run --release --example geo_index`.
+
 ## Cookbook
 
 `hakmem::cookbook` explains how the shipped kernels were composed:
@@ -404,7 +414,9 @@ cannot absorb (shift amounts, run lengths above the width in
 `debug_assert!` in debug builds, and unspecified in release. Run your
 tests in debug once.
 
-`no_std`, zero dependencies, stable Rust.
+`no_std`, zero dependencies, stable Rust. The one allocating convenience
+(`Rank9Buf`) sits behind the default `alloc` feature; with
+`default-features = false` nothing in the crate allocates.
 
 Design: [`docs/design.md`](https://github.com/mightsleep/hakmem/blob/main/docs/design.md),
 the decisions behind the API, the hardware policy, how the laws are
