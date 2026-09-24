@@ -393,18 +393,22 @@ const DECODE_PADDED: [u8; 128] = {
 // translation is a XOR on the low two bits, so a step of either machine
 // is a XOR, a lookup in 24 entries keyed by `(m, x ^ t)` or `(m, triple)`,
 // and a XOR of `t` into the frame below (and, decoding, into the
-// octant). Checked here against both tables on all 96 entries: the
-// shape of a kernel for 16-entry shuffles (PSHUFB, `tbl` over two
-// registers) where the 96-entry tables do not fit.
+// octant). Checked below against both tables on all 96 entries; the
+// AVX2 kernels are this shape, in two PSHUFB.
+
+/// An octant in the basis `(v1 ^ v2, v0 ^ v1, parity)`.
+const fn to_x(o: u8) -> u8 {
+    let (v0, v1, v2) = (o & 1, (o >> 1) & 1, (o >> 2) & 1);
+    (v1 ^ v2) | (v0 ^ v1) << 1 | (v0 ^ v1 ^ v2) << 2
+}
+
+/// The inverse of [`to_x`].
+const fn from_x(x: u8) -> u8 {
+    let (ea, eb, p) = (x & 1, (x >> 1) & 1, (x >> 2) & 1);
+    (p ^ ea) | (ea ^ p ^ eb) << 1 | (p ^ eb) << 2
+}
+
 const _: () = {
-    const fn to_x(o: u8) -> u8 {
-        let (v0, v1, v2) = (o & 1, (o >> 1) & 1, (o >> 2) & 1);
-        (v1 ^ v2) | (v0 ^ v1) << 1 | (v0 ^ v1 ^ v2) << 2
-    }
-    const fn from_x(x: u8) -> u8 {
-        let (ea, eb, p) = (x & 1, (x >> 1) & 1, (x >> 2) & 1);
-        (p ^ ea) | (ea ^ p ^ eb) << 1 | (p ^ eb) << 2
-    }
     let mut state = 0u8;
     while state < 12 {
         let (m, t) = (state / 4, state % 4);
@@ -438,6 +442,51 @@ const _: () = {
     }
 };
 
+/// The rotation in a PSHUFB index: `m = 1` at bit 3, the second half of
+/// one table; `m = 2` at bit 7, which zeroes the first table and, after
+/// a XOR with `0x80`, reads the second. Giesen's sign trick from the
+/// PivCo-Huffman merge (2026), with a XOR where he had a NOT.
+const fn m_bits(m: u8) -> u8 {
+    [0, 0x08, 0x80][m as usize]
+}
+
+/// The factored machine as two 16-entry shuffle tables, `[A, B]`: `A`
+/// holds `m` in `0, 1` at `m · 8 + input`, `B` holds `m = 2` at
+/// `input`. Encode entries are `G | Δm | triple << 4`, decode entries
+/// `y | Δm | G << 4`, with `G` the translation gained below and `Δm`
+/// the rotation's [`m_bits`] XOR the current one's: the state takes the
+/// entry by XOR, all of it relative.
+#[cfg_attr(
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(target_feature = "avx512vbmi"),
+        not(feature = "portable")
+    )),
+    allow(dead_code)
+)]
+const fn shuffle_tables(decode: bool) -> [[u8; 16]; 2] {
+    let mut t = [[0u8; 16]; 2];
+    let mut m = 0u8;
+    while m < 3 {
+        let mut o = 0u8;
+        while o < 8 {
+            let (triple, below) = encode_step(m * 4, o);
+            let dm = m_bits(below / 4) ^ m_bits(m);
+            let (at, entry) = if decode {
+                (triple, to_x(o) | dm | (below % 4) << 4)
+            } else {
+                (to_x(o), (below % 4) | dm | triple << 4)
+            };
+            let (half, base) = if m == 2 { (1, 0) } else { (0, m * 8) };
+            t[half][(base + at) as usize] = entry;
+            o += 1;
+        }
+        m += 1;
+    }
+    t
+}
+
 macro_rules! hilbert3_batch {
     ($($w:ty => $encode:ident, $decode:ident),* $(,)?) => {$(
         impl Hilbert3<$w> {
@@ -451,9 +500,11 @@ macro_rules! hilbert3_batch {
             /// [`ENCODE_TABLE`], padded to 128 bytes in two registers, per
             /// register of keys, the frame riding in the index byte as
             /// `state · 8`; with NEON the table is `tbl` over four
-            /// registers and `tbx` over two. Otherwise, and for the keys
-            /// past the last whole batch, it is
-            /// [`from_morton`](Self::from_morton) per key.
+            /// registers and `tbx` over two. With AVX2 alone, where 96
+            /// entries fit no shuffle, the frame is taken modulo its
+            /// translations: 24 entries, two PSHUFB of 16 between XORs a
+            /// level. Otherwise, and for the keys past the last whole
+            /// batch, it is [`from_morton`](Self::from_morton) per key.
             pub fn from_morton_in_place(keys: &mut [$w]) {
                 let done = batch::$encode(keys);
                 for key in &mut keys[done..] {
@@ -467,7 +518,9 @@ macro_rules! hilbert3_batch {
             ///
             /// The decode as a machine is the same twelve states read the
             /// other way, so the same kernel runs it through the inverse
-            /// table, a level a step; per key it is the algebraic scan
+            /// table, a level a step; with AVX2 the factored inverse, the
+            /// translation riding in the index bits PSHUFB ignores. Per
+            /// key it is the algebraic scan
             /// ([`into_morton`](Self::into_morton)), which beats a table
             /// walk, and that finishes the keys past the last whole batch.
             pub fn into_morton_in_place(keys: &mut [$w]) {
@@ -783,11 +836,204 @@ mod batch {
     ))]
     pub(super) use neon::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
 
+    /// AVX2 without VBMI: the 96-entry tables do not fit a shuffle, the
+    /// factored machine does (`shuffle_tables`). A level is two PSHUFB
+    /// of 16 entries between XORs; the octants travel in the basis
+    /// `to_x`, which the encode enters and the decode leaves once per
+    /// key.
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(target_feature = "avx512vbmi"),
+        not(feature = "portable")
+    ))]
+    #[allow(unsafe_code)]
+    mod avx2 {
+        use core::arch::x86_64::{
+            __m256i, _mm_loadu_si128, _mm256_and_si256, _mm256_broadcastsi128_si256,
+            _mm256_loadu_si256, _mm256_or_si256, _mm256_set1_epi8, _mm256_set1_epi32,
+            _mm256_set1_epi64x, _mm256_setzero_si256, _mm256_shuffle_epi8, _mm256_slli_epi32,
+            _mm256_slli_epi64, _mm256_srli_epi32, _mm256_srli_epi64, _mm256_srlv_epi32,
+            _mm256_srlv_epi64, _mm256_storeu_si256, _mm256_xor_si256,
+        };
+
+        use super::super::shuffle_tables;
+
+        const ENCODE: [[u8; 16]; 2] = shuffle_tables(false);
+        const DECODE: [[u8; 16]; 2] = shuffle_tables(true);
+
+        /// Rows of keys in flight. Eight rows want 24 ymm registers of
+        /// the 16 there are, so the compiler spills the codes, which the
+        /// loop only reads; it is still 5 % ahead of four rows, whose
+        /// registers fit, and sixteen rows fall behind again (Zen 5).
+        /// The register file is advisory.
+        const ROWS: usize = 8;
+
+        macro_rules! kernel {
+            (
+                $name:ident, $decode:literal, $w:ty, $lanes:literal, $set1:ident,
+                $srli:ident, $slli:ident, $srlv:ident, $every_third:literal
+            ) => {
+                /// Batches of `ROWS` registers of keys.
+                pub(in crate::hilbert3) fn $name(keys: &mut [$w]) -> usize {
+                    #[allow(clippy::cast_possible_truncation)]
+                    const LEVELS: u8 = (<$w>::BITS / 3) as u8;
+                    let (chunks, _) = keys.as_chunks_mut::<{ ROWS * $lanes }>();
+                    let done = chunks.len() * ROWS * $lanes;
+                    let tables = if $decode { &DECODE } else { &ENCODE };
+                    for chunk in chunks {
+                        // SAFETY: AVX2 is enabled by cfg; every load and
+                        // store stays inside `chunk` or the 16 bytes of a
+                        // table.
+                        unsafe {
+                            let a = _mm256_broadcastsi128_si256(_mm_loadu_si128(
+                                tables[0].as_ptr().cast(),
+                            ));
+                            let b = _mm256_broadcastsi128_si256(_mm_loadu_si128(
+                                tables[1].as_ptr().cast(),
+                            ));
+                            let seven = $set1(7);
+                            #[allow(clippy::cast_possible_wrap)]
+                            let msb = _mm256_set1_epi8(0x80_u8 as i8);
+                            // Encode keeps `t` in bits 0 and 1 to meet the
+                            // octant; decode keeps it in bits 4 and 5, which
+                            // PSHUFB ignores, to meet nothing until the
+                            // octant comes out.
+                            let state_bits = $set1(if $decode { 0xB8 } else { 0x8B });
+                            #[allow(clippy::cast_possible_wrap)]
+                            let third = $set1($every_third as _);
+                            let mut code: [__m256i; ROWS] = [_mm256_setzero_si256(); ROWS];
+                            let mut acc = [_mm256_setzero_si256(); ROWS];
+                            let mut state = [_mm256_setzero_si256(); ROWS];
+                            for (r, c) in code.iter_mut().enumerate() {
+                                let m = _mm256_loadu_si256(chunk.as_ptr().add($lanes * r).cast());
+                                *c = if $decode {
+                                    m
+                                } else {
+                                    // Every octant to `(v1 ^ v2, v0 ^ v1, parity)`.
+                                    let v0 = _mm256_and_si256(m, third);
+                                    let v1 = _mm256_and_si256($srli::<1>(m), third);
+                                    let v2 = _mm256_and_si256($srli::<2>(m), third);
+                                    let ea = _mm256_xor_si256(v1, v2);
+                                    let eb = _mm256_xor_si256(v0, v1);
+                                    let p = _mm256_xor_si256(ea, v0);
+                                    _mm256_or_si256(
+                                        _mm256_or_si256(ea, $slli::<1>(eb)),
+                                        $slli::<2>(p),
+                                    )
+                                };
+                            }
+                            let mut level = LEVELS;
+                            while level > 0 {
+                                level -= 1;
+                                let shift = $set1((3 * level).into());
+                                for r in 0..ROWS {
+                                    let input = _mm256_and_si256($srlv(code[r], shift), seven);
+                                    let index = _mm256_xor_si256(input, state[r]);
+                                    let entry = _mm256_or_si256(
+                                        _mm256_shuffle_epi8(a, index),
+                                        _mm256_shuffle_epi8(b, _mm256_xor_si256(index, msb)),
+                                    );
+                                    let out = if $decode {
+                                        // The octant, moved by this frame's `t`.
+                                        _mm256_and_si256(
+                                            _mm256_xor_si256(entry, $srli::<4>(state[r])),
+                                            seven,
+                                        )
+                                    } else {
+                                        _mm256_and_si256($srli::<4>(entry), seven)
+                                    };
+                                    acc[r] = _mm256_or_si256($slli::<3>(acc[r]), out);
+                                    state[r] = _mm256_and_si256(
+                                        _mm256_xor_si256(state[r], entry),
+                                        state_bits,
+                                    );
+                                }
+                            }
+                            for (r, &a) in acc.iter().enumerate() {
+                                let out = if $decode {
+                                    // Every octant back from `to_x`.
+                                    let ea = _mm256_and_si256(a, third);
+                                    let eb = _mm256_and_si256($srli::<1>(a), third);
+                                    let p = _mm256_and_si256($srli::<2>(a), third);
+                                    let v0 = _mm256_xor_si256(p, ea);
+                                    let v2 = _mm256_xor_si256(p, eb);
+                                    let v1 = _mm256_xor_si256(ea, v2);
+                                    _mm256_or_si256(
+                                        _mm256_or_si256(v0, $slli::<1>(v1)),
+                                        $slli::<2>(v2),
+                                    )
+                                } else {
+                                    a
+                                };
+                                _mm256_storeu_si256(chunk.as_mut_ptr().add($lanes * r).cast(), out);
+                            }
+                        }
+                    }
+                    done
+                }
+            };
+        }
+
+        kernel!(
+            from_morton_u32,
+            false,
+            u32,
+            8,
+            _mm256_set1_epi32,
+            _mm256_srli_epi32,
+            _mm256_slli_epi32,
+            _mm256_srlv_epi32,
+            0x4924_9249_u32
+        );
+        kernel!(
+            from_morton_u64,
+            false,
+            u64,
+            4,
+            _mm256_set1_epi64x,
+            _mm256_srli_epi64,
+            _mm256_slli_epi64,
+            _mm256_srlv_epi64,
+            0x9249_2492_4924_9249_u64
+        );
+        kernel!(
+            into_morton_u32,
+            true,
+            u32,
+            8,
+            _mm256_set1_epi32,
+            _mm256_srli_epi32,
+            _mm256_slli_epi32,
+            _mm256_srlv_epi32,
+            0x4924_9249_u32
+        );
+        kernel!(
+            into_morton_u64,
+            true,
+            u64,
+            4,
+            _mm256_set1_epi64x,
+            _mm256_srli_epi64,
+            _mm256_slli_epi64,
+            _mm256_srlv_epi64,
+            0x9249_2492_4924_9249_u64
+        );
+    }
+
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "avx2",
+        not(target_feature = "avx512vbmi"),
+        not(feature = "portable")
+    ))]
+    pub(super) use avx2::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
+
     /// No batch path: the caller converts every key.
     #[cfg(not(any(
         all(
             target_arch = "x86_64",
-            target_feature = "avx512vbmi",
+            any(target_feature = "avx512vbmi", target_feature = "avx2"),
             not(feature = "portable")
         ),
         all(
@@ -796,14 +1042,25 @@ mod batch {
             not(feature = "portable")
         )
     )))]
-    pub(super) const fn from_morton_u32(_: &mut [u32]) -> usize {
-        0
+    mod none {
+        pub(in crate::hilbert3) const fn from_morton_u32(_: &mut [u32]) -> usize {
+            0
+        }
+        pub(in crate::hilbert3) const fn from_morton_u64(_: &mut [u64]) -> usize {
+            0
+        }
+        pub(in crate::hilbert3) const fn into_morton_u32(_: &mut [u32]) -> usize {
+            0
+        }
+        pub(in crate::hilbert3) const fn into_morton_u64(_: &mut [u64]) -> usize {
+            0
+        }
     }
 
     #[cfg(not(any(
         all(
             target_arch = "x86_64",
-            target_feature = "avx512vbmi",
+            any(target_feature = "avx512vbmi", target_feature = "avx2"),
             not(feature = "portable")
         ),
         all(
@@ -812,39 +1069,5 @@ mod batch {
             not(feature = "portable")
         )
     )))]
-    pub(super) const fn from_morton_u64(_: &mut [u64]) -> usize {
-        0
-    }
-
-    #[cfg(not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx512vbmi",
-            not(feature = "portable")
-        ),
-        all(
-            target_arch = "aarch64",
-            target_feature = "neon",
-            not(feature = "portable")
-        )
-    )))]
-    pub(super) const fn into_morton_u32(_: &mut [u32]) -> usize {
-        0
-    }
-
-    #[cfg(not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "avx512vbmi",
-            not(feature = "portable")
-        ),
-        all(
-            target_arch = "aarch64",
-            target_feature = "neon",
-            not(feature = "portable")
-        )
-    )))]
-    pub(super) const fn into_morton_u64(_: &mut [u64]) -> usize {
-        0
-    }
+    pub(super) use none::{from_morton_u32, from_morton_u64, into_morton_u32, into_morton_u64};
 }

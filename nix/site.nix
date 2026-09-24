@@ -17,7 +17,7 @@
     # means the cell is not in that system's matrix.
     labels = {
       hakmem-test-portable-default = "tests, portable";
-      hakmem-test-bmi2-default = "tests, +bmi2,+pclmulqdq";
+      hakmem-test-bmi2-default = "tests, +bmi2,+pclmulqdq,+avx2";
       hakmem-test-bmi2-portable-feature = "tests, +bmi2 with feature portable";
       hakmem-doctest-portable = "doctests, portable";
       hakmem-doctest-bmi2 = "doctests, +bmi2";

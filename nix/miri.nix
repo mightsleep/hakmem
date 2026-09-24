@@ -42,6 +42,8 @@
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+gfni"
           # The batch Hilbert kernels: vpermb and vpermi2b.
           run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx512vbmi"
+          # The 3D kernel for AVX2 without VBMI: PSHUFB and SRLV.
+          run "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx2"
         '';
       });
     };

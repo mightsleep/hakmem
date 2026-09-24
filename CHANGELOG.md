@@ -38,14 +38,18 @@ frame taken modulo the reflection of both axes and carried as a XOR
 mask on the cells (the unreduced table would be 256); in 3D through
 the 96-byte encode table, a level a step, the frame riding in the
 index byte. With NEON the 2D reduction two levels a step, 32 entries
-in two registers for `tbl`, and the 3D tables in `tbl` and `tbx`; otherwise the per-key conversion. On
-Zen 5: 1.6 ns a key for the 2D `u64` encode from coordinates against
-11.9 for `fast_hilbert`, 0.90 against 8.3 for 16-bit coordinates, 2.7
-against 15.2 for the 3D tables. Laws: the batch equals the per-key
-conversion both ways, on every length to 300 (the tails of the 16-,
-32- and 64-key batches).
-Miri runs the VBMI kernels (`nix run .#miri-hakmem`, a new cell); the
-NEON kernels run on the aarch64 CI runner. The 3D decode batches too,
+in two registers for `tbl`, and the 3D tables in `tbl` and `tbx`. With
+AVX2 alone the 3D machine modulo its translations, 24 entries in two
+PSHUFB a level: 5.3 ns a key encoding and 5.7 decoding against 12.6
+and 8.7 per key (`x86-64-v3` on the same core). Otherwise the per-key
+conversion. On Zen 5: 1.6 ns a key for the 2D `u64` encode from
+coordinates against 11.9 for `fast_hilbert`, 0.90 against 8.3 for
+16-bit coordinates, 2.7 against 15.2 for the 3D tables. Laws: the
+batch equals the per-key conversion both ways, on every length to 300
+(the tails of the 16-, 32- and 64-key batches). Miri runs the VBMI and
+AVX2 kernels (`nix run .#miri-hakmem`, a new cell), the `+bmi2` CI
+cell runs AVX2 natively, and the NEON kernels run on the aarch64 CI
+runner. The 3D decode batches too,
 through the inverse of the encode table (a bijection of the octants per
 state, checked at compile time): 2.7 ns a key against 8.8 for the
 algebraic scan per key and 15.1 for the tables. `_order` forms of all

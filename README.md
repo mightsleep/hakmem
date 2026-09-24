@@ -150,7 +150,7 @@ on every push to `main`. The badges are written by CI after each run
 | check | `x86_64` | `aarch64` |
 |---|---|---|
 | tests, portable | [![hakmem-test-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-test-portable-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-test-portable-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| tests, `+bmi2,+pclmulqdq` | [![hakmem-test-bmi2-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| tests, `+bmi2,+pclmulqdq,+avx2` | [![hakmem-test-bmi2-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 | tests, `+bmi2` with feature `portable` | [![hakmem-test-bmi2-portable-feature](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-test-bmi2-portable-feature.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 | doctests (this README), portable | [![hakmem-doctest-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-doctest-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doctest-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | doctests, `+bmi2` | [![hakmem-doctest-bmi2](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doctest-bmi2.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
@@ -291,7 +291,9 @@ in one call (`from_morton_in_place`, and `into_morton_in_place` back;
 the `_order` forms for a curve of fewer levels). With AVX-512 VBMI a
 step is one `vpermi2b` per register of keys (2D, three levels through
 128 entries, the frame modulo a reflection; 3D, the 96-byte encode or
-decode table); NEON uses `tbl`; elsewhere it is the per-key conversion.
+decode table); with AVX2 alone the 3D machine modulo its translations,
+two PSHUFB a level; NEON uses `tbl`; elsewhere it is the per-key
+conversion.
 Coordinates never enter the kernel.
 
 ```rust

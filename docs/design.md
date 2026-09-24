@@ -198,8 +198,8 @@ machine read as a table and applied to a register of keys at a time:
 | batch | with the target feature | without |
 |---|---|---|
 | `Hilbert2::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through 128 entries a step, three levels a step, the frame modulo the reflection of both axes (a XOR mask on the cells, the swap bit in the index byte), three `vpternlog` around the lookup; NEON: the same reduction two levels a step, 32 entries in two registers for `tbl` | `from_morton` per key |
-| `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step; NEON: `tbl` over four registers and `tbx` over two | `from_morton` per key |
-| `Hilbert3::into_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time) | `into_morton` per key, the algebraic scan |
+| `Hilbert3::from_morton_in_place` (`u32`, `u64`) | AVX-512 VBMI: one `vpermi2b` through the 96-byte encode table, padded to two registers, a level a step; NEON: `tbl` over four registers and `tbx` over two; AVX2 alone: the machine modulo its translations, 24 entries in two PSHUFB of 16 a level, the second read through `index ^ 0x80` | `from_morton` per key |
+| `Hilbert3::into_morton_in_place` (`u32`, `u64`) | the same kernels through the inverse table (`state · 8 + triple → state_below · 8 + octant`, a bijection per state, checked at compile time); AVX2 the factored inverse, the translation in index bits 4 and 5, which PSHUFB ignores | `into_morton` per key, the algebraic scan |
 
 Measured on Zen 5 (Ryzen AI 5 340, `target-cpu=native`, one core,
 1024 keys, `benches/hilbert.rs`), from coordinates to keys and back, ns a key:
@@ -220,8 +220,12 @@ lookup and not a scan, exactly the case a table in a register serves.
 The step keeps the symmetry the monoid loses: the translations
 `V₄ ⊲ A₄` act on octants as a XOR and commute with it, so the 96
 entries are 24 between two XORs, the size of two 16-entry shuffles
-(checked at compile time in `hilbert3.rs`). The NEON paths are checked in
-CI on the aarch64 runner and not yet measured.
+(checked at compile time in `hilbert3.rs`). That is the AVX2 kernel:
+on the same core built for `x86-64-v3`, 5.3 ns a key for the 3D
+encode and 5.7 for the decode, against 12.6 and 8.7 per key. Eight
+rows of keys in flight spill and still beat four that fit, by 5 %.
+The NEON paths are checked in CI on the aarch64 runner and not yet
+measured.
 
 The choice lives in `word.rs`, `lanes.rs` and the batch kernels at the
 end of `hilbert.rs` and `hilbert3.rs`, and nowhere else. The `unsafe`
@@ -454,10 +458,10 @@ What is and is not a breaking change:
   elementary abelian and acts regularly on the quadrants; no 3D curve
   of this kind has that. Face-gated and non-self-similar curves were
   not searched.
-- A 3D batch kernel for 16-entry shuffles (SSSE3, AVX2, `tbl` over
-  two registers): the factored table is two PSHUFB sharing one index
-  and its complement, the MSB trick of Giesen's PivCo-Huffman merge
-  (2026). The same factoring for the 10 710 curves with frames `S₄` is
+- The 3D factored kernel on SSSE3 and on NEON `tbl` over two
+  registers: the AVX2 one at half the width, and on NEON against the
+  four-register `tbl` it has now, which nobody has measured either. The
+  same factoring for the 10 710 curves with frames `S₄` is
   likely where their `V₄` is the even reflections; not checked.
 - A batched Hilbert encode: the scan is throughput-bound, so on many
   points at once the four-state loop interleaved eight ways may match
