@@ -2,7 +2,7 @@
 //!
 //! [`Word`] treats a register as one number, so a carry runs the whole
 //! width. [`Lanes`] treats it as `LANES` independent bytes: nothing
-//! crosses a lane. The two meet at [`Lanes::to_bits`], which turns a
+//! crosses a lane. The two meet at [`Lanes::to_bitmask`], which turns a
 //! lane mask into a [`Word`] with one bit per lane; from there the carry
 //! tricks of [`Bits`] take over. That boundary is where simdjson's first
 //! stage hands its masks to its second.
@@ -33,7 +33,7 @@
 //!     let class = block.lut16_nibbles(LO, HI);
 //!     let structural = class.and(U8x16::splat(15)).cmp_eq(U8x16::zero()).not();
 //!     let whitespace = class.and(U8x16::splat(48)).cmp_eq(U8x16::zero()).not();
-//!     (structural.to_bits(), whitespace.to_bits())
+//!     (structural.to_bitmask(), whitespace.to_bitmask())
 //! }
 //!
 //! let (structural, whitespace) = classify(U8x16::load(b"{\"a\": [1, 2]}   "));
@@ -71,13 +71,13 @@ const fn scratch<L: Lanes>() -> [u8; 64] {
 /// Required methods are the instructions a carrier has; the provided
 /// ones are compositions with the same laws everywhere. Compares yield
 /// masks, `0xFF` or `0x00` per lane, so they chain with `and` / `or` /
-/// `not` and fold into a [`Word`] with [`to_bits`](Self::to_bits).
+/// `not` and fold into a [`Word`] with [`to_bitmask`](Self::to_bitmask).
 pub trait Lanes: Copy + Eq + core::fmt::Debug {
     /// Number of lanes, at most 64: the provided methods work in a
     /// 64-byte scratch. AVX-512 fits, and so does a compile error.
     const LANES: usize;
-    /// The word [`to_bits`](Self::to_bits) produces: one bit per lane.
-    type Bits: Word;
+    /// The word [`to_bitmask`](Self::to_bitmask) produces: one bit per lane.
+    type Bitmask: Word;
 
     /// `b` in every lane.
     #[must_use]
@@ -89,7 +89,11 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     /// If `bytes.len() != LANES`.
     #[must_use]
     fn load(bytes: &[u8]) -> Self;
-    /// Lane `i`, for `i < LANES`.
+    /// Lane `i`.
+    ///
+    /// # Panics
+    ///
+    /// If `i >= LANES`.
     #[must_use]
     fn lane(self, i: usize) -> u8;
 
@@ -134,7 +138,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     /// One bit per lane, bit `i` = the top bit of lane `i`. On a compare
     /// mask this is the set of lanes that matched.
     #[must_use]
-    fn to_bits(self) -> Self::Bits;
+    fn to_bitmask(self) -> Self::Bitmask;
 
     /// Every lane zero.
     #[inline]
@@ -444,7 +448,7 @@ impl U8x8 {
 
 impl Lanes for U8x8 {
     const LANES: usize = 8;
-    type Bits = u8;
+    type Bitmask = u8;
 
     #[inline]
     fn splat(b: u8) -> Self {
@@ -544,7 +548,7 @@ impl Lanes for U8x8 {
     }
 
     #[inline]
-    fn to_bits(self) -> u8 {
+    fn to_bitmask(self) -> u8 {
         // The product's top byte is the gathered bits; the shift keeps it.
         #[allow(clippy::cast_possible_truncation)]
         let gathered = ((self.0 & MSBS_STEP_8).wrapping_mul(GATHER_MSBS_8) >> 56) as u8;
@@ -623,7 +627,7 @@ mod x16 {
 
     impl Lanes for U8x16 {
         const LANES: usize = 16;
-        type Bits = u16;
+        type Bitmask = u16;
 
         #[inline]
         fn splat(b: u8) -> Self {
@@ -744,7 +748,7 @@ mod x16 {
         }
 
         #[inline]
-        fn to_bits(self) -> u16 {
+        fn to_bitmask(self) -> u16 {
             // SAFETY: SSE2 is enabled by cfg. movemask yields 16 bits in an
             // i32; the truncation keeps them all.
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
@@ -858,24 +862,6 @@ mod x16 {
             self.affine(Affine8::rotr(n))
         }
     }
-
-    impl PartialEq for U8x16 {
-        fn eq(&self, other: &Self) -> bool {
-            self.halves() == other.halves()
-        }
-    }
-
-    impl Eq for U8x16 {}
-
-    impl core::fmt::Debug for U8x16 {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            let (lo, hi) = self.halves();
-            let mut bytes = [0u8; 16];
-            bytes[..8].copy_from_slice(&lo.to_le_bytes());
-            bytes[8..].copy_from_slice(&hi.to_le_bytes());
-            f.debug_tuple("U8x16").field(&bytes).finish()
-        }
-    }
 }
 
 // --- U8x16: NEON --------------------------------------------------------
@@ -929,7 +915,7 @@ mod x16 {
 
     impl Lanes for U8x16 {
         const LANES: usize = 16;
-        type Bits = u16;
+        type Bitmask = u16;
 
         #[inline]
         fn splat(b: u8) -> Self {
@@ -1042,7 +1028,7 @@ mod x16 {
         /// every 16-bit pair to a nibble per lane (`shrn` by 4), then
         /// gather one bit of each nibble.
         #[inline]
-        fn to_bits(self) -> u16 {
+        fn to_bitmask(self) -> u16 {
             // SAFETY: NEON is enabled by cfg.
             let mut x = unsafe {
                 let full = vcltzq_s8(vreinterpretq_s8_u8(self.0));
@@ -1170,24 +1156,6 @@ mod x16 {
             Self(unsafe { vhaddq_u8(self.0, other.0) })
         }
     }
-
-    impl PartialEq for U8x16 {
-        fn eq(&self, other: &Self) -> bool {
-            self.halves() == other.halves()
-        }
-    }
-
-    impl Eq for U8x16 {}
-
-    impl core::fmt::Debug for U8x16 {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            let (lo, hi) = self.halves();
-            let mut bytes = [0u8; 16];
-            bytes[..8].copy_from_slice(&lo.to_le_bytes());
-            bytes[8..].copy_from_slice(&hi.to_le_bytes());
-            f.debug_tuple("U8x16").field(&bytes).finish()
-        }
-    }
 }
 
 // --- U8x16: portable ----------------------------------------------------
@@ -1208,21 +1176,25 @@ mod x16 {
     use super::{Affine8, Lanes, U8x8};
 
     /// Sixteen lanes as two [`U8x8`] halves: the portable definition.
-    #[derive(Clone, Copy, PartialEq, Eq, Debug)]
+    #[derive(Clone, Copy)]
     pub struct U8x16(U8x8, U8x8);
 
     impl U8x16 {
         /// Lanes from two words: lanes `0..8` from `lo`, `8..16` from `hi`.
+        // Not `const`: the SIMD carriers can't be, and an API that is
+        // `const` on some targets compiles on some machines.
+        #[allow(clippy::missing_const_for_fn)]
         #[inline]
         #[must_use]
-        pub const fn from_halves(lo: u64, hi: u64) -> Self {
+        pub fn from_halves(lo: u64, hi: u64) -> Self {
             Self(U8x8::new(lo), U8x8::new(hi))
         }
 
         /// The two words, lanes `0..8` and `8..16`.
+        #[allow(clippy::missing_const_for_fn)]
         #[inline]
         #[must_use]
-        pub const fn halves(self) -> (u64, u64) {
+        pub fn halves(self) -> (u64, u64) {
             (self.0.bits(), self.1.bits())
         }
 
@@ -1234,7 +1206,7 @@ mod x16 {
 
     impl Lanes for U8x16 {
         const LANES: usize = 16;
-        type Bits = u16;
+        type Bitmask = u16;
 
         #[inline]
         fn splat(b: u8) -> Self {
@@ -1316,8 +1288,8 @@ mod x16 {
         }
 
         #[inline]
-        fn to_bits(self) -> u16 {
-            u16::from(self.0.to_bits()) | u16::from(self.1.to_bits()) << 8
+        fn to_bitmask(self) -> u16 {
+            u16::from(self.0.to_bitmask()) | u16::from(self.1.to_bitmask()) << 8
         }
 
         #[inline]
@@ -1333,3 +1305,25 @@ mod x16 {
 }
 
 pub use x16::U8x16;
+
+// One `Eq` and one `Debug` for all three carriers, over `halves`: the
+// portable one used to derive its own and print two `U8x8`s where the
+// others printed sixteen bytes, so a failing test read differently on
+// every machine it failed on.
+impl PartialEq for U8x16 {
+    fn eq(&self, other: &Self) -> bool {
+        self.halves() == other.halves()
+    }
+}
+
+impl Eq for U8x16 {}
+
+impl core::fmt::Debug for U8x16 {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        let (lo, hi) = self.halves();
+        let mut bytes = [0u8; 16];
+        bytes[..8].copy_from_slice(&lo.to_le_bytes());
+        bytes[8..].copy_from_slice(&hi.to_le_bytes());
+        f.debug_tuple("U8x16").field(&bytes).finish()
+    }
+}

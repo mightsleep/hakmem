@@ -106,6 +106,10 @@ impl Affine8 {
     }
 
     /// The row that builds output bit `bit < 8`.
+    ///
+    /// # Panics
+    ///
+    /// If `bit >= 8`.
     #[inline]
     #[must_use]
     pub const fn row(self, bit: usize) -> u8 {

@@ -36,7 +36,7 @@
 //! translation and no cascade runs top down.
 //! [`Hilbert3::from_morton`] walks the levels through a table of 96
 //! bytes that a `const fn` builds from
-//! the same GF(4) step ([`encode_step`]); the algebraic loop is three
+//! the same GF(4) step (`encode_step`); the algebraic loop is three
 //! to four times slower, its chain being ten operations a level
 //! against one load. Both directions are checked against the tables
 //! (`tests/hilbert3.rs`), against the algebraic machine in
@@ -241,10 +241,10 @@ impl<W: Word> Hilbert3<W> {
     /// The machine's step is GF(4) arithmetic on the frame, about 25
     /// operations with a chain of ten, and a level cannot start before
     /// the frame above it is known; a table lookup is one load. So this
-    /// is a table: [`ENCODE_TABLE`], 96 bytes,
-    /// `state · 8 + octant → state · 8 + triple`, built at compile time
-    /// from the same arithmetic ([`encode_step`]) and checked against
-    /// the published constants (`tests/hilbert3.rs`). The machine
+    /// is a table, 96 bytes, `state · 8 + octant → state · 8 + triple`,
+    /// built at compile time from the same arithmetic. The table is ours;
+    /// the curve is checked against rawrunprotected's published tables
+    /// (`tests/hilbert3.rs`), whose state numbering needn't match ours. The machine
     /// itself is `laws::reference::hilbert3_index_machine`.
     #[must_use]
     pub fn from_morton(m: Morton3<W>) -> Self {
@@ -287,7 +287,7 @@ const fn gf4_scalar(a: u8, b: u8, c: u8, d: u8) -> (u8, u8) {
 /// the frame octant; the frame below is `(m·m_g, t + m·t_g)` with `g`
 /// the map of the triple (the same formulas as `level_maps`).
 #[must_use]
-pub const fn encode_step(state: u8, octant: u8) -> (u8, u8) {
+pub(crate) const fn encode_step(state: u8, octant: u8) -> (u8, u8) {
     let (ma, mb) = match state / 4 {
         0 => (1, 0),
         1 => (0, 1),
@@ -319,7 +319,7 @@ pub const fn encode_step(state: u8, octant: u8) -> (u8, u8) {
 
 /// The encode machine memoised: entry `state · 8 + octant` holds
 /// `state_below · 8 + triple`. State 0 is the identity frame.
-pub const ENCODE_TABLE: [u8; 96] = {
+pub(crate) const ENCODE_TABLE: [u8; 96] = {
     let mut table = [0u8; 96];
     let mut state = 0u8;
     while state < 12 {
@@ -488,7 +488,7 @@ macro_rules! hilbert3_batch {
             /// The encode is not a scan (the maps on the twelve frames
             /// are not permutations), which is the case a shuffle serves:
             /// with AVX-512 VBMI a level is one `vpermi2b` through
-            /// [`ENCODE_TABLE`], padded to 128 bytes in two registers, the
+            /// `ENCODE_TABLE`, padded to 128 bytes in two registers, the
             /// frame riding in the index byte as `state · 8`: per register
             /// of keys for `u32`, per plane of 64 keys for `u64`, the keys
             /// transposed so that a byte is a key and a register a level; with NEON the table is `tbl` over four

@@ -175,7 +175,7 @@ A vector register is not a `Word`: its lanes do not carry into each
 other, so the laws of the carry chain do not hold across it. It gets
 its own trait, `Lanes`, with the operations that are lawful lane by
 lane (bitwise, wrapping add and subtract, shifts, unsigned compares to
-masks, the 16-entry table lookup) and one bridge, `to_bits`, which
+masks, the 16-entry table lookup) and one bridge, `to_bitmask`, which
 folds a lane mask into a `Word` with a bit per lane. That bridge is
 where simdjson's first stage hands its masks to its second, and where
 this crate's two algebras meet. The carriers are `U8x8` (eight lanes in
@@ -480,7 +480,7 @@ every carrier.
 | `rank9::Rank9` | Vigna, 2008: rank9, and a select inventory in the shape of his select9, cases cut at block boundaries |
 | `lanes::U8x8` add and subtract | Hacker's Delight 2-18 (SWAR without inter-lane carry) |
 | `lanes::Lanes::cmp_le` on SWAR | Hacker's Delight 6-1, the lane compare with full lanes |
-| `lanes::Lanes::to_bits` on SWAR | the multiply that gathers the top bits of eight bytes; on NEON the `shrn` narrowing of a compare mask |
+| `lanes::Lanes::to_bitmask` on SWAR | the multiply that gathers the top bits of eight bytes; on NEON the `shrn` narrowing of a compare mask |
 | `lanes::Lanes::lut16`, the nibble classifier | simdjson (Langdale and Lemire, 2019), after Muła's PSHUFB lookups |
 | `lanes::Lanes::shuffle`, `concat_shift`, `unpack_*`, `add_sat`, `sum_abs_diff`, `mul_add_pairs` | the SSE2 / SSSE3 instruction set as an algebra: PSHUFB, PALIGNR, PUNPCK, PADDUSB, PSADBW, PMADDUBSW; NEON `tbl`, `tbl2`, `zip`, `uqadd`, `uabd` + `addlv` |
 | `affine::Affine8`, `Lanes::affine`, `reverse_bits`, `sra`, `rotl`, `rotr` | GFNI's `gf2p8affineqb` as an algebra: Wunkolo, *gf2p8affineqb: Bit reversal* and *int8 shifting*, 2020; the nibble split is Muła's |

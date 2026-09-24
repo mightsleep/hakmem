@@ -114,6 +114,9 @@ impl<W: Word, const D: u32> Dilated<W, D> {
 pub struct Morton2<W: Word>(W);
 
 impl<W: Word> Morton2<W> {
+    /// Levels: `BITS / 2`.
+    pub const LEVELS: u32 = W::BITS / 2;
+
     /// Interleaves `x` (even bits) and `y` (odd bits). Coordinates
     /// above `BITS / 2` bits are dropped.
     #[inline]
@@ -409,8 +412,9 @@ impl<W: Word + Ord> Morton2<W> {
     /// # Panics
     ///
     /// If the rectangle is not empty and `out` is.
+    #[must_use = "only `out[..n]` holds ranges; the rest is scratch"]
     pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
-        crate::cover::cover::<W, ZQuadrants>(W::BITS / 2, x, y, out)
+        crate::cover::cover::<W, ZQuadrants>(Self::LEVELS, x, y, out)
     }
 
     /// Whether some cell of the rectangle has its code in
@@ -425,7 +429,7 @@ impl<W: Word + Ord> Morton2<W> {
     /// ```
     #[must_use]
     pub fn intersects(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
-        crate::cover::intersects::<W, ZQuadrants>(W::BITS / 2, keys, x, y)
+        crate::cover::intersects::<W, ZQuadrants>(Self::LEVELS, keys, x, y)
     }
 }
 

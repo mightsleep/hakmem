@@ -32,7 +32,10 @@
 /// `BITS` is a multiple of 8 and at most `2^16`: the byte combinators
 /// read bytes, and [`expand_broadword`] keeps one mask per halving
 /// round. A wider carrier is a compile error, not a surprise.
-pub trait Word: Copy + Eq + core::fmt::Debug {
+///
+/// A word is a plain value: hashable, shareable, `'static`. Asked for
+/// now because asking later would break every carrier written meanwhile.
+pub trait Word: Copy + Eq + core::hash::Hash + core::fmt::Debug + Send + Sync + 'static {
     /// Width in bits.
     const BITS: u32;
     /// All bits clear.

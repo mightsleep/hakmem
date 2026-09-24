@@ -409,6 +409,11 @@ hilbert3_in_place_law!(
 /// takes the indices back to the coordinates, masked to the 21 bits the
 /// curve has. `keys` and `out` are scratch of the columns' length
 /// (asserted); `out` holds the three decoded columns end to end.
+///
+/// # Panics
+///
+/// If the columns differ in length, or `keys` and `out` are not one
+/// and three times it.
 #[must_use]
 pub fn hilbert3_columns_match_per_point(
     xs: &[u64],
@@ -1153,7 +1158,7 @@ pub fn swar_lanes_match_reference<W: Word>(x: W, b: u8, n: u8) -> bool {
 
 // --- slice ---------------------------------------------------------------
 
-/// Slice `rank`/`select`/`next_set_after`/`find_run` agree with the
+/// Slice `rank`/`select`/`next_set_from`/`find_run` agree with the
 /// bit-loop definitions over the concatenated words.
 // `p % bits < BITS` fits a u32.
 #[allow(clippy::cast_possible_truncation)]
@@ -1168,7 +1173,7 @@ pub fn slice_ops_match_reference<W: Word>(words: &[W], i: usize, k: u32) -> bool
 
     let rank_ok = crate::slice::rank(words, i) == set().filter(|&p| p < i).count();
     let select_ok = crate::slice::select(words, i) == set().nth(i);
-    let next_ok = crate::slice::next_set_after(words, i) == set().find(|&p| p >= i);
+    let next_ok = crate::slice::next_set_from(words, i) == set().find(|&p| p >= i);
     let run_ref = (0..total).find(|&s| s + k as usize <= total && (s..s + k as usize).all(bit));
     let run_ok = crate::slice::find_run(words, k) == run_ref;
     let positions_ok = crate::slice::positions(words).eq(set());
@@ -1177,7 +1182,7 @@ pub fn slice_ops_match_reference<W: Word>(words: &[W], i: usize, k: u32) -> bool
         && next_ok
         && run_ok
         && positions_ok
-        && crate::slice::popcount(words) == set().count()
+        && crate::slice::count_ones(words) == set().count()
 }
 
 // --- permute --------------------------------------------------------------
@@ -1498,7 +1503,7 @@ pub fn rank9_matches_slice(dir: &Rank9<'_>, i: usize, k: usize) -> bool {
     dir.rank(i) == rank
         && dir.rank0(i) == i.min(dir.len()) - rank
         && dir.select(k) == crate::slice::select(bits, k)
-        && dir.count_ones() == crate::slice::popcount(bits)
+        && dir.count_ones() == crate::slice::count_ones(bits)
 }
 
 /// `select` inverts `rank` on set bits: for `k < count_ones()`,
@@ -1580,7 +1585,7 @@ pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) 
             0
         }
     };
-    let bits = lhs.to_bits();
+    let bits = lhs.to_bitmask();
     let lanewise = (0..lanes).all(|i| {
         let (x, y) = (lhs.lane(i), rhs.lane(i));
         let lane_bit = u32::try_from(i).is_ok_and(|i| bits.bit(i));
@@ -1678,10 +1683,10 @@ pub fn lut16_composes<L: Lanes>(x: L, a: [u8; 16], b: [u8; 16]) -> bool {
 #[must_use]
 pub fn lanes_agree_with_bits(x: u64, b: u8) -> bool {
     let lanes = U8x8::new(x);
-    let eq = lanes.cmp_eq(U8x8::splat(b)).to_bits();
+    let eq = lanes.cmp_eq(U8x8::splat(b)).to_bitmask();
     eq.count_ones() == x.count_bytes_eq(b)
-        && lanes.cmp_eq(U8x8::zero()).to_bits() == U8x8::new(x.zero_bytes()).to_bits()
-        && lanes.cmp_lt(U8x8::splat(0x80)).to_bits() == U8x8::new(x.bytes_lt(0x80)).to_bits()
+        && lanes.cmp_eq(U8x8::zero()).to_bitmask() == U8x8::new(x.zero_bytes()).to_bitmask()
+        && lanes.cmp_lt(U8x8::splat(0x80)).to_bitmask() == U8x8::new(x.bytes_lt(0x80)).to_bitmask()
 }
 
 /// The sixteen-lane carrier, whatever it compiles to, is two eight-lane
@@ -1707,7 +1712,7 @@ pub fn u8x16_agrees_with_halves(lhs: (u64, u64), rhs: (u64, u64), n: u32, table:
         && x.cmp_eq(y).halves() == pair(xl.cmp_eq(yl), xh.cmp_eq(yh))
         && x.cmp_le(y).halves() == pair(xl.cmp_le(yl), xh.cmp_le(yh))
         && x.lut16(table).halves() == pair(xl.lut16(table), xh.lut16(table))
-        && x.to_bits() == u16::from(xl.to_bits()) | u16::from(xh.to_bits()) << 8
+        && x.to_bitmask() == u16::from(xl.to_bitmask()) | u16::from(xh.to_bitmask()) << 8
         && x.add_sat(y).halves() == pair(xl.add_sat(yl), xh.add_sat(yh))
         && x.sub_sat(y).halves() == pair(xl.sub_sat(yl), xh.sub_sat(yh))
         && x.mul_add_pairs(y).halves() == pair(xl.mul_add_pairs(yl), xh.mul_add_pairs(yh))

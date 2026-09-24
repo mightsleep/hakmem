@@ -103,7 +103,7 @@ assert_eq!(hakmem::slice::find_run(&[0xFFu64 << 56, u64::MAX], 16), Some(56));
 // Byte lanes, the SIMD half: sixteen bytes to a mask, then back to `Bits`.
 use hakmem::lanes::{Lanes, U8x16};
 let block = U8x16::load(b"{\"a\": [1, 2]}   ");
-let quotes = block.cmp_eq(U8x16::splat(b'"')).to_bits();
+let quotes = block.cmp_eq(U8x16::splat(b'"')).to_bitmask();
 assert_eq!(quotes, 0b1010);
 assert_eq!(quotes.prefix_xor(), 0b0110); // inside the string
 

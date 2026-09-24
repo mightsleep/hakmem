@@ -185,7 +185,7 @@ fn rank9buf_matches_view() {
     let words: Vec<u64> = (0..777).map(|_| next()).collect();
     let buf = Rank9Buf::new(&words);
     let rank_only = Rank9Buf::rank_only(&words);
-    assert_eq!(buf.count_ones(), slice::popcount(&words));
+    assert_eq!(buf.count_ones(), slice::count_ones(&words));
     for i in (0..=words.len() * 64).step_by(37) {
         assert_eq!(buf.rank(i), slice::rank(&words, i));
         assert_eq!(

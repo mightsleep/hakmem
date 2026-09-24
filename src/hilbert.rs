@@ -749,6 +749,7 @@ impl<W: Word + Ord> Hilbert2<W> {
     /// # Panics
     ///
     /// If the rectangle is not empty and `out` is.
+    #[must_use = "only `out[..n]` holds ranges; the rest is scratch"]
     pub fn cover(x: (W, W), y: (W, W), out: &mut [(W, W)]) -> usize {
         crate::cover::cover::<W, HilbertQuadrants>(Self::LEVELS, x, y, out)
     }

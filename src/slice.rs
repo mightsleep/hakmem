@@ -12,8 +12,17 @@ use crate::word::Word;
 /// Number of set bits in the whole slice.
 #[inline]
 #[must_use]
-pub fn popcount<W: Word>(words: &[W]) -> usize {
+pub fn count_ones<W: Word>(words: &[W]) -> usize {
     words.iter().map(|w| w.count_ones() as usize).sum()
+}
+
+/// [`count_ones`], under the name it had in 0.1, the only count in the
+/// crate that went by its instruction.
+#[deprecated(since = "0.2.0", note = "renamed to `count_ones`")]
+#[inline]
+#[must_use]
+pub fn popcount<W: Word>(words: &[W]) -> usize {
+    count_ones(words)
 }
 
 /// Number of set bits at positions `< i`. `i` may equal the slice's
@@ -33,7 +42,7 @@ pub fn rank<W: Word>(words: &[W], i: usize) -> usize {
     head + tail
 }
 
-/// Position of the `k`-th set bit (0-indexed), if `k < popcount`.
+/// Position of the `k`-th set bit (0-indexed), if `k < count_ones`.
 #[must_use]
 pub fn select<W: Word>(words: &[W], mut k: usize) -> Option<usize> {
     for (wi, &w) in words.iter().enumerate() {
@@ -49,9 +58,9 @@ pub fn select<W: Word>(words: &[W], mut k: usize) -> Option<usize> {
     None
 }
 
-/// Lowest set position `>= i`, if any.
+/// Lowest set position `>= i`, if any: from `i` on, `i` included.
 #[must_use]
-pub fn next_set_after<W: Word>(words: &[W], i: usize) -> Option<usize> {
+pub fn next_set_from<W: Word>(words: &[W], i: usize) -> Option<usize> {
     let bits = W::BITS as usize;
     let (wi, bit) = (i / bits, i % bits);
     let first = words.get(wi)?;
@@ -65,6 +74,18 @@ pub fn next_set_after<W: Word>(words: &[W], i: usize) -> Option<usize> {
         .iter()
         .enumerate()
         .find_map(|(j, w)| w.first_set().map(|p| (wi + 1 + j) * bits + p as usize))
+}
+
+/// [`next_set_from`], under the name it had in 0.1, which said "after"
+/// and meant "from".
+#[deprecated(
+    since = "0.2.0",
+    note = "renamed to `next_set_from`; it always included `i`"
+)]
+#[inline]
+#[must_use]
+pub fn next_set_after<W: Word>(words: &[W], i: usize) -> Option<usize> {
+    next_set_from(words, i)
 }
 
 /// Lowest position where `k` consecutive set bits start, if any.

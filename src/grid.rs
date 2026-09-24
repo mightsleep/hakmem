@@ -31,6 +31,10 @@ use crate::word::Word;
 /// // 2×2 blocks start at (0, 3..=5) and (1, 2..=4).
 /// assert_eq!(out, [0b0011_1000, 0b0001_1100, 0, 0]);
 /// ```
+///
+/// # Panics
+///
+/// If `out` and `rows` differ in length.
 pub fn block_starts<W: Word>(rows: &[W], w: u32, h: u32, out: &mut [W]) {
     assert_eq!(rows.len(), out.len(), "block_starts: out must match rows");
     debug_assert!(
@@ -76,6 +80,10 @@ pub fn block_starts<W: Word>(rows: &[W], w: u32, h: u32, out: &mut [W]) {
 /// assert_eq!(find_block(&rows, 3, 3, &mut scratch), Some((0, 3)));
 /// assert_eq!(find_block(&rows, 4, 3, &mut scratch), None);
 /// ```
+///
+/// # Panics
+///
+/// If `scratch` and `rows` differ in length.
 #[must_use]
 pub fn find_block<W: Word>(rows: &[W], w: u32, h: u32, scratch: &mut [W]) -> Option<(usize, u32)> {
     block_starts(rows, w, h, scratch);

@@ -143,7 +143,7 @@ feature and Miri keep the compile-time choice.
 `hakmem::lanes`: the SIMD half of the algebra on stable Rust. `Lanes` is
 the trait for independent 8-bit lanes (bitwise, wrapping add and
 subtract, per-lane shifts, unsigned compares to masks, the 16-entry
-table lookup of PSHUFB / `tbl`, and `to_bits`, the fold of a lane mask
+table lookup of PSHUFB / `tbl`, and `to_bitmask`, the fold of a lane mask
 into a `Word` where the carry algebra takes over). Carriers: `U8x8`,
 eight lanes in a `u64` by SWAR, and `U8x16`, sixteen lanes on SSSE3 or
 NEON, two SWAR halves otherwise. Laws: per-lane definitions, table
@@ -173,6 +173,19 @@ gather family, `Bits::gather` with `gather_factor` / `gather_factor_by`,
 a multiply as PEXT (Kindergarten bitboards), with `gather_is_exact_by`
 as the brute-force check and `strided_gather_is_exact` as the theorem
 that covers files and diagonals. Cookbook recipes 11 and 12.
+
+### Changed, for anyone on 0.1
+
+- `Word` asks for `Hash + Send + Sync + 'static` besides `Copy + Eq +
+  Debug`, and says out loud that `BITS` is a multiple of 8, at most
+  `2^16`. Every carrier in the crate already was; a carrier of your
+  own may need a derive.
+- `Word::select_lowest` returns `BITS` when there is no `k`-th set bit,
+  on every build and every carrier; `word::select_broadword64` returns
+  64. It used to panic, return garbage or return 64, by flags.
+- `slice::popcount` is `slice::count_ones` and `slice::next_set_after`
+  is `slice::next_set_from`, which is what it always did. The old names
+  remain, deprecated.
 
 ## 0.1.0, 2026-09-19
 
