@@ -12,7 +12,7 @@ authors = ["Michal <acannix@proton.me>"]
 repository = "https://github.com/mightsleep/hakmem"
 keywords = ["bit-manipulation", "rank-select", "edit-distance", "swar", "no-std"]
 categories = ["algorithms", "no-std"]
-exclude = ["/.github", "/nix", "/flake.*"]
+exclude = ["/.github", "/nix", "/flake.*", "/codegen"]
 
 [features]
 default = ["alloc"]

@@ -29,6 +29,7 @@
       hakmem-clippy-bmi2-portable-feature = "clippy, +bmi2 with feature portable";
       hakmem-doc = "rustdoc, warnings as errors";
       hakmem-public-api = "public API matches public-api.txt";
+      hakmem-codegen-bmi2 = "codegen, +bmi2,+pclmulqdq,+ssse3,+avx2: claims and instruction counts";
       hakmem-msrv = "MSRV build of the packaged tarball";
       hakmem-deny = "cargo-deny";
       hakmem-audit = "cargo-audit";

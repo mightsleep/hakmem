@@ -1,0 +1,7 @@
+cg_compact_u64: pextq=1 retq=1 total=2
+cg_expand_u64: pdepq=1 retq=1 total=2
+cg_select_u64: addq=2 andq=4 cmpl=1 imulq=1 movabsq=4 movl=2 movq=3 pdepq=1 rep bsfq=1 retq=1 setb=1 shlxq=1 shrq=4 subq=1 xorl=1 total=28
+cg_prefix_xor_u64: retq=1 vmovq=2 vpclmulqdq=1 vpcmpeqd=1 total=5
+cg_hilbert2_encode_u64: addq=1 andl=8 andq=23 movabsq=1 movl=3 movq=32 orq=5 pdepq=2 popq=5 pushq=5 retq=1 shrq=20 xorl=6 xorq=35 total=147
+cg_quote_mask: retq=1 vmovdqu=1 vpcmpeqb=1 vpmovmskb=1 total=4
+<hakmem::hilbert3::Hilbert3<u64>>::from_morton_in_place: addq=5 andq=2 callq=4 cmpq=5 ja=1 je=3 jmp=1 jne=4 jns=1 leaq=2 movabsq=1 movl=3 movq=11 orl=1 popq=3 pushq=3 retq=1 shlq=2 subq=1 testb=2 testl=1 vbroadcastsd=1 vmovdqa=8 vmovdqu=59 vmovq=1 vmovups=11 vpaddq=8 vpand=48 vpbroadcastb=1 vpbroadcastq=4 vpor=32 vpshufb=16 vpsllq=16 vpsrlq=24 vpsrlvq=8 vpxor=58 vzeroupper=2 total=354
