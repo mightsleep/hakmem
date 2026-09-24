@@ -80,6 +80,12 @@ fn u8_indexed_laws() {
             assert!(laws::select_is_rank_inverse(x, i), "x={x} k={i}");
             assert!(laws::select_matches_reference(x, i), "x={x} k={i}");
         }
+        for k in [8, 9, 255, u32::MAX] {
+            assert!(laws::select_lowest_is_total(x, k), "x={x} k={k}");
+        }
+        for k in 0..8 {
+            assert!(laws::select_lowest_is_total(x, k), "x={x} k={k}");
+        }
     }
 }
 
@@ -149,6 +155,9 @@ fn u16_indexed_laws() {
             assert!(laws::rank_is_monotone(x, i), "x={x} i={i}");
             assert!(laws::select_is_rank_inverse(x, i), "x={x} k={i}");
             assert!(laws::select_matches_reference(x, i), "x={x} k={i}");
+        }
+        for k in [0, 7, 15, 16, 17, 64, u32::MAX] {
+            assert!(laws::select_lowest_is_total(x, k), "x={x} k={k}");
         }
     }
 }

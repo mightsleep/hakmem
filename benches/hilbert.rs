@@ -488,6 +488,11 @@ fn bench_morton_batch(c: &mut Criterion) {
     }
 }
 
+/// A granule and a rectangle, `intersects` in its argument order.
+type Query = ((u64, u64), (u64, u64), (u64, u64));
+/// A curve for the intersects bench: name, encode, the test.
+type Curve = (&'static str, fn(u64, u64) -> u64, fn((u64, u64), (u64, u64), (u64, u64)) -> bool);
+
 /// Rectangles to key ranges on the full `u64` grid: 256 random
 /// rectangles of sides up to `2^k` cells, one call each.
 fn bench_cover(c: &mut Criterion) {
@@ -503,22 +508,53 @@ fn bench_cover(c: &mut Criterion) {
             })
             .collect();
         let mut g = c.benchmark_group(format!("cover/sides to 2^{side_bits}"));
-        // Granules of 2^40 keys at random: the pruning test.
-        let spans: Vec<(u64, u64)> = w.iter().take(rects.len()).map(|&k| (k, k.saturating_add(1 << 40))).collect();
-        g.bench_function("Morton2 intersects", |b| {
-            b.iter(|| {
-                for (&(x, y), &s) in rects.iter().zip(&spans) {
-                    black_box(Morton2::<u64>::intersects(black_box(s), x, y));
+        // Granules as a sparse index meets them: around a cell inside
+        // (hits), around a cell just left of the rectangle and missing
+        // it (the descent goes to the bottom), and 2^40 keys anywhere
+        // (turned away at the root; the only kind this bench used to
+        // time, which flattered it).
+        let curves: [Curve; 2] = [
+            ("Morton2", |x, y| Morton2::<u64>::encode(x, y).code(), Morton2::<u64>::intersects),
+            ("Hilbert2", |x, y| Hilbert2::<u64>::encode(x, y).index(), Hilbert2::<u64>::intersects),
+        ];
+        for (name, key, test) in curves {
+            let mut state = 0x2545_F491_4F6C_DD1Du64 ^ u64::from(side_bits);
+            let mut next = move || {
+                state ^= state << 13;
+                state ^= state >> 7;
+                state ^= state << 17;
+                state
+            };
+            let mut sets: [Vec<Query>; 3] = Default::default();
+            for &(x, y) in rects.iter().cycle() {
+                if sets.iter().all(|s| s.len() >= rects.len()) {
+                    break;
                 }
-            });
-        });
-        g.bench_function("Hilbert2 intersects", |b| {
-            b.iter(|| {
-                for (&(x, y), &s) in rects.iter().zip(&spans) {
-                    black_box(Hilbert2::<u64>::intersects(black_box(s), x, y));
+                let width = 1u64 << (next() % 24);
+                let around = |k: u64, a: u64, b: u64| (k.saturating_sub(a % width), k.saturating_add(b % width));
+                let (cx, cy, row) = (x.0 + next() % (x.1 - x.0 + 1), y.0 + next() % (y.1 - y.0 + 1), y.0 + next() % (y.1 - y.0 + 1));
+                let hit = around(key(cx, cy), next(), next());
+                let near = around(key(x.0.wrapping_sub(1), row), next(), next());
+                let far = {
+                    let a = next();
+                    (a, a.saturating_add(1 << 40))
+                };
+                for (set, span, want) in [(0, hit, true), (1, near, false), (2, far, false)] {
+                    if sets[set].len() < rects.len() && x.0 > 0 && test(span, x, y) == want {
+                        sets[set].push((span, x, y));
+                    }
                 }
-            });
-        });
+            }
+            for (label, set) in ["hit", "near miss", "far miss"].iter().zip(&sets) {
+                g.bench_function(format!("{name} intersects, {label}"), |b| {
+                    b.iter(|| {
+                        for &(s, x, y) in set {
+                            black_box(test(black_box(s), x, y));
+                        }
+                    });
+                });
+            }
+        }
         for budget in [16usize, 64] {
             let mut out = vec![(0u64, 0u64); budget];
             g.bench_function(format!("Morton2, {budget} ranges"), |b| {

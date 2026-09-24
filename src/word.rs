@@ -28,6 +28,10 @@
 /// Shift amounts passed to [`shl`](Word::shl) / [`shr`](Word::shr)
 /// must be `< BITS`; combinators in this crate uphold that by
 /// construction and debug-assert it, and a carrier may assume it.
+///
+/// `BITS` is a multiple of 8 and at most `2^16`: the byte combinators
+/// read bytes, and [`expand_broadword`] keeps one mask per halving
+/// round. A wider carrier is a compile error, not a surprise.
 pub trait Word: Copy + Eq + core::fmt::Debug {
     /// Width in bits.
     const BITS: u32;
@@ -105,9 +109,10 @@ pub trait Word: Copy + Eq + core::fmt::Debug {
         expand_broadword(self, mask)
     }
 
-    /// Position of the `k`-th set bit. Precondition `k < popcount`;
-    /// provided as a loop of `k` steps, so override it;
-    /// the result is unspecified otherwise. BMI2: `trailing_zeros(pdep(1 << k,
+    /// Position of the `k`-th set bit (from 0), or `BITS` when there is
+    /// none: the answer `trailing_zeros` gives for zero, which is where
+    /// clearing `k` lowest set bits leaves you. The provided loop takes `k`
+    /// steps, so a carrier overrides it. BMI2: `trailing_zeros(pdep(1 << k,
     /// self))`; portable: Vigna's broadword select.
     #[must_use]
     fn select_lowest(self, k: u32) -> u32 {
@@ -229,7 +234,9 @@ pub fn compress_broadword<W: Word>(x: W, mut mask: W) -> W {
 #[inline]
 #[must_use]
 pub fn expand_broadword<W: Word>(x: W, mask: W) -> W {
-    // Room for any carrier up to 2^16 bits.
+    // One mask a halving round, 16 rounds for 2^16 bits. Past that the
+    // array ran out at run time; now the build does.
+    const { assert!(W::BITS <= 1 << 16, "expand_broadword: BITS above 2^16") };
     let mut moves = [W::ZERO; 16];
     let mut m = mask;
     let mut mk = mask.not().shl(1);
@@ -286,10 +293,11 @@ const INCR_STEP_8: u64 = 0x8040_2010_0804_0201;
 /// see `benches/select.rs` for how it compares with PDEP and with a
 /// clear-lowest-bit loop on a given microarchitecture.
 ///
-/// Precondition: `k < count_ones(x)`.
+/// 64 when `k >= count_ones(x)`.
 ///
 /// ```
 /// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 2), 7);
+/// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 3), 64);
 /// ```
 #[must_use]
 pub fn select_broadword64(x: u64, k: u32) -> u32 {
@@ -299,6 +307,12 @@ pub fn select_broadword64(x: u64, k: u32) -> u32 {
     s = (s & (0x3 * ONES_STEP_4)) + ((s >> 2) & (0x3 * ONES_STEP_4));
     s = (s + (s >> 4)) & (0x0F * ONES_STEP_8);
     let byte_sums = s.wrapping_mul(ONES_STEP_8);
+    // The top byte is the whole count, so asking past it costs a compare
+    // the algorithm had already paid for. Without it the answer is a
+    // shift by 64, which Rust calls a panic and x86 calls a shift by 0.
+    if u64::from(k) >= byte_sums >> 56 {
+        return 64;
+    }
 
     // Phase 2: the byte holding the answer is the number of bytes whose
     // prefix sum is <= k. Compare all eight at once: with the MSB
@@ -543,7 +557,9 @@ impl Word for u64 {
             not(feature = "portable")
         ))]
         {
-            bmi2::pdep64(1 << k, self).trailing_zeros()
+            // Past the last set bit PDEP deposits nothing and TZCNT says 64,
+            // as long as `1 << k` is not asked to exist first.
+            bmi2::pdep64(1u64.checked_shl(k).unwrap_or(0), self).trailing_zeros()
         }
         #[cfg(not(all(
             target_arch = "x86_64",
@@ -637,7 +653,8 @@ impl Word for u32 {
     }
     #[inline]
     fn select_lowest(self, k: u32) -> u32 {
-        u64::from(self).select_lowest(k)
+        // Zero-extended, "none" comes back as 64.
+        u64::from(self).select_lowest(k).min(Self::BITS)
     }
     // The prefix of a zero-extended word is the prefix of the word.
     #[allow(clippy::cast_possible_truncation)]
@@ -732,7 +749,7 @@ macro_rules! impl_word_narrow {
             }
             #[inline]
             fn select_lowest(self, k: u32) -> u32 {
-                u64::from(self).select_lowest(k)
+                u64::from(self).select_lowest(k).min(Self::BITS)
             }
             #[allow(clippy::cast_possible_truncation)]
             #[inline]

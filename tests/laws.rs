@@ -72,6 +72,10 @@ macro_rules! laws_for {
                 fn select_matches_reference(x in $strategy, k in 0..BITS) {
                     prop_assert!(laws::select_matches_reference(x, k));
                 }
+                #[test]
+                fn select_lowest_is_total(x in $strategy, k in prop_oneof![0..BITS + 2, any::<u32>()]) {
+                    prop_assert!(laws::select_lowest_is_total(x, k));
+                }
                 // compact / expand
                 #[test]
                 fn compact_matches_reference(x in $strategy, m in $strategy) {
@@ -937,4 +941,26 @@ mod cover {
             prop_assert!(laws::hilbert2_intersects_agrees_with_cover(x, y, &pts, &mut out));
         }
     }
+}
+
+/// The slice law on slices of nothing but ones, where random words
+/// seldom go: the reference once kept 512 positions and four `Wide<3>`
+/// hold 3072.
+#[test]
+fn slice_law_on_dense_slices() {
+    use hakmem::prelude::*;
+    use hakmem::wide::Wide;
+    fn check<W: Word>() {
+        let words = [W::ONES; 4];
+        let bits = W::BITS as usize;
+        for i in [0, 1, bits, 4 * bits - 1, 4 * bits, 4 * bits + 3] {
+            for k in [1, W::BITS] {
+                assert!(hakmem::laws::slice_ops_match_reference(&words, i, k), "{} bits, i {i}, k {k}", W::BITS);
+            }
+        }
+    }
+    check::<u8>();
+    check::<u64>();
+    check::<u128>();
+    check::<Wide<3>>();
 }

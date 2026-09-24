@@ -59,6 +59,13 @@ use crate::affine::Affine8;
 use crate::bits::Bits;
 use crate::word::Word;
 
+/// The provided methods' scratch, checked against [`Lanes::LANES`] at
+/// compile time.
+const fn scratch<L: Lanes>() -> [u8; 64] {
+    const { assert!(L::LANES <= 64, "Lanes: more than 64 lanes") };
+    [0; 64]
+}
+
 /// `LANES` independent 8-bit lanes in one register.
 ///
 /// Required methods are the instructions a carrier has; the provided
@@ -66,7 +73,8 @@ use crate::word::Word;
 /// masks, `0xFF` or `0x00` per lane, so they chain with `and` / `or` /
 /// `not` and fold into a [`Word`] with [`to_bits`](Self::to_bits).
 pub trait Lanes: Copy + Eq + core::fmt::Debug {
-    /// Number of lanes.
+    /// Number of lanes, at most 64: the provided methods work in a
+    /// 64-byte scratch. AVX-512 fits, and so does a compile error.
     const LANES: usize;
     /// The word [`to_bits`](Self::to_bits) produces: one bit per lane.
     type Bits: Word;
@@ -196,7 +204,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[inline]
     #[must_use]
     fn shuffle(self, idx: Self) -> Self {
-        let mut out = [0u8; 64];
+        let mut out = scratch::<Self>();
         for (i, o) in out.iter_mut().enumerate().take(Self::LANES) {
             let j = idx.lane(i);
             *o = if j & 0x80 == 0 {
@@ -214,7 +222,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[inline]
     #[must_use]
     fn concat_shift(self, other: Self, n: usize) -> Self {
-        let mut out = [0u8; 64];
+        let mut out = scratch::<Self>();
         for (i, o) in out.iter_mut().enumerate().take(Self::LANES) {
             let j = i + n;
             *o = if j < Self::LANES {
@@ -249,7 +257,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[inline]
     #[must_use]
     fn unpack_lo(self, other: Self) -> Self {
-        let mut out = [0u8; 64];
+        let mut out = scratch::<Self>();
         for k in 0..Self::LANES / 2 {
             out[2 * k] = self.lane(k);
             out[2 * k + 1] = other.lane(k);
@@ -262,7 +270,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[inline]
     #[must_use]
     fn unpack_hi(self, other: Self) -> Self {
-        let mut out = [0u8; 64];
+        let mut out = scratch::<Self>();
         let half = Self::LANES / 2;
         for k in 0..half {
             out[2 * k] = self.lane(half + k);
@@ -290,7 +298,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[inline]
     #[must_use]
     fn mul_add_pairs(self, weights: Self) -> Self {
-        let mut out = [0u8; 64];
+        let mut out = scratch::<Self>();
         for k in 0..Self::LANES / 2 {
             let (a0, a1) = (i32::from(self.lane(2 * k)), i32::from(self.lane(2 * k + 1)));
             let (w0, w1) = (

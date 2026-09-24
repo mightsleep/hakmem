@@ -115,6 +115,14 @@ pub fn select_matches_reference<W: Word>(x: W, k: u32) -> bool {
     x.select(k) == reference::select(x, k)
 }
 
+/// `select_lowest` is total: the `k`-th set bit, or `BITS` when there
+/// is none, for every `k` up to `u32::MAX`, on every build. It used to
+/// panic, return garbage or return 64, depending on the flags.
+#[must_use]
+pub fn select_lowest_is_total<W: Word>(x: W, k: u32) -> bool {
+    x.select_lowest(k) == reference::select(x, k).unwrap_or(W::BITS)
+}
+
 // --- compact / expand -------------------------------------------------
 
 /// `compact` agrees with the per-bit definition.
@@ -1139,53 +1147,22 @@ pub fn slice_ops_match_reference<W: Word>(words: &[W], i: usize, k: u32) -> bool
     let bits = W::BITS as usize;
     let total = words.len() * bits;
     let bit = |p: usize| words[p / bits].bit((p % bits) as u32);
-    let set: alloc_free::Positions = (0..total).filter(|&p| bit(p)).collect();
+    // The reference counts instead of collecting. It collected into 512
+    // slots once, which held until a test handed it four `Wide<3>` of ones.
+    let set = || (0..total).filter(|&p| bit(p));
 
-    let rank_ok = crate::slice::rank(words, i) == set.iter().filter(|&&p| p < i).count();
-    let select_ok = crate::slice::select(words, i) == set.get(i).copied();
-    let next_ok = crate::slice::next_set_after(words, i) == set.iter().copied().find(|&p| p >= i);
+    let rank_ok = crate::slice::rank(words, i) == set().filter(|&p| p < i).count();
+    let select_ok = crate::slice::select(words, i) == set().nth(i);
+    let next_ok = crate::slice::next_set_after(words, i) == set().find(|&p| p >= i);
     let run_ref = (0..total).find(|&s| s + k as usize <= total && (s..s + k as usize).all(bit));
     let run_ok = crate::slice::find_run(words, k) == run_ref;
-    let positions_ok = crate::slice::positions(words).eq(set.iter().copied());
+    let positions_ok = crate::slice::positions(words).eq(set());
     rank_ok
         && select_ok
         && next_ok
         && run_ok
         && positions_ok
-        && crate::slice::popcount(words) == set.len()
-}
-
-/// Tiny fixed-capacity position list so the slice reference stays
-/// `no_std` (slices in the laws are at most 4 words wide).
-mod alloc_free {
-    pub(super) struct Positions {
-        buf: [usize; 512],
-        len: usize,
-    }
-    impl Positions {
-        pub(super) fn iter(&self) -> core::slice::Iter<'_, usize> {
-            self.buf[..self.len].iter()
-        }
-        pub(super) fn get(&self, i: usize) -> Option<&usize> {
-            self.buf[..self.len].get(i)
-        }
-        pub(super) const fn len(&self) -> usize {
-            self.len
-        }
-    }
-    impl FromIterator<usize> for Positions {
-        fn from_iter<I: IntoIterator<Item = usize>>(it: I) -> Self {
-            let mut p = Self {
-                buf: [0; 512],
-                len: 0,
-            };
-            for v in it {
-                p.buf[p.len] = v;
-                p.len += 1;
-            }
-            p
-        }
-    }
+        && crate::slice::popcount(words) == set().count()
 }
 
 // --- permute --------------------------------------------------------------

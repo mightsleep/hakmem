@@ -302,13 +302,18 @@ budgets); the S2 region coverer, which approximates in cells rather
 than ranges, takes 20 to 80 µs.
 
 `intersects` answers the question the other way round, for pruning a
-block of sorted keys by its ends: 10 ns a call, one descent of about
-two paths, since a node is an interval of keys and a square of cells
+block of sorted keys by its ends: one descent of about two paths, since a node is an interval of keys and a square of cells
 at once and only the nodes on the paths of the two ends are partly in
 the interval. It steps three levels at a time as the cover does: the
 descendants the interval meets and those inside it are two runs of
 bits, the rectangle gives its two masks, and a descendant inside one
-while meeting the other ends it. A level at a time it was 21 ns.
+while meeting the other ends it. On `u64` a hit costs 40 to 90 ns,
+less for bigger rectangles, which offer a descendant inside sooner; a
+near miss, the granule next to the rectangle, 100, since proving no is
+a walk to the bottom; a granule nowhere near 10. A level at a time
+they were 5 to 7 times that, bar the last. The first benchmark timed
+only the last kind and reported a 2x; the real one was bigger, which
+is the rare way for a benchmark to be wrong.
 
 Without VBMI the batch is still faster than the per-key form (7.0
 against 12.3 µs for the 2D `u64` case on the same core): Morton first

@@ -105,7 +105,7 @@ frames read off the indices of the four corners (the decoder's frames
 form the Klein group, so a frame is two parities). A guess from the
 perimeter and a step or two find the deepest level with at most two
 budgets of runs. Then two walks, three levels a step with the 64
-grandchildren of grandchildren as one `u64` mask per frame: one writes
+descendants as one `u64` mask per frame: one writes
 the gaps into the output as scratch and counts them by bit length,
 the threshold that leaves `budget` runs is found by class (bit length
 and three bits of mantissa, the classes of an offset allocator, a
@@ -125,8 +125,10 @@ one descent: a node is an interval of keys and a square of cells, so
 either disjointness rules it out and either containment (with the
 other met) settles it, and only the nodes on the paths of `a` and `b`
 are partly in the interval; three levels a step, the interval and the
-rectangle each two masks of the 64 descendants. About 10 ns a call on
-`u64` (21 a level at a time); laws against
+rectangle each two masks of the 64 descendants. On `u64`, 40 to 90 ns
+for a hit, 100 for a near miss, 10 for a granule nowhere near; a
+level at a time it was 5 to 7 times that, except the last, which is
+the one the first benchmark measured. Laws against
 the cells on `u16` and against `cover` on `u64`, whose gaps must miss.
 
 The batch conversions dispatch at run time on `x86_64`: each kernel

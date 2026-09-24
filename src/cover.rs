@@ -24,11 +24,15 @@
 //! bits under the leading one. Gaps are sums of a few node sizes, so
 //! the class of the threshold nearly always holds one value.
 //!
-//! The walk goes three levels at a time: a node's 64 grandchildren of
-//! grandchildren as one `u64` in curve order, those meeting the
+//! The walk goes three levels at a time: the 64 descendants of a node
+//! three levels down as one `u64` in curve order, those meeting the
 //! rectangle the AND of a mask of its columns and a mask of its rows,
 //! each looked up per frame. A run of ones in a mask is a range of keys,
 //! and only the partial children are descended into.
+//!
+//! `intersects` asks the other question, whether a range of keys holds
+//! a cell of the rectangle, by the same masks: the range too is two
+//! runs of bits over the descendants, and at most two of them go down.
 
 // `unreachable_pub` wants `pub(crate)` here and clippy wants `pub`; the
 // rustc lint is the one the crate chose.

@@ -331,7 +331,9 @@ Morton ranges on the full `u64` grid, 1.1 µs for 16 Hilbert ranges.
 The other way round, `intersects(keys, x, y)` says whether a block of
 keys (a granule, a row group, a file, by its least and greatest key)
 can hold a point of the rectangle: one descent where a node is an
-interval of keys and a square of cells at once, about 10 ns.
+interval of keys and a square of cells at once. 40 to 90 ns when the
+answer is yes, 100 when a granule just misses, 10 when it is nowhere
+near.
 
 ```rust
 use hakmem::prelude::*;
