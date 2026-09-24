@@ -673,7 +673,10 @@
 //! constant anyone typed. The algebraic loop costs three to four times
 //! the table: its chain is ten operations a level and a level cannot
 //! start before the frame above it is known, while a lookup is one
-//! load from L1.
+//! load from L1. The monoid lacks composition, not symmetry: a step
+//! commutes with the translations of `V₄ ⊲ A₄`, which move an octant
+//! by a XOR, so the 96 entries are 24 between two XORs, small enough
+//! for two 16-entry shuffles.
 //!
 //! **Laws.** `hilbert3_matches_reference` (the scan and the table
 //! against the machine in GF(4), both directions),

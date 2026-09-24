@@ -18,7 +18,9 @@ in `benches/hilbert.rs` and the README. `hakmem::hilbert3::Hilbert3` and
 (1.6 to 1.7 times the table loop); the encode, whose transition monoid
 has no structure, is the twelve-state machine memoised into a
 table of 96 bytes built by a `const fn` from the algebra,
-on par with the incumbent. Checked against the published tables on
+on par with the incumbent. Both tables factor through
+`A₄ = V₄ ⋊ C₃`, 24 entries between two XORs a level, checked at
+compile time. Checked against the published tables on
 every cell of every order up to 5. Cookbook recipe 14. Laws against the
 textbook `xy2d` / `d2xy` loops, the path property and the order
 recursion, exhaustive on `u16` up to order 8. `Bits::suffix_xor` and

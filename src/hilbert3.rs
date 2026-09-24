@@ -25,8 +25,17 @@
 //! permutations (each has eight images), the monoid they generate
 //! passes a million elements at word length seven, and the all-zero
 //! word never resets it, so neither a group representation nor a
-//! window exists. [`Hilbert3::from_morton`] walks the levels through
-//! a table of 96 bytes that a `const fn` builds from
+//! window exists. What the monoid lacks is composition, not symmetry:
+//! the frames are `V₄ ⋊ C₃`, a translation in `V₄` acts on an octant
+//! as a XOR, and a step in the frame `(m, t)` is the step in `(m, 0)`
+//! on the octant moved by `t`, with `t` added to the frame below. The
+//! two machines are the two orders of that cascade. Decoding, the
+//! rotation is driven by the triple alone and the translation is a XOR
+//! accumulated under it, hence the scan; encoding, the input is moved
+//! by `t` before the rotation sees it, so the rotation depends on the
+//! translation and no cascade runs top down.
+//! [`Hilbert3::from_morton`] walks the levels through a table of 96
+//! bytes that a `const fn` builds from
 //! the same GF(4) step ([`encode_step`]); the algebraic loop is three
 //! to four times slower, its chain being ten operations a level
 //! against one load. Both directions are checked against the tables
@@ -436,7 +445,7 @@ macro_rules! hilbert3_batch {
             /// place: each Morton code becomes the Hilbert index of the
             /// same cell.
             ///
-            /// The encode has no algebra (the maps on the twelve frames
+            /// The encode is not a scan (the maps on the twelve frames
             /// are not permutations), which is the case a shuffle serves:
             /// with AVX-512 VBMI a level is one `vpermi2b` through
             /// [`ENCODE_TABLE`], padded to 128 bytes in two registers, per

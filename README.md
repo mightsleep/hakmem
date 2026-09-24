@@ -266,7 +266,7 @@ similar strings and is not implemented.
 
 In 3D the frames form the alternating group `A₄`, which is
 `AGL(1, 4)`, so the 2D encode's scan is the 3D decode; the 3D encode
-has no such structure and is the twelve-state machine memoised into
+is not a scan and is the twelve-state machine memoised into
 a table of 96 bytes built at compile time from the same
 arithmetic. It is the incumbent's machine, ahead of it by a table padded
 to 128 entries (the masked index needs no bounds check) and a loop the

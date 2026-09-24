@@ -215,8 +215,12 @@ Without VBMI the batch is still faster than the per-key form (7.0
 against 12.3 µs for the 2D `u64` case on the same core): Morton first
 and the conversion second is two loops the compiler schedules better
 than one fused one. The 3D encode is where the kernel matters most:
-its transition monoid has no algebra (section 8), which is exactly
-the case a table in a register serves. The NEON paths are checked in
+its transition monoid has no algebra (section 8), so a level is a
+lookup and not a scan, exactly the case a table in a register serves.
+The step keeps the symmetry the monoid loses: the translations
+`V₄ ⊲ A₄` act on octants as a XOR and commute with it, so the 96
+entries are 24 between two XORs, the size of two 16-entry shuffles
+(checked at compile time in `hilbert3.rs`). The NEON paths are checked in
 CI on the aarch64 runner and not yet measured.
 
 The choice lives in `word.rs`, `lanes.rs` and the batch kernels at the
@@ -295,7 +299,8 @@ that derivation was built and passed (`.github/plan.sh`).
   straight-line, fixed-width, data-independent kernels, the same
   boundary as bitslicing.
 - **Tables.** One, 96 bytes, the 3D Hilbert encode: a memo of a
-  twelve-state machine that no algebra composes, built at compile time
+  twelve-state machine that no algebra composes across levels (one
+  level factors through `A₄` to 24 entries), built at compile time
   from the algebra that defines it. Everything else is arithmetic.
 - **Bit storage.** `bitvec` territory. This is an algebra over words,
   not a container of bits. `slice` is the index-free layer between a
@@ -449,6 +454,11 @@ What is and is not a breaking change:
   elementary abelian and acts regularly on the quadrants; no 3D curve
   of this kind has that. Face-gated and non-self-similar curves were
   not searched.
+- A 3D batch kernel for 16-entry shuffles (SSSE3, AVX2, `tbl` over
+  two registers): the factored table is two PSHUFB sharing one index
+  and its complement, the MSB trick of Giesen's PivCo-Huffman merge
+  (2026). The same factoring for the 10 710 curves with frames `S₄` is
+  likely where their `V₄` is the even reflections; not checked.
 - A batched Hilbert encode: the scan is throughput-bound, so on many
   points at once the four-state loop interleaved eight ways may match
   it; not measured.
