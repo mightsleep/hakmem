@@ -163,6 +163,13 @@ fn bench_batch(c: &mut Criterion) {
                 black_box(&keys);
             });
         });
+        let (cx, cy): (Vec<u64>, Vec<u64>) = coords.iter().copied().unzip();
+        g.bench_function("hakmem columns", |b| {
+            b.iter(|| {
+                Hilbert2::<u64>::encode_columns(black_box(&cx), &cy, &mut keys);
+                black_box(&keys);
+            });
+        });
         g.bench_function("hakmem per key", |b| {
             b.iter(|| {
                 for (k, &(x, y)) in keys.iter_mut().zip(&coords) {

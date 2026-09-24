@@ -316,6 +316,7 @@ keys.sort_unstable(); // curve order, as a packed R-tree builds it
 |---|---|---|---|
 | 2D encode, `u64` keys, 32 levels | **1.6 µs** | 6.1 µs | `fast_hilbert` 12.2 µs |
 | 2D encode, `u16` coordinates, `u32` keys, 16 levels | **0.90 µs** | 6.3 µs | `fast_hilbert` 8.5 µs |
+| 2D encode from two columns, `u64` keys (`Hilbert2::encode_columns`) | **1.3 µs** | 6.1 µs | `fast_hilbert` 12.2 µs |
 | 3D encode, `u64` keys, 21 levels | **1.8 µs** | 13.1 µs | rawrunprotected's tables 15.2 µs |
 | 3D decode, `u64` keys, 21 levels | **1.8 µs** | 8.8 µs | rawrunprotected's tables 15.1 µs |
 
@@ -331,7 +332,8 @@ unbuilt (banded Myers over `Wide<N>`), sketched so you can.
 ## Hardware paths
 
 The batch conversions (`from_morton_in_place`, `into_morton_in_place`,
-`encode_columns`, `decode_columns`, the last two on `Morton2` too) choose their kernel at run time on
+`encode_columns`, `decode_columns`, the last two on `Morton2` and
+`Hilbert2` too) choose their kernel at run time on
 `x86_64`: AVX-512 VBMI (and GFNI), else AVX2, else the per-key form,
 with no build flags and still `no_std`; the `portable` feature turns
 that off. Everything else is chosen at compile time, never at run

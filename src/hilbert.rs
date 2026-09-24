@@ -378,6 +378,62 @@ macro_rules! hilbert2_batch {
 
 hilbert2_batch!(u32 => from_morton_u32, u64 => from_morton_u64);
 
+macro_rules! hilbert2_columns {
+    ($($w:ty),* $(,)?) => {$(
+        impl Hilbert2<$w> {
+            /// [`encode`](Self::encode) over two columns of coordinates:
+            /// `out[i]` is the index of `(xs[i], ys[i])`, the shape
+            /// coordinates arrive in from geodata (quantised longitude and
+            /// latitude). Coordinates above `LEVELS` bits are dropped.
+            ///
+            /// [`Morton2::encode_columns`] into `out`, then
+            /// [`from_morton_in_place`](Self::from_morton_in_place): both
+            /// batches choose their kernels at run time, so a build
+            /// without flags gets them. The Morton step is about a tenth
+            /// of the whole; skipping it, as `Hilbert3` does, would need
+            /// byte planes for 2D, which are not worth the code here.
+            ///
+            /// # Panics
+            ///
+            /// If the three slices differ in length.
+            pub fn encode_columns(xs: &[$w], ys: &[$w], out: &mut [$w]) {
+                Morton2::<$w>::encode_columns(xs, ys, out);
+                Self::from_morton_in_place(out);
+            }
+
+            /// [`decode`](Self::decode) of a column of indices into two
+            /// columns of coordinates, the inverse of
+            /// [`encode_columns`](Self::encode_columns). The indices go
+            /// to Morton codes per key ([`into_morton`](Self::into_morton),
+            /// two suffix XORs) in blocks of 256 on the stack, and each
+            /// block through [`Morton2::decode_columns`].
+            ///
+            /// # Panics
+            ///
+            /// If the three slices differ in length.
+            pub fn decode_columns(keys: &[$w], xs: &mut [$w], ys: &mut [$w]) {
+                let n = keys.len();
+                assert!(
+                    xs.len() == n && ys.len() == n,
+                    "columns of {} and {} for {n} keys",
+                    xs.len(),
+                    ys.len()
+                );
+                let mut codes = [0 as $w; 256];
+                for ((k, x), y) in keys.chunks(256).zip(xs.chunks_mut(256)).zip(ys.chunks_mut(256)) {
+                    let codes = &mut codes[..k.len()];
+                    for (c, &h) in codes.iter_mut().zip(k) {
+                        *c = Self::from_index(h).into_morton().code();
+                    }
+                    Morton2::<$w>::decode_columns(codes, x, y);
+                }
+            }
+        }
+    )*};
+}
+
+hilbert2_columns!(u32, u64);
+
 /// The batch kernels. Each returns how many keys from the front it
 /// converted, a whole number of batches; the caller finishes the rest.
 /// The intrinsics are `unsafe` solely because they require the target

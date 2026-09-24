@@ -86,6 +86,14 @@ odd for `y`); decoding, two PSHUFB per axis and a pack inside 16 bits.
 PDEP and PEXT and seven to nine times the portable form a build
 without flags had. Chosen at run time; per point elsewhere.
 
+`Hilbert2::encode_columns` and `decode_columns` on `u32` and `u64`, the
+shape geodata arrives in: the Morton columns into the output, then
+`from_morton_in_place`, 1.3 ns a point on `u64` with or without build
+flags, against 2.8 through the per-point Morton code in a build without
+them. Decoding goes per key to Morton codes in blocks of 256 on the
+stack and through the Morton columns. Skipping the Morton code as
+`Hilbert3` does would need 2D byte planes for a tenth of the time.
+
 The batch conversions dispatch at run time on `x86_64`: each kernel
 compiled under its own `#[target_feature]`, chosen once a call by
 CPUID and XCR0 (`cpu.rs`, `core::arch` and one atomic, so still

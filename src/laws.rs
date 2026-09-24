@@ -453,6 +453,37 @@ morton2_columns_law!(
     u64 => morton2_columns_match_per_point_u64,
 );
 
+macro_rules! hilbert2_columns_law {
+    ($($w:ty => $name:ident),* $(,)?) => {$(
+        /// The 2D Hilbert column conversions are the per-point ones, both
+        /// ways.
+        ///
+        /// [`Hilbert2::encode_columns`](crate::hilbert::Hilbert2::encode_columns)
+        /// is [`Hilbert2::encode`](crate::hilbert::Hilbert2::encode) per
+        /// point, and `decode_columns` gives the coordinates back, masked
+        /// to the `LEVELS` bits the curve has. `keys` and `out` are
+        /// scratch of the columns' length and twice it (asserted).
+        #[must_use]
+        pub fn $name(xs: &[$w], ys: &[$w], keys: &mut [$w], out: &mut [$w]) -> bool {
+            use crate::hilbert::Hilbert2;
+            let n = xs.len();
+            assert!(ys.len() == n, "columns must match");
+            assert!(keys.len() == n && out.len() == 2 * n, "scratch must match the columns");
+            Hilbert2::<$w>::encode_columns(xs, ys, keys);
+            let forward = (0..n).all(|i| keys[i] == Hilbert2::<$w>::encode(xs[i], ys[i]).index());
+            let (ox, oy) = out.split_at_mut(n);
+            Hilbert2::<$w>::decode_columns(keys, ox, oy);
+            let used = <$w>::MAX >> (<$w>::BITS / 2);
+            forward && (0..n).all(|i| (ox[i], oy[i]) == (xs[i] & used, ys[i] & used))
+        }
+    )*};
+}
+
+hilbert2_columns_law!(
+    u32 => hilbert2_columns_match_per_point_u32,
+    u64 => hilbert2_columns_match_per_point_u64,
+);
+
 macro_rules! hilbert_in_place_order_law {
     ($($w:ty => $name2:ident, $name3:ident),* $(,)?) => {$(
         /// The batch on the curve of `order` levels is
