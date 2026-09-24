@@ -420,7 +420,10 @@ pub fn hilbert3_columns_match_per_point(
     use crate::hilbert3::Hilbert3;
     let n = xs.len();
     assert!(ys.len() == n && zs.len() == n, "columns must match");
-    assert!(keys.len() == n && out.len() == 3 * n, "scratch must match the columns");
+    assert!(
+        keys.len() == n && out.len() == 3 * n,
+        "scratch must match the columns"
+    );
     Hilbert3::<u64>::encode_columns(xs, ys, zs, keys);
     let forward = (0..n).all(|i| keys[i] == Hilbert3::<u64>::encode(xs[i], ys[i], zs[i]).index());
     let (ox, rest) = out.split_at_mut(n);
@@ -604,48 +607,62 @@ cover_laws! {
 }
 
 macro_rules! intersects_laws {
-    ($($curve:ident => $small:ident, $wide:ident, $encode:expr, $encode64:expr;)*) => {$(
-        /// `intersects` on the `u16` grid against the cells: true exactly
-        /// when some cell of the rectangle has its key in `keys`.
+    ($($curve:ident . $key:ident => $small:ident, $wide:ident;)*) => {$(
+        /// `intersects` against the cells, on any carrier: true exactly
+        /// when some cell of the rectangle has its key in `keys`. It
+        /// visits every cell, so keep the rectangle small past `u16`.
         #[must_use]
-        pub fn $small(keys: (u16, u16), x: (u16, u16), y: (u16, u16)) -> bool {
+        pub fn $small<W: Word + Ord>(keys: (W, W), x: (W, W), y: (W, W)) -> bool {
             use crate::prelude::*;
-            let (x1, y1) = (x.1.min(255), y.1.min(255));
+            let side = W::low_ones(W::BITS / 2);
+            let (x1, y1) = (x.1.min(side), y.1.min(side));
             let mut any = false;
-            for cx in x.0..=x1 {
-                for cy in y.0..=y1 {
-                    let k: u16 = $encode(cx, cy);
+            let mut cx = x.0;
+            while x.0 <= x1 && y.0 <= y1 {
+                let mut cy = y.0;
+                loop {
+                    let k = $curve::<W>::encode(cx, cy).$key();
                     any |= keys.0 <= k && k <= keys.1;
+                    if cy == y1 {
+                        break;
+                    }
+                    cy = cy.wrapping_add(W::ONE);
                 }
+                if cx == x1 {
+                    break;
+                }
+                cx = cx.wrapping_add(W::ONE);
             }
-            $curve::<u16>::intersects(keys, x, y) == any
+            $curve::<W>::intersects(keys, x, y) == any
         }
 
-        /// `intersects` on the full `u64` grid against `cover`.
+        /// `intersects` against `cover`, on any carrier and any grid.
         ///
-        /// Every gap
-        /// between the ranges of a cover misses the rectangle, and every
-        /// interval holding the key of one of `points` inside it meets it.
+        /// Every gap between the ranges of a cover misses the rectangle,
+        /// and every interval holding the key of one of `points` inside
+        /// it meets it: the key alone, and a long run of keys before it.
         /// `out` is the cover's scratch.
         #[must_use]
-        pub fn $wide(x: (u64, u64), y: (u64, u64), points: &[(u64, u64)], out: &mut [(u64, u64)]) -> bool {
+        pub fn $wide<W: Word + Ord>(x: (W, W), y: (W, W), points: &[(W, W)], out: &mut [(W, W)]) -> bool {
             use crate::prelude::*;
-            let n = $curve::<u64>::cover(x, y, out);
+            let meets = |a: W, b: W| $curve::<W>::intersects((a, b), x, y);
+            let n = $curve::<W>::cover(x, y, out);
             let gaps_miss = out[..n]
                 .windows(2)
-                .all(|w| !$curve::<u64>::intersects((w[0].1 + 1, w[1].0 - 1), x, y));
+                .all(|w| !meets(w[0].1.wrapping_add(W::ONE), w[1].0.wrapping_sub(W::ONE)));
             let ends_miss = n == 0
-                || ((out[0].0 == 0 || !$curve::<u64>::intersects((0, out[0].0 - 1), x, y))
-                    && (out[n - 1].1 == u64::MAX
-                        || !$curve::<u64>::intersects((out[n - 1].1 + 1, u64::MAX), x, y)));
-            let side = u64::from(u32::MAX);
+                || ((out[0].0 == W::ZERO || !meets(W::ZERO, out[0].0.wrapping_sub(W::ONE)))
+                    && (out[n - 1].1 == W::ONES || !meets(out[n - 1].1.wrapping_add(W::ONE), W::ONES)));
+            let side = W::low_ones(W::BITS / 2);
+            // 2^40 keys on u64, as many relative to the width elsewhere.
+            let long = W::ONE.shl(W::BITS * 5 / 8);
             let hits = points
                 .iter()
                 .filter(|p| x.0 <= p.0 && p.0 <= x.1.min(side) && y.0 <= p.1 && p.1 <= y.1.min(side))
                 .all(|&(px, py)| {
-                    let k: u64 = $encode64(px, py);
-                    $curve::<u64>::intersects((k, k), x, y)
-                        && $curve::<u64>::intersects((k.saturating_sub(1 << 40), k.saturating_add(3)), x, y)
+                    let k = $curve::<W>::encode(px, py).$key();
+                    let before = if k >= long { k.wrapping_sub(long) } else { W::ZERO };
+                    meets(k, k) && meets(before, k)
                 });
             gaps_miss && ends_miss && hits
         }
@@ -653,10 +670,8 @@ macro_rules! intersects_laws {
 }
 
 intersects_laws! {
-    Morton2 => morton2_intersects_matches_cells, morton2_intersects_agrees_with_cover,
-        |x, y| Morton2::<u16>::encode(x, y).code(), |x, y| Morton2::<u64>::encode(x, y).code();
-    Hilbert2 => hilbert2_intersects_matches_cells, hilbert2_intersects_agrees_with_cover,
-        |x, y| Hilbert2::<u16>::encode(x, y).index(), |x, y| Hilbert2::<u64>::encode(x, y).index();
+    Morton2.code => morton2_intersects_matches_cells, morton2_intersects_agrees_with_cover;
+    Hilbert2.index => hilbert2_intersects_matches_cells, hilbert2_intersects_agrees_with_cover;
 }
 
 macro_rules! hilbert_in_place_order_law {

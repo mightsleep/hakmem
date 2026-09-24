@@ -587,7 +587,12 @@ impl Hilbert3<u64> {
         );
         let done = batch::encode_columns(xs, ys, zs, out);
         let rest = &mut out[done..];
-        for (((key, &x), &y), &z) in rest.iter_mut().zip(&xs[done..]).zip(&ys[done..]).zip(&zs[done..]) {
+        for (((key, &x), &y), &z) in rest
+            .iter_mut()
+            .zip(&xs[done..])
+            .zip(&ys[done..])
+            .zip(&zs[done..])
+        {
             *key = Morton3::<u64>::encode(x, y, z).code();
         }
         Self::from_morton_in_place(rest);
@@ -742,13 +747,12 @@ mod batch {
     #[allow(unsafe_code, clippy::inline_always)]
     mod planes {
         use core::arch::x86_64::{
-            __m512i, _mm512_and_si512, _mm512_loadu_si512, _mm512_madd_epi16, _mm512_maddubs_epi16,
-            _mm512_multishift_epi64_epi8, _mm512_permutex2var_epi8, _mm512_set1_epi8,
-            _mm512_set1_epi16, _mm512_set1_epi32, _mm512_set1_epi64, _mm512_setzero_si512,
-            _mm512_slli_epi64, _mm512_srli_epi64, _mm512_storeu_si512, _mm512_ternarylogic_epi64,
+            __m512i, _mm512_and_si512, _mm512_gf2p8affine_epi64_epi8, _mm512_loadu_si512,
+            _mm512_madd_epi16, _mm512_maddubs_epi16, _mm512_multishift_epi64_epi8,
+            _mm512_permutex2var_epi8, _mm512_set1_epi8, _mm512_set1_epi16, _mm512_set1_epi32,
+            _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi64, _mm512_srli_epi64,
+            _mm512_storeu_si512, _mm512_ternarylogic_epi64,
         };
-
-        use core::arch::x86_64::_mm512_gf2p8affine_epi64_epi8;
 
         use super::super::{DECODE_PADDED, ENCODE_PADDED};
 
@@ -1057,11 +1061,17 @@ mod batch {
         /// to bits 63 and 62 for nothing. Two bit selects make the octant;
         /// the bits above it the level loop masks anyway.
         #[inline(always)]
-        unsafe fn columns_to_planes(xs: &[u64; 64], ys: &[u64; 64], zs: &[u64; 64], planes: &mut Planes) {
+        unsafe fn columns_to_planes(
+            xs: &[u64; 64],
+            ys: &[u64; 64],
+            zs: &[u64; 64],
+            planes: &mut Planes,
+        ) {
             // SAFETY: as `transpose`; the loads read the 64 coordinates of
             // each column.
             unsafe {
-                let load = |s: &[u64; 64], g: usize| _mm512_loadu_si512(s.as_ptr().add(8 * g).cast());
+                let load =
+                    |s: &[u64; 64], g: usize| _mm512_loadu_si512(s.as_ptr().add(8 * g).cast());
                 let bit0 = _mm512_set1_epi8(0x01);
                 let bits01 = _mm512_set1_epi8(0x03);
                 for (j, block) in planes.iter_mut().enumerate() {
@@ -1133,9 +1143,18 @@ mod batch {
                         ),
                         b2,
                     );
-                    _mm512_storeu_si512(xs.as_mut_ptr().add(8 * g).cast(), _mm512_and_si512(x, used));
-                    _mm512_storeu_si512(ys.as_mut_ptr().add(8 * g).cast(), _mm512_and_si512(y, used));
-                    _mm512_storeu_si512(zs.as_mut_ptr().add(8 * g).cast(), _mm512_and_si512(z, used));
+                    _mm512_storeu_si512(
+                        xs.as_mut_ptr().add(8 * g).cast(),
+                        _mm512_and_si512(x, used),
+                    );
+                    _mm512_storeu_si512(
+                        ys.as_mut_ptr().add(8 * g).cast(),
+                        _mm512_and_si512(y, used),
+                    );
+                    _mm512_storeu_si512(
+                        zs.as_mut_ptr().add(8 * g).cast(),
+                        _mm512_and_si512(z, used),
+                    );
                 }
             }
         }
@@ -1584,7 +1603,6 @@ mod batch {
         );
     }
 
-
     /// `x86_64` chooses among the kernels once a call. They are compiled
     /// whatever the build's target features, each under its own
     /// `target_feature`; `crate::cpu` answers at compile time when the
@@ -1661,7 +1679,12 @@ mod batch {
     }
 
     #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
-    pub(super) const fn decode_columns(_: &[u64], _: &mut [u64], _: &mut [u64], _: &mut [u64]) -> usize {
+    pub(super) const fn decode_columns(
+        _: &[u64],
+        _: &mut [u64],
+        _: &mut [u64],
+        _: &mut [u64],
+    ) -> usize {
         0
     }
 

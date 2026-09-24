@@ -453,7 +453,10 @@ mod hilbert2_in_place {
                 "n={n}"
             );
             #[allow(clippy::cast_possible_truncation)]
-            let (xs, ys): (Vec<u32>, Vec<u32>) = (xs.iter().map(|&v| v as u32).collect(), ys.iter().map(|&v| v as u32).collect());
+            let (xs, ys): (Vec<u32>, Vec<u32>) = (
+                xs.iter().map(|&v| v as u32).collect(),
+                ys.iter().map(|&v| v as u32).collect(),
+            );
             let (mut keys, mut out) = (vec![0; n], vec![0; 2 * n]);
             assert!(
                 laws::hilbert2_columns_match_per_point_u32(&xs, &ys, &mut keys, &mut out),
@@ -475,7 +478,10 @@ mod hilbert2_in_place {
                 "n={n}"
             );
             #[allow(clippy::cast_possible_truncation)]
-            let (xs, ys): (Vec<u32>, Vec<u32>) = (xs.iter().map(|&v| v as u32).collect(), ys.iter().map(|&v| v as u32).collect());
+            let (xs, ys): (Vec<u32>, Vec<u32>) = (
+                xs.iter().map(|&v| v as u32).collect(),
+                ys.iter().map(|&v| v as u32).collect(),
+            );
             let (mut codes, mut out) = (vec![0; n], vec![0; 2 * n]);
             assert!(
                 laws::morton2_columns_match_per_point_u32(&xs, &ys, &mut codes, &mut out),
@@ -834,6 +840,7 @@ fn kindergarten_gathers_are_exact() {
 
 mod cover {
     use hakmem::laws;
+    use hakmem::prelude::{Hilbert2, Morton2};
     use proptest::prelude::*;
 
     /// Budgets from one range to more than any rectangle's exact cover.
@@ -842,8 +849,14 @@ mod cover {
     fn check(x: (u16, u16), y: (u16, u16)) {
         for budget in BUDGETS {
             let mut out = vec![(0u16, 0u16); budget];
-            assert!(laws::morton2_cover_matches_cells(x, y, &mut out), "Morton {x:?} {y:?} {budget}");
-            assert!(laws::hilbert2_cover_matches_cells(x, y, &mut out), "Hilbert {x:?} {y:?} {budget}");
+            assert!(
+                laws::morton2_cover_matches_cells(x, y, &mut out),
+                "Morton {x:?} {y:?} {budget}"
+            );
+            assert!(
+                laws::hilbert2_cover_matches_cells(x, y, &mut out),
+                "Hilbert {x:?} {y:?} {budget}"
+            );
         }
     }
 
@@ -873,8 +886,14 @@ mod cover {
         for x in [0u16, 7, 200] {
             for budget in (128..256).step_by(9) {
                 let mut out = vec![(0u16, 0u16); budget];
-                assert!(laws::morton2_cover_matches_cells((x, x), (0, 255), &mut out), "Morton {x} {budget}");
-                assert!(laws::hilbert2_cover_matches_cells((x, x), (0, 255), &mut out), "Hilbert {x} {budget}");
+                assert!(
+                    laws::morton2_cover_matches_cells((x, x), (0, 255), &mut out),
+                    "Morton {x} {budget}"
+                );
+                assert!(
+                    laws::hilbert2_cover_matches_cells((x, x), (0, 255), &mut out),
+                    "Hilbert {x} {budget}"
+                );
             }
         }
     }
@@ -892,8 +911,14 @@ mod cover {
             ((12_345, 12_346), (0, 300), (0, 300)),
         ];
         for (k, x, y) in cases {
-            assert!(laws::morton2_intersects_matches_cells(k, x, y), "Morton {k:?} {x:?} {y:?}");
-            assert!(laws::hilbert2_intersects_matches_cells(k, x, y), "Hilbert {k:?} {x:?} {y:?}");
+            assert!(
+                laws::morton2_intersects_matches_cells(k, x, y),
+                "Morton {k:?} {x:?} {y:?}"
+            );
+            assert!(
+                laws::hilbert2_intersects_matches_cells(k, x, y),
+                "Hilbert {k:?} {x:?} {y:?}"
+            );
         }
     }
 
@@ -918,6 +943,45 @@ mod cover {
         #[test]
         fn random_rectangles(a in 0u16..300, b in 0u16..300, c in 0u16..300, d in 0u16..300) {
             check((a.min(b), a.max(b)), (c.min(d), c.max(d)));
+        }
+
+
+        /// `u32` (16 levels) and `u128` (64) end on a step of one level,
+        /// which `u16` and `u64` never take.
+        #[test]
+        fn intersects_u32_cells(
+            x0 in 0u32..65_000, w in 0u32..20, y0 in 0u32..65_000, h in 0u32..20,
+            c in any::<(u16, u16)>(), len in prop_oneof![0u32..4, 0u32..5000, any::<u32>()],
+        ) {
+            let (x, y) = ((x0, x0 + w), (y0, y0 + h));
+            // Around a cell of the rectangle half the time, anywhere otherwise.
+            let (cx, cy) = (x0 + u32::from(c.0) % (w + 1), y0 + u32::from(c.1) % (h + 1));
+            for k in [Morton2::<u32>::encode(cx, cy).code(), Hilbert2::<u32>::encode(cx, cy).index(), u32::from(c.0) << 16 | u32::from(c.1)] {
+                let keys = (k.saturating_sub(len / 2), k.saturating_add(len / 2));
+                prop_assert!(laws::morton2_intersects_matches_cells(keys, x, y));
+                prop_assert!(laws::hilbert2_intersects_matches_cells(keys, x, y));
+            }
+        }
+
+        #[test]
+        fn intersects_u32_u128_against_cover(
+            a in any::<u16>(), b in any::<u16>(), c in any::<u16>(), d in any::<u16>(),
+            budget in 1usize..48,
+            points in prop::collection::vec((any::<u16>(), any::<u16>()), 32),
+        ) {
+            let x = (u32::from(a.min(b)), u32::from(a.max(b)));
+            let y = (u32::from(c.min(d)), u32::from(c.max(d)));
+            let pts: Vec<(u32, u32)> = points.iter().map(|&(p, q)| (u32::from(p).clamp(x.0, x.1), u32::from(q).clamp(y.0, y.1))).collect();
+            let mut out = vec![(0u32, 0u32); budget];
+            prop_assert!(laws::morton2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+            prop_assert!(laws::hilbert2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+            // The same rectangle scaled to the u128 grid.
+            let wide = |v: (u32, u32)| (u128::from(v.0) << 40, (u128::from(v.1) << 40) | 0xFF_FFFF_FFFF);
+            let (x, y) = (wide(x), wide(y));
+            let pts: Vec<(u128, u128)> = pts.iter().map(|&(p, q)| (u128::from(p) << 40 | 7, u128::from(q) << 40)).collect();
+            let mut out = vec![(0u128, 0u128); budget];
+            prop_assert!(laws::morton2_intersects_agrees_with_cover(x, y, &pts, &mut out));
+            prop_assert!(laws::hilbert2_intersects_agrees_with_cover(x, y, &pts, &mut out));
         }
 
         #[test]
@@ -955,7 +1019,11 @@ fn slice_law_on_dense_slices() {
         let bits = W::BITS as usize;
         for i in [0, 1, bits, 4 * bits - 1, 4 * bits, 4 * bits + 3] {
             for k in [1, W::BITS] {
-                assert!(hakmem::laws::slice_ops_match_reference(&words, i, k), "{} bits, i {i}, k {k}", W::BITS);
+                assert!(
+                    hakmem::laws::slice_ops_match_reference(&words, i, k),
+                    "{} bits, i {i}, k {k}",
+                    W::BITS
+                );
             }
         }
     }

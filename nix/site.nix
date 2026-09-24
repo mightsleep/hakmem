@@ -19,6 +19,7 @@
       hakmem-test-portable-default = "tests, portable";
       hakmem-test-bmi2-default = "tests, +bmi2,+pclmulqdq,+avx2";
       hakmem-test-bmi2-portable-feature = "tests, +bmi2 with feature portable";
+      hakmem-test-debug = "tests, debug build (debug asserts, overflow checks)";
       hakmem-doctest-portable = "doctests, portable";
       hakmem-doctest-bmi2 = "doctests, +bmi2";
       hakmem-clippy-portable-default = "clippy, portable";

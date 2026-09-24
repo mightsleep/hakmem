@@ -491,7 +491,11 @@ fn bench_morton_batch(c: &mut Criterion) {
 /// A granule and a rectangle, `intersects` in its argument order.
 type Query = ((u64, u64), (u64, u64), (u64, u64));
 /// A curve for the intersects bench: name, encode, the test.
-type Curve = (&'static str, fn(u64, u64) -> u64, fn((u64, u64), (u64, u64), (u64, u64)) -> bool);
+type Curve = (
+    &'static str,
+    fn(u64, u64) -> u64,
+    fn((u64, u64), (u64, u64), (u64, u64)) -> bool,
+);
 
 /// Rectangles to key ranges on the full `u64` grid: 256 random
 /// rectangles of sides up to `2^k` cells, one call each.
@@ -503,7 +507,10 @@ fn bench_cover(c: &mut Criterion) {
             .map(|q| {
                 let mask = (1u64 << side_bits) - 1;
                 let (x0, y0) = (q[0] & 0xFFFF_FFFF, q[1] & 0xFFFF_FFFF);
-                let (x1, y1) = ((x0 + (q[2] & mask)).min(0xFFFF_FFFF), (y0 + (q[3] & mask)).min(0xFFFF_FFFF));
+                let (x1, y1) = (
+                    (x0 + (q[2] & mask)).min(0xFFFF_FFFF),
+                    (y0 + (q[3] & mask)).min(0xFFFF_FFFF),
+                );
                 ((x0, x1), (y0, y1))
             })
             .collect();
@@ -514,8 +521,16 @@ fn bench_cover(c: &mut Criterion) {
         // (turned away at the root; the only kind this bench used to
         // time, which flattered it).
         let curves: [Curve; 2] = [
-            ("Morton2", |x, y| Morton2::<u64>::encode(x, y).code(), Morton2::<u64>::intersects),
-            ("Hilbert2", |x, y| Hilbert2::<u64>::encode(x, y).index(), Hilbert2::<u64>::intersects),
+            (
+                "Morton2",
+                |x, y| Morton2::<u64>::encode(x, y).code(),
+                Morton2::<u64>::intersects,
+            ),
+            (
+                "Hilbert2",
+                |x, y| Hilbert2::<u64>::encode(x, y).index(),
+                Hilbert2::<u64>::intersects,
+            ),
         ];
         for (name, key, test) in curves {
             let mut state = 0x2545_F491_4F6C_DD1Du64 ^ u64::from(side_bits);
@@ -531,8 +546,14 @@ fn bench_cover(c: &mut Criterion) {
                     break;
                 }
                 let width = 1u64 << (next() % 24);
-                let around = |k: u64, a: u64, b: u64| (k.saturating_sub(a % width), k.saturating_add(b % width));
-                let (cx, cy, row) = (x.0 + next() % (x.1 - x.0 + 1), y.0 + next() % (y.1 - y.0 + 1), y.0 + next() % (y.1 - y.0 + 1));
+                let around = |k: u64, a: u64, b: u64| {
+                    (k.saturating_sub(a % width), k.saturating_add(b % width))
+                };
+                let (cx, cy, row) = (
+                    x.0 + next() % (x.1 - x.0 + 1),
+                    y.0 + next() % (y.1 - y.0 + 1),
+                    y.0 + next() % (y.1 - y.0 + 1),
+                );
                 let hit = around(key(cx, cy), next(), next());
                 let near = around(key(x.0.wrapping_sub(1), row), next(), next());
                 let far = {
@@ -576,5 +597,13 @@ fn bench_cover(c: &mut Criterion) {
     }
 }
 
-criterion_group!(benches, bench, bench_batch, bench3, bench3_batch, bench_morton_batch, bench_cover);
+criterion_group!(
+    benches,
+    bench,
+    bench_batch,
+    bench3,
+    bench3_batch,
+    bench_morton_batch,
+    bench_cover
+);
 criterion_main!(benches);

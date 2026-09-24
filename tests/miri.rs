@@ -87,7 +87,9 @@ fn lanes_hardware_paths() {
 fn hilbert_batch_paths() {
     use hakmem::laws;
     let mut s = 0x9E37_79B9_7F4A_7C15u64;
-    for n in [0usize, 1, 15, 16, 17, 32, 63, 64, 65, 130] {
+    // 583 = 512 + 64 + 7: a whole group of the 3D planes kernel, a block
+    // and a tail. Miri is slow; the kernel is slower to debug.
+    for n in [0usize, 1, 15, 16, 17, 32, 63, 64, 65, 130, 583] {
         let codes: Vec<u64> = (0..n)
             .map(|_| {
                 s ^= s << 13;
@@ -129,7 +131,12 @@ fn hilbert_batch_paths() {
         #[allow(clippy::cast_possible_truncation)]
         let shifted32: Vec<u32> = shifted.iter().map(|&c| c as u32).collect();
         assert!(
-            laws::morton2_columns_match_per_point_u32(&codes32, &shifted32, &mut z_codes32, &mut z_back32),
+            laws::morton2_columns_match_per_point_u32(
+                &codes32,
+                &shifted32,
+                &mut z_codes32,
+                &mut z_back32
+            ),
             "n={n}"
         );
         assert!(

@@ -582,7 +582,11 @@ pub(crate) fn cover<W: Word + Ord, C: Quadrants>(
 /// Bits `lo..=hi` of a `u64`, none when `lo > hi`; both below 64.
 #[inline]
 const fn bits(lo: u32, hi: u32) -> u64 {
-    if lo > hi { 0 } else { (u64::MAX >> (63 - hi)) & (u64::MAX << lo) }
+    if lo > hi {
+        0
+    } else {
+        (u64::MAX >> (63 - hi)) & (u64::MAX << lo)
+    }
 }
 
 /// Whether the node at `level` whose first key is `key`, square at
@@ -617,7 +621,10 @@ fn meets<W: Word + Ord, C: Quadrants>(
     };
     let (first_met, first_in) = if a > key {
         let d = a.wrapping_sub(key);
-        (clamp(d.shr(span)), clamp(d.wrapping_sub(W::ONE).shr(span)) + 1)
+        (
+            clamp(d.shr(span)),
+            clamp(d.wrapping_sub(W::ONE).shr(span)) + 1,
+        )
     } else {
         (0, 0)
     };
@@ -632,7 +639,11 @@ fn meets<W: Word + Ord, C: Quadrants>(
         clamp(d.wrapping_add(W::ONE).shr(span)).min(n)
     };
     let keys_met = bits(first_met, last_met);
-    let keys_in = if past == 0 { 0 } else { bits(first_in, past - 1) };
+    let keys_in = if past == 0 {
+        0
+    } else {
+        bits(first_in, past - 1)
+    };
     let (cols, cols_in) = axis(ox, (r.x0, r.x1), below, k);
     let (rows, rows_in) = axis(oy, (r.y0, r.y1), below, k);
     let met = C::cells(k, frame, cols, rows);

@@ -299,7 +299,6 @@ macro_rules! morton2_columns {
     )*};
 }
 
-
 /// Z-order for [`crate::cover`]: digit `d` is `x` in bit 0, `y` in bit
 /// 1, one frame.
 pub(crate) struct ZQuadrants;
@@ -348,9 +347,17 @@ fn z_runs<W: Word + Ord>((x0, x1): (W, W), (y0, y1): (W, W), levels: u32) -> W {
     // `v` in `a..=b` with `v ≡ r` mod `2^m`.
     let progression = |(a, b): (W, W), r: W, m: u32| {
         let upto = |v: W| {
-            if v < r { W::ZERO } else { v.wrapping_sub(r).shr(m).wrapping_add(W::ONE) }
+            if v < r {
+                W::ZERO
+            } else {
+                v.wrapping_sub(r).shr(m).wrapping_add(W::ONE)
+            }
         };
-        let before = if a.is_zero() { W::ZERO } else { upto(a.wrapping_sub(W::ONE)) };
+        let before = if a.is_zero() {
+            W::ZERO
+        } else {
+            upto(a.wrapping_sub(W::ONE))
+        };
         upto(b).wrapping_sub(before)
     };
     // Whether the last multiple of `2^m` in `a..=b` sticks out past `b`
@@ -375,7 +382,11 @@ fn z_runs<W: Word + Ord>((x0, x1): (W, W), (y0, y1): (W, W), levels: u32) -> W {
         let rows = progression((y0, y1), half, t + 1).wrapping_sub(one(near));
         let cols = progression((x0, x1), W::ZERO, t + 1);
         n = n.wrapping_add(if near { cols } else { W::ZERO });
-        n = n.wrapping_add(if spills((x0, x1), t + 1) { rows } else { W::ZERO });
+        n = n.wrapping_add(if spills((x0, x1), t + 1) {
+            rows
+        } else {
+            W::ZERO
+        });
     }
     n
 }
@@ -519,7 +530,11 @@ mod batch {
 
                 /// Batches of four registers.
                 #[target_feature(enable = "avx2")]
-                pub(in crate::dilated) fn $decode(codes: &[$w], xs: &mut [$w], ys: &mut [$w]) -> usize {
+                pub(in crate::dilated) fn $decode(
+                    codes: &[$w],
+                    xs: &mut [$w],
+                    ys: &mut [$w],
+                ) -> usize {
                     const PER: usize = 32 / size_of::<$w>();
                     let (codes, _) = codes.as_chunks::<{ 4 * PER }>();
                     let (xs, _) = xs.as_chunks_mut::<{ 4 * PER }>();
@@ -534,15 +549,24 @@ mod batch {
                         // Nibbles `2i` and `2i + 1` into byte `i`: within a
                         // 16-bit word `w | w >> 4`, then the even bytes.
                         let pack = |n: __m256i| {
-                            _mm256_shuffle_epi8(_mm256_or_si256(n, _mm256_srli_epi16::<4>(n)), gather)
+                            _mm256_shuffle_epi8(
+                                _mm256_or_si256(n, _mm256_srli_epi16::<4>(n)),
+                                gather,
+                            )
                         };
                         for ((c, x), y) in codes.iter().zip(xs).zip(ys) {
                             for r in 0..4 {
                                 let v = _mm256_loadu_si256(c.as_ptr().add(PER * r).cast());
                                 let lo = _mm256_and_si256(v, low);
                                 let hi = _mm256_and_si256(_mm256_srli_epi64::<4>(v), low);
-                                let xn = _mm256_or_si256(_mm256_shuffle_epi8(xl, lo), _mm256_shuffle_epi8(xh, hi));
-                                let yn = _mm256_or_si256(_mm256_shuffle_epi8(yl, lo), _mm256_shuffle_epi8(yh, hi));
+                                let xn = _mm256_or_si256(
+                                    _mm256_shuffle_epi8(xl, lo),
+                                    _mm256_shuffle_epi8(xh, hi),
+                                );
+                                let yn = _mm256_or_si256(
+                                    _mm256_shuffle_epi8(yl, lo),
+                                    _mm256_shuffle_epi8(yh, hi),
+                                );
                                 _mm256_storeu_si256(x.as_mut_ptr().add(PER * r).cast(), pack(xn));
                                 _mm256_storeu_si256(y.as_mut_ptr().add(PER * r).cast(), pack(yn));
                             }
@@ -609,10 +633,18 @@ mod batch {
         pub(in crate::dilated) const fn encode_u64(_: &[u64], _: &[u64], _: &mut [u64]) -> usize {
             0
         }
-        pub(in crate::dilated) const fn decode_u32(_: &[u32], _: &mut [u32], _: &mut [u32]) -> usize {
+        pub(in crate::dilated) const fn decode_u32(
+            _: &[u32],
+            _: &mut [u32],
+            _: &mut [u32],
+        ) -> usize {
             0
         }
-        pub(in crate::dilated) const fn decode_u64(_: &[u64], _: &mut [u64], _: &mut [u64]) -> usize {
+        pub(in crate::dilated) const fn decode_u64(
+            _: &[u64],
+            _: &mut [u64],
+            _: &mut [u64],
+        ) -> usize {
             0
         }
     }

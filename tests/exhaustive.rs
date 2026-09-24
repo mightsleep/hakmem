@@ -664,3 +664,33 @@ fn u8_u16_subsets_and_gathers() {
         }
     }
 }
+
+/// `intersects` on the 16 × 16 grid of `u8`: every rectangle against
+/// intervals of every start and five lengths. Four levels is a step of
+/// three and a step of one, the step the wider tests never take.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn intersects_u8_every_rectangle() {
+    for x0 in 0..16u8 {
+        for x1 in x0..16 {
+            for y0 in 0..16u8 {
+                for y1 in y0..16 {
+                    for a in 0..=255u8 {
+                        for len in [0u8, 1, 4, 17, 100] {
+                            let k = (a, a.saturating_add(len));
+                            let (x, y) = ((x0, x1), (y0, y1));
+                            assert!(
+                                laws::morton2_intersects_matches_cells(k, x, y),
+                                "Morton {k:?} {x:?} {y:?}"
+                            );
+                            assert!(
+                                laws::hilbert2_intersects_matches_cells(k, x, y),
+                                "Hilbert {k:?} {x:?} {y:?}"
+                            );
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

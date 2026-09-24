@@ -50,8 +50,8 @@
 //! ```
 
 use crate::bits::Bits;
-use crate::dilated::{Dilated, Morton2};
 use crate::cover::{Masks, Quadrants, Rect, small};
+use crate::dilated::{Dilated, Morton2};
 use crate::word::Word;
 
 /// A 2D Hilbert index over the full width of `W`: `BITS / 2` levels,
@@ -461,7 +461,12 @@ struct Step {
 
 /// The three steps of a node in each frame.
 const STEPS: [[Step; 3]; 4] = {
-    let mut t = [[Step { axis: 0, up: 0, half: 0, corner: 0 }; 3]; 4];
+    let mut t = [[Step {
+        axis: 0,
+        up: 0,
+        half: 0,
+        corner: 0,
+    }; 3]; 4];
     let mut f = 0;
     while f < 4 {
         let mut d = 0;
@@ -471,9 +476,19 @@ const STEPS: [[Step; 3]; 4] = {
             // Where the first quadrant ends: the cell of its digit 3.
             let (ex, ey, _) = CHILDREN[ag as usize][3];
             t[f][d] = if ax == bx {
-                Step { axis: 1, up: by, half: ax, corner: ex }
+                Step {
+                    axis: 1,
+                    up: by,
+                    half: ax,
+                    corner: ex,
+                }
             } else {
-                Step { axis: 0, up: bx, half: ay, corner: ey }
+                Step {
+                    axis: 0,
+                    up: bx,
+                    half: ay,
+                    corner: ey,
+                }
             };
             d += 1;
         }
@@ -634,7 +649,12 @@ fn side<W: Word + Ord>(
         n = to_last[top].wrapping_sub(to_first[top]);
     }
     let h = W::ONE.shl(lvl - 1);
-    let offsets = [W::ZERO, h.wrapping_sub(W::ONE), h, h.shl(1).wrapping_sub(W::ONE)];
+    let offsets = [
+        W::ZERO,
+        h.wrapping_sub(W::ONE),
+        h,
+        h.shl(1).wrapping_sub(W::ONE),
+    ];
     let end = |c: W, corner: W| {
         let at = AT[axis][usize::from(up)][frame(corner, lvl + s) as usize];
         let origin = c.shl(lvl);
@@ -684,7 +704,11 @@ impl Quadrants for HilbertQuadrants {
         let (x0, x1, y0, y1) = (r.x0.shr(s), r.x1.shr(s), r.y0.shr(s), r.y1.shr(s));
         let top = W::low_ones(levels);
         let [h00, h10, h01, h11] = *corners;
-        let mut n = if x0.is_zero() && y0.is_zero() { W::ONE } else { W::ZERO };
+        let mut n = if x0.is_zero() && y0.is_zero() {
+            W::ONE
+        } else {
+            W::ZERO
+        };
         n = n.wrapping_add(side(levels, s, 0, x0, 1, (y0, y1), (h00, h01)));
         n = n.wrapping_add(side(levels, s, 1, y0, 1, (x0, x1), (h00, h10)));
         if x1 < top {
