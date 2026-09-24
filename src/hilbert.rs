@@ -236,12 +236,60 @@ const fn level(frame: u8, x: u8, y: u8) -> (u8, u8) {
     ((hi << 1) | lo, swap_below | (flip_below << 1))
 }
 
-/// Two levels of the encode machine a byte, for the batch kernels: the
-/// entry at `frame << 4 | nibble`, the nibble being two levels of a
-/// Morton code (`y x` of the upper level, then of the lower), holds
-/// `frame_below << 4 | digits`. The frame stays in bits 4 and 5, so the
-/// next index is the entry masked and the next nibble or-ed in. Sixty-four
-/// bytes: four NEON registers for `tbl`.
+/// `L` levels of the encode machine a byte, modulo the reflection that
+/// flips both axes, for the batch kernels: [`level`] in the frame
+/// `(swap, flip)` is [`level`] in `(swap, 0)` on the cell moved by
+/// `x ^ flip, y ^ flip`, with `flip` added below, so `flip` is a XOR
+/// mask and `swap` alone is tabled. In the cell basis `(x, x ^ y)` the
+/// reflection moves `x` only. The entry at `swap << 2L | cells`, `L`
+/// cells of that basis from the top, holds the high digit bits at their
+/// places (the odd bits), the `flip` gained below at every `x` place
+/// (the even bits), and the `swap` gained at bit `2L`: all of the state
+/// relative, so the next state is `(state ^ entry)` masked and the next
+/// index `cells ^ state`. The low digit bits are `x ^ y`, the input
+/// itself. `N = 2 · 4^L` entries, half of the unreduced table.
+#[cfg_attr(
+    not(any(
+        all(
+            target_arch = "x86_64",
+            target_feature = "avx512vbmi",
+            not(feature = "portable")
+        ),
+        all(
+            target_arch = "aarch64",
+            target_feature = "neon",
+            not(feature = "portable")
+        )
+    )),
+    allow(dead_code)
+)]
+const fn reduced<const N: usize>() -> [u8; N] {
+    let levels = N.trailing_zeros() / 2;
+    let mut table = [0u8; N];
+    let mut i = 0;
+    while i < N {
+        #[allow(clippy::cast_possible_truncation)]
+        let (swap, cells) = ((i >> (2 * levels)) as u8, i as u8);
+        let mut frame = swap;
+        let mut entry = 0u8;
+        let mut j = levels;
+        while j > 0 {
+            j -= 1;
+            let x = (cells >> (2 * j)) & 1;
+            let y = x ^ ((cells >> (2 * j + 1)) & 1);
+            let (digit, below) = level(frame, x, y);
+            entry |= (digit >> 1) << (2 * j + 1);
+            frame = below;
+        }
+        // The flip gained, at every `x` place.
+        entry |= (frame >> 1) * (0x55 >> (8 - 2 * levels));
+        table[i] = entry | (((frame & 1) ^ swap) << (2 * levels));
+        i += 1;
+    }
+    table
+}
+
+/// Two levels a byte, 32 entries: two NEON registers for `tbl`.
 #[cfg_attr(
     not(all(
         target_arch = "aarch64",
@@ -250,31 +298,10 @@ const fn level(frame: u8, x: u8, y: u8) -> (u8, u8) {
     )),
     allow(dead_code)
 )]
-const TABLE4: [u8; 64] = {
-    let mut table = [0u8; 64];
-    let mut i = 0u8;
-    while i < 64 {
-        let (frame, nibble) = (i >> 4, i & 15);
-        let (d_hi, f_mid) = level(frame, (nibble >> 2) & 1, (nibble >> 3) & 1);
-        let (d_lo, f_below) = level(f_mid, nibble & 1, (nibble >> 1) & 1);
-        table[i as usize] = (f_below << 4) | (d_hi << 2) | d_lo;
-        i += 1;
-    }
-    table
-};
+const TABLE4: [u8; 32] = reduced();
 
-/// Three levels of the encode machine a byte, modulo the reflection that
-/// flips both axes: [`level`] in the frame `(swap, flip)` is [`level`]
-/// in `(swap, 0)` on the cell moved by `x ^ flip, y ^ flip`, with `flip`
-/// added below, so `flip` is a XOR mask and `swap` alone is tabled. In
-/// the cell basis `(x, x ^ y)` the reflection moves `x` only. The entry
-/// at `swap << 6 | cells`, three cells of that basis from the top, holds
-/// the high digit bits at their places (1, 3, 5), the `flip` gained
-/// below at every `x` place (0, 2, 4), and the `swap` gained at bit 6:
-/// all of the state relative, so the next state is `(state ^ entry)`
-/// masked and the next index `cells ^ state`. The low digit bits are
-/// `x ^ y`, the input itself. 128 bytes: two AVX-512 registers for
-/// `vpermi2b`, a quarter of the unreduced table.
+/// Three levels a byte, 128 entries: two AVX-512 registers for
+/// `vpermi2b`.
 #[cfg_attr(
     not(all(
         target_arch = "x86_64",
@@ -283,27 +310,7 @@ const TABLE4: [u8; 64] = {
     )),
     allow(dead_code)
 )]
-const TABLE6: [u8; 128] = {
-    let mut table = [0u8; 128];
-    let mut i = 0u8;
-    while i < 128 {
-        let swap = i >> 6;
-        let mut frame = swap;
-        let mut entry = 0u8;
-        let mut j = 3;
-        while j > 0 {
-            j -= 1;
-            let x = (i >> (2 * j)) & 1;
-            let y = x ^ ((i >> (2 * j + 1)) & 1);
-            let (digit, below) = level(frame, x, y);
-            entry |= (digit >> 1) << (2 * j + 1);
-            frame = below;
-        }
-        table[i as usize] = entry | ((frame >> 1) * 0x15) | (((frame & 1) ^ swap) << 6);
-        i += 1;
-    }
-    table
-};
+const TABLE6: [u8; 128] = reduced();
 
 macro_rules! hilbert2_batch {
     ($($w:ty => $kernel:ident),* $(,)?) => {$(
@@ -316,8 +323,9 @@ macro_rules! hilbert2_batch {
             /// 128-entry table per register of keys, three levels at a
             /// time: the frame modulo the reflection of both axes, which
             /// rides as a XOR mask on the cells, three `vpternlog` around
-            /// the lookup. With NEON a 64-entry table in four registers for
-            /// `tbl`, two levels at a time. Otherwise, and for the keys past the
+            /// the lookup. With NEON the same reduction two levels at a
+            /// time, 32 entries in two registers for `tbl`. Otherwise, and
+            /// for the keys past the
             /// last whole batch, it is [`from_morton`](Self::from_morton)
             /// per key. Coordinates never enter: fill the slice with
             /// [`Morton2::encode`] from whatever layout the points are in.
@@ -525,92 +533,112 @@ mod batch {
     #[allow(unsafe_code)]
     mod neon {
         use core::arch::aarch64::{
-            vandq_u32, vandq_u64, vdupq_n_s32, vdupq_n_s64, vdupq_n_u32, vdupq_n_u64, vld1q_u8_x4,
-            vld1q_u32, vld1q_u64, vorrq_u32, vorrq_u64, vqtbl4q_u8, vreinterpretq_u8_u32,
-            vreinterpretq_u8_u64, vreinterpretq_u32_u8, vreinterpretq_u64_u8, vshlq_n_u32,
-            vshlq_n_u64, vshlq_u32, vshlq_u64, vst1q_u32, vst1q_u64,
+            vandq_u32, vandq_u64, vbslq_u32, vbslq_u64, vdupq_n_s32, vdupq_n_s64, vdupq_n_u8,
+            vdupq_n_u32, vdupq_n_u64, veorq_u32, veorq_u64, vld1q_u8_x2, vld1q_u32, vld1q_u64,
+            vqtbl2q_u8, vreinterpretq_u8_u32, vreinterpretq_u8_u64, vreinterpretq_u32_u8,
+            vreinterpretq_u64_u8, vshlq_n_u32, vshlq_n_u64, vshlq_u32, vshlq_u64, vshrq_n_u32,
+            vshrq_n_u64, vsliq_n_u32, vsliq_n_u64, vst1q_u32, vst1q_u64,
         };
 
         use super::super::TABLE4;
 
-        /// Batches of 16 keys: eight registers of two.
-        pub(in crate::hilbert) fn from_morton_u64(keys: &mut [u64]) -> usize {
-            let (chunks, _) = keys.as_chunks_mut::<16>();
-            let done = chunks.len() * 16;
-            for chunk in chunks {
-                // SAFETY: NEON is enabled by cfg; every load and store stays
-                // inside the 16 keys of `chunk`.
-                unsafe {
-                    let table = vld1q_u8_x4(TABLE4.as_ptr());
-                    let nibble = vdupq_n_u64(15);
-                    let frame_bits = vdupq_n_u64(0x30);
-                    let mut code = [vdupq_n_u64(0); 8];
-                    let mut acc = [vdupq_n_u64(0); 8];
-                    let mut frame = [vdupq_n_u64(0); 8];
-                    for (r, c) in code.iter_mut().enumerate() {
-                        *c = vld1q_u64(chunk.as_ptr().add(2 * r));
-                    }
-                    let mut step = 16i64;
-                    while step > 0 {
-                        step -= 1;
-                        let shift = vdupq_n_s64(-4 * step);
-                        for r in 0..8 {
-                            let index =
-                                vorrq_u64(vandq_u64(vshlq_u64(code[r], shift), nibble), frame[r]);
-                            let entry = vreinterpretq_u64_u8(vqtbl4q_u8(
-                                table,
-                                vreinterpretq_u8_u64(index),
-                            ));
-                            acc[r] = vorrq_u64(vshlq_n_u64::<4>(acc[r]), vandq_u64(entry, nibble));
-                            frame[r] = vandq_u64(entry, frame_bits);
+        macro_rules! kernel {
+            (
+                $name:ident, $w:ty, $per_reg:literal, $dup:ident, $dup_s:ident, $s:ty,
+                $ld:ident, $st:ident, $and:ident, $bsl:ident, $eor:ident, $shl:ident,
+                $shl_n:ident, $shr_n:ident, $sli_n:ident, $to_u8:ident, $from_u8:ident
+            ) => {
+                /// Batches of eight registers.
+                pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
+                    // Two levels a step, not three: three is 128 entries in
+                    // eight registers beside the 24 the keys hold, and NEON
+                    // stops counting at 32. An even number of levels, so no
+                    // padding and the top frame is the identity.
+                    #[allow(clippy::cast_possible_wrap, clippy::cast_lossless)]
+                    const STEPS: $s = (<$w>::BITS / 4) as $s;
+                    let (chunks, _) = keys.as_chunks_mut::<{ 8 * $per_reg }>();
+                    let done = chunks.len() * 8 * $per_reg;
+                    for chunk in chunks {
+                        // SAFETY: NEON is enabled by cfg; every load and
+                        // store stays inside `chunk` or the 32 bytes of
+                        // `TABLE4`.
+                        unsafe {
+                            let table = vld1q_u8_x2(TABLE4.as_ptr());
+                            let cells = $dup(15);
+                            let state_bits = $dup(0x15);
+                            let odd = $from_u8(vdupq_n_u8(0xAA));
+                            let mut code = [$dup(0); 8];
+                            let mut acc = [$dup(0); 8];
+                            let mut state = [$dup(0); 8];
+                            for (r, c) in code.iter_mut().enumerate() {
+                                let m = $ld(chunk.as_ptr().add($per_reg * r));
+                                // Each level's `(x, y)` to `(x, x ^ y)`.
+                                *c = $eor(m, $and($shl_n::<1>(m), odd));
+                            }
+                            let mut step = STEPS;
+                            while step > 0 {
+                                step -= 1;
+                                let shift = $dup_s(-4 * step);
+                                for r in 0..8 {
+                                    let index = $eor($and($shl(code[r], shift), cells), state[r]);
+                                    let entry = $from_u8(vqtbl2q_u8(table, $to_u8(index)));
+                                    // The low four bits of the entry, flips and all; the
+                                    // flips sit where the low digit bits go.
+                                    acc[r] = $sli_n::<4>(entry, acc[r]);
+                                    state[r] = $and($eor(state[r], entry), state_bits);
+                                }
+                            }
+                            for (r, a) in acc.iter().enumerate() {
+                                // The low digit bits over the flips: `x ^ y`,
+                                // the odd bits of the rewritten code.
+                                let a = $bsl(odd, *a, $shr_n::<1>(code[r]));
+                                $st(chunk.as_mut_ptr().add($per_reg * r), a);
+                            }
                         }
                     }
-                    for (r, a) in acc.iter().enumerate() {
-                        vst1q_u64(chunk.as_mut_ptr().add(2 * r), *a);
-                    }
+                    done
                 }
-            }
-            done
+            };
         }
 
-        /// Batches of 32 keys: eight registers of four.
-        pub(in crate::hilbert) fn from_morton_u32(keys: &mut [u32]) -> usize {
-            let (chunks, _) = keys.as_chunks_mut::<32>();
-            let done = chunks.len() * 32;
-            for chunk in chunks {
-                // SAFETY: as above.
-                unsafe {
-                    let table = vld1q_u8_x4(TABLE4.as_ptr());
-                    let nibble = vdupq_n_u32(15);
-                    let frame_bits = vdupq_n_u32(0x30);
-                    let mut code = [vdupq_n_u32(0); 8];
-                    let mut acc = [vdupq_n_u32(0); 8];
-                    let mut frame = [vdupq_n_u32(0); 8];
-                    for (r, c) in code.iter_mut().enumerate() {
-                        *c = vld1q_u32(chunk.as_ptr().add(4 * r));
-                    }
-                    let mut step = 8i32;
-                    while step > 0 {
-                        step -= 1;
-                        let shift = vdupq_n_s32(-4 * step);
-                        for r in 0..8 {
-                            let index =
-                                vorrq_u32(vandq_u32(vshlq_u32(code[r], shift), nibble), frame[r]);
-                            let entry = vreinterpretq_u32_u8(vqtbl4q_u8(
-                                table,
-                                vreinterpretq_u8_u32(index),
-                            ));
-                            acc[r] = vorrq_u32(vshlq_n_u32::<4>(acc[r]), vandq_u32(entry, nibble));
-                            frame[r] = vandq_u32(entry, frame_bits);
-                        }
-                    }
-                    for (r, a) in acc.iter().enumerate() {
-                        vst1q_u32(chunk.as_mut_ptr().add(4 * r), *a);
-                    }
-                }
-            }
-            done
-        }
+        kernel!(
+            from_morton_u64,
+            u64,
+            2,
+            vdupq_n_u64,
+            vdupq_n_s64,
+            i64,
+            vld1q_u64,
+            vst1q_u64,
+            vandq_u64,
+            vbslq_u64,
+            veorq_u64,
+            vshlq_u64,
+            vshlq_n_u64,
+            vshrq_n_u64,
+            vsliq_n_u64,
+            vreinterpretq_u8_u64,
+            vreinterpretq_u64_u8
+        );
+        kernel!(
+            from_morton_u32,
+            u32,
+            4,
+            vdupq_n_u32,
+            vdupq_n_s32,
+            i32,
+            vld1q_u32,
+            vst1q_u32,
+            vandq_u32,
+            vbslq_u32,
+            veorq_u32,
+            vshlq_u32,
+            vshlq_n_u32,
+            vshrq_n_u32,
+            vsliq_n_u32,
+            vreinterpretq_u8_u32,
+            vreinterpretq_u32_u8
+        );
     }
 
     #[cfg(all(

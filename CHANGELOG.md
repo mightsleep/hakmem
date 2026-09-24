@@ -37,8 +37,8 @@ register of keys: in 2D through 128 entries, three levels a step, the
 frame taken modulo the reflection of both axes and carried as a XOR
 mask on the cells (the unreduced table would be 256); in 3D through
 the 96-byte encode table, a level a step, the frame riding in the
-index byte. With NEON a 64-entry 2D table (two levels a step) and the
-3D tables in `tbl` and `tbx`; otherwise the per-key conversion. On
+index byte. With NEON the 2D reduction two levels a step, 32 entries
+in two registers for `tbl`, and the 3D tables in `tbl` and `tbx`; otherwise the per-key conversion. On
 Zen 5: 1.6 ns a key for the 2D `u64` encode from coordinates against
 11.9 for `fast_hilbert`, 0.90 against 8.3 for 16-bit coordinates, 2.7
 against 15.2 for the 3D tables. Laws: the batch equals the per-key
