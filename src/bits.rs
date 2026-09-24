@@ -114,6 +114,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("rank1"))]
     fn rank(self, i: u32) -> u32 {
         self.and(Self::low_ones(i)).count_ones()
     }
@@ -135,6 +136,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("select1"))]
     fn select(self, k: u32) -> Option<u32> {
         if k >= self.count_ones() {
             None
@@ -198,6 +200,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("clmul", "prefix parity"))]
     fn prefix_xor(self) -> Self {
         self.xor_scan()
     }
@@ -237,6 +240,7 @@ pub trait Bits: Word {
     /// map to words differing in exactly one bit.
     #[inline]
     #[must_use]
+    #[doc(alias("gray code"))]
     fn gray_encode(self) -> Self {
         self.xor(self.shr(1))
     }
@@ -390,6 +394,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("pext", "compress"))]
     fn compact(self, mask: Self) -> Self {
         self.pext(mask)
     }
@@ -406,6 +411,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("pdep", "deposit"))]
     fn expand(self, mask: Self) -> Self {
         self.pdep(mask)
     }
@@ -512,6 +518,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("blsi"))]
     fn lowest_set_mask(self) -> Self {
         self.and(Self::ZERO.wrapping_sub(self))
     }
@@ -528,6 +535,7 @@ pub trait Bits: Word {
     /// all ones for zero.
     #[inline]
     #[must_use]
+    #[doc(alias("blsmsk"))]
     fn up_to_lowest_set(self) -> Self {
         self.xor(self.wrapping_sub(Self::ONE))
     }
@@ -581,6 +589,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("vpternlog", "ternlog"))]
     fn ternary(self, b: Self, c: Self, table: u8) -> Self {
         let leaf = |t: u8| match t & 3 {
             0 => Self::ZERO,
@@ -721,6 +730,7 @@ pub trait Bits: Word {
     /// ```
     #[inline]
     #[must_use]
+    #[doc(alias("next_power_of_two"))]
     fn round_up_pow2(self) -> Option<Self> {
         if self.shr(1).is_zero() {
             return Some(Self::ONE);
@@ -736,6 +746,7 @@ pub trait Bits: Word {
     /// `⌊log₂ self⌋`; `None` for zero.
     #[inline]
     #[must_use]
+    #[doc(alias("ilog2"))]
     fn log2_floor(self) -> Option<u32> {
         self.last_set()
     }

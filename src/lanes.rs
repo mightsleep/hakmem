@@ -133,11 +133,13 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     /// clear becomes `table[lane & 15]`, a lane with its top bit set
     /// becomes zero.
     #[must_use]
+    #[doc(alias("pshufb", "tbl"))]
     fn lut16(self, table: [u8; 16]) -> Self;
 
     /// One bit per lane, bit `i` = the top bit of lane `i`. On a compare
     /// mask this is the set of lanes that matched.
     #[must_use]
+    #[doc(alias("movemask", "pmovmskb"))]
     fn to_bitmask(self) -> Self::Bitmask;
 
     /// Every lane zero.
@@ -330,6 +332,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     /// parities instead ([`Affine8::apply8`]).
     #[inline]
     #[must_use]
+    #[doc(alias("gf2p8affineqb", "gfni"))]
     fn affine(self, map: Affine8) -> Self {
         let (lo, hi) = map.tables();
         self.and(Self::splat(0x0F))

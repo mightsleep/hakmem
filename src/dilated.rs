@@ -9,8 +9,25 @@
 //! Arithmetic on dilated values does not go through `+`: the gaps must
 //! be filled with ones so the carry tunnels across them
 //! (`((a | !mask) + b) & mask`, Wise & Raman). [`Dilated`] therefore
-//! has no `Add` impl, only [`incr`](Dilated::incr) / [`wrapping_add`](Dilated::wrapping_add)
-//! Plain integer addition on it does not compile.
+//! has no `Add` impl, only [`incr`](Dilated::incr) and
+//! [`wrapping_add`](Dilated::wrapping_add). Plain integer addition on it
+//! does not compile, and this block is the proof:
+//!
+//! ```compile_fail,E0369
+//! use hakmem::prelude::*;
+//!
+//! let x = Dilated::<u64, 2>::from_int(5);
+//! let _ = x + x; // the gaps would carry into the other coordinate
+//! ```
+//!
+//! What does compile:
+//!
+//! ```
+//! use hakmem::prelude::*;
+//!
+//! let x = Dilated::<u64, 2>::from_int(5);
+//! assert_eq!(x.wrapping_add(x).to_int(), 10);
+//! ```
 
 use core::ops::RangeBounds;
 
@@ -128,6 +145,7 @@ impl<W: Word, const D: u32> Dilated<W, D> {
 /// assert_eq!(m.step_y().decode(), (3, 6));
 /// ```
 #[derive(Clone, Copy, PartialEq, Eq, Debug, Hash, PartialOrd, Ord)]
+#[doc(alias("z-order", "zorder", "morton code"))]
 pub struct Morton2<W: Word>(W);
 
 impl<W: Word> Morton2<W> {

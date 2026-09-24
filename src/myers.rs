@@ -392,6 +392,7 @@ impl<W: Word> core::fmt::Debug for Occurrences<'_, W> {
 /// assert_eq!(distance(&[0; 513], b""), None);
 /// ```
 #[must_use]
+#[doc(alias("levenshtein", "edit distance"))]
 pub fn distance(pattern: &[u8], text: &[u8]) -> Option<u32> {
     match pattern.len() {
         0..=64 => distance_in::<u64>(pattern, text),

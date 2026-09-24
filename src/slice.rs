@@ -58,15 +58,18 @@ pub trait Words {
 
     /// Number of set bits in the whole slice.
     #[must_use]
+    #[doc(alias("popcount"))]
     fn count_ones(&self) -> usize;
 
     /// Number of set bits at positions `< i`. `i` may equal the bit
     /// length; larger `i` counts everything.
     #[must_use]
+    #[doc(alias("rank1"))]
     fn rank(&self, i: usize) -> usize;
 
     /// Position of the `k`-th set bit (from 0), if `k < count_ones`.
     #[must_use]
+    #[doc(alias("select1"))]
     fn select(&self, k: usize) -> Option<usize>;
 
     /// Lowest set position `>= i`, if any: from `i` on, `i` included.

@@ -31,7 +31,15 @@
 ///
 /// `BITS` is a multiple of 8 and at most `2^16`: the byte combinators
 /// read bytes, and [`expand_broadword`] keeps one mask per halving
-/// round. A wider carrier is a compile error, not a surprise.
+/// round. A wider carrier is a compile error, not a surprise:
+///
+/// ```compile_fail,E0080
+/// use hakmem::prelude::*;
+///
+/// // 1025 limbs, 65 600 bits: the halving rounds would need a 17th mask.
+/// let x = Wide::<1025>::ONES;
+/// let _ = hakmem::word::expand_broadword(x, x);
+/// ```
 ///
 /// A word is a plain value: ordered as the unsigned integer it spells,
 /// printable in binary and hex (`{:b}` is how bits want to be read),
@@ -96,15 +104,19 @@ pub trait Word:
 
     /// Number of set bits (POPCNT).
     #[must_use]
+    #[doc(alias("popcount", "popcnt"))]
     fn count_ones(self) -> u32;
     /// Index of the lowest set bit; `BITS` when zero (TZCNT).
     #[must_use]
+    #[doc(alias("tzcnt", "ctz"))]
     fn trailing_zeros(self) -> u32;
     /// Number of leading zero bits; `BITS` when zero (LZCNT).
     #[must_use]
+    #[doc(alias("lzcnt", "clz"))]
     fn leading_zeros(self) -> u32;
     /// Clears the lowest set bit (BLSR); identity on zero.
     #[must_use]
+    #[doc(alias("blsr"))]
     fn clear_lowest_set(self) -> Self {
         self.and(self.wrapping_sub(Self::ONE))
     }

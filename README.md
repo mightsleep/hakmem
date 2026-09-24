@@ -158,6 +158,7 @@ on every push to `main`. The badges are written by CI after each run
 | clippy, `+bmi2` | [![hakmem-clippy-bmi2-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 | clippy, `+bmi2` with feature `portable` | [![hakmem-clippy-bmi2-portable-feature](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-portable-feature.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 | rustdoc, warnings as errors | [![hakmem-doc](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doc.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-doc](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doc.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| public API matches `public-api.txt` | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | MSRV 1.89 build of the packaged tarball | [![hakmem-msrv](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-msrv.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-msrv](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-msrv.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | cargo-deny (licences, bans, sources) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | cargo-audit (advisories, offline) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
@@ -305,7 +306,7 @@ use hakmem::prelude::*;
 let points = [(3u64, 5u64), (40_000, 7), (1 << 31, 12)];
 let mut keys: Vec<u64> = points
     .iter()
-    .map(|&(x, y)| Morton2::<u64>::encode(x, y).code())
+    .map(|&(x, y)| Morton2::encode(x, y).code())
     .collect();
 Hilbert2::<u64>::from_morton_in_place(&mut keys);
 assert_eq!(keys[1], Hilbert2::<u64>::encode(40_000, 7).index());
@@ -341,12 +342,12 @@ use hakmem::prelude::*;
 let points = [(10u64, 10u64), (11, 12), (500, 500), (12, 11)];
 let mut keys: Vec<u64> = points
     .iter()
-    .map(|&(x, y)| Hilbert2::<u64>::encode(x, y).index())
+    .map(|&(x, y)| Hilbert2::encode(x, y).index())
     .collect();
 keys.sort_unstable();
 // The block 8..=15 × 8..=15 in at most four ranges, a seek each.
 let mut ranges = [(0u64, 0u64); 4];
-let hits: usize = Hilbert2::<u64>::cover(8..=15, 8..=15, &mut ranges)
+let hits: usize = Hilbert2::cover(8..=15, 8..=15, &mut ranges)
     .iter()
     .map(|&(a, b)| keys.partition_point(|&k| k <= b) - keys.partition_point(|&k| k < a))
     .sum();

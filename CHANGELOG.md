@@ -193,6 +193,14 @@ the two chain block by block alike; `myers::Search::occurrences`, one
 walking back with the pattern reversed (the merge was the part the
 example got wrong first); and `alloc` on by default.
 
+The public API is checked in as `public-api.txt` and a nix check fails
+when the crate says otherwise, so a change to it is in the diff of the
+commit that makes it; cargo-semver-checks runs against the last release
+in its own workflow. Methods answer to their instruction names in the
+docs search (`pext`, `pdep`, `popcnt`, `movemask`, `pshufb`, `z-order`),
+and the two claims that something does not compile are doctests that
+fail to, with the error code.
+
 ### Changed, for anyone on 0.1
 
 A clean break, no deprecated aliases: 0.2 is a new major for Cargo,
