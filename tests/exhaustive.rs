@@ -499,7 +499,7 @@ fn u8_u16_broadword_compress_expand_match_loop() {
 #[test]
 #[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
 fn u8x8_lanes_all_byte_pairs() {
-    use hakmem::lanes::{Lanes, U8x8};
+    use hakmem::lanes::U8x8;
     let table = [
         0x00, 0x81, 0x7F, 0x10, 0xFF, 0x0F, 0x80, 0x01, 0x55, 0xAA, 0x3C, 0xC3, 0x02, 0x40, 0xFE,
         0x7E,

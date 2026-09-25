@@ -741,19 +741,31 @@ is what 0.2 does (section 11.11 says why).
 
 ### 11.6 Carriers as associated types
 
-`U8x16` becomes `I::U8x16`: `Swar16` for `Portable`, `X86x16<L>` for
-the x86 levels, `Neon16`. `X86x16<L>` holds the register and the level
-token; the byte maps pick GFNI when `L` has it, by an associated
-constant, so the choice folds at compile time.
+`U8x16` becomes `I::U8x16`: `Swar16<I>` for `Portable`, `X86x16<L>`
+for the x86 levels, `Neon16`. `X86x16<L>` holds the register and
+`PhantomData<L>`; the byte maps pick GFNI when `L::GFNI` says so, an
+associated constant, so the choice folds at compile time where 0.2
+had a `cfg`.
 
 A value of an SSSE3 carrier is a proof that the CPU has SSSE3: its
-methods are `#[inline(always)]` wrappers over the intrinsics and are
-sound because the value exists. So constructors take the token:
-`Lanes` gains `type Isa` and `splat`, `load` and `zero` take it,
-`U8x16::splat(Native, b'"')` being the spelling for the plain user.
-A constructor without one would let `X86x16::splat` run on a CPU
-without SSSE3. Wider carriers (`U8x32` for AVX2, `U8x64` for AVX-512)
-fit later as more associated types of the levels that have them.
+methods wrap the intrinsics and are sound because the value exists,
+and `isa()` hands the token back out of it. So the `Lanes`
+constructors take the token: `Lanes` gains `type Isa` and `isa()`,
+and `splat`, `load` and `zero` take `Self::Isa`. A constructor without
+one would let `X86x16::splat` run on a CPU without SSSE3.
+
+The plain user does not see this. A carrier that is sound anywhere
+(`U8x8`, `Swar16`) or proven by the build (`X86x16<Native>` with SSSE3
+in it, `Neon16`) also has inherent `splat`, `load` and `zero` without a
+token, and inherent methods win the lookup, so `U8x16::load(bytes)`
+compiles as before and `U8x16` is simply the carrier of `Native`.
+Generic code says `I::U8x16::load(cpu, bytes)` and gets the trait's.
+`Swar16<I>` takes any level with a `Default` (`Portable`, `Native`),
+since `Native`'s carrier in a build without SSSE3 is SWAR, and
+`Isa::U8x16` insists on `Lanes<Isa = Self>`.
+
+Wider carriers (`U8x32` for AVX2, `U8x64` for AVX-512) fit later as
+more associated types of the levels that have them.
 
 ### 11.7 Where tokens come from
 
@@ -833,6 +845,17 @@ over a slice is five PEXT and no call (codegen cell `portable`), where
 checks `Portable` and `X86V3` in one run. Routing the plain methods
 through `Native` cost one register move in
 `Hilbert3::from_morton_in_place`, which the `bmi2` snapshot showed.
+
+The carriers followed without a change to any function already in the
+snapshots: `U8x16` over `Native` compiles as it did. Under a token, the
+quote mask of a 16-byte block is six instructions (two moves, an
+unpack, PCMPEQB, PMOVMSKB, return) in the build without flags, where
+the plain `U8x16` there is 38 instructions of SWAR; the unpack is a
+load assembled from two halves, which one MOVDQU would replace.
+`tests/isa.rs` runs the lane laws on `Swar16` and `X86x16<X86V3>` in
+the same run, and flipping the SSSE3 shift fails it. `Isa` gained
+`Eq` and `Hash`: a carrier hands its token back, and a test wants to
+compare it.
 
 ## Sources
 

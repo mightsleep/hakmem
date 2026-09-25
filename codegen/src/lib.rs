@@ -93,3 +93,20 @@ pub fn cg_dispatch_gather(xs: &[u64], mask: u64) -> u64 {
     use hakmem::isa::Isa;
     hakmem::dispatch!(|cpu| xs.iter().fold(0, |a, &x| a ^ cpu.pext(x, mask)))
 }
+
+// Sixteen lanes under a token: in a build without flags the X86V3
+// carrier is an XMM register, a compare and a PMOVMSKB, where
+// `cg_quote_mask` above is SWAR arithmetic.
+// CHECK-LABEL: <hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<u16, hakmem_codegen::cg_dispatch_quote_mask::{closure#1}>:
+// CHECK: pcmpeqb
+// CHECK: pmovmskb
+// CHECK-NOT: call
+#[unsafe(no_mangle)]
+pub fn cg_dispatch_quote_mask(block: &[u8; 16]) -> u16 {
+    #[inline]
+    fn quotes<I: hakmem::isa::Isa>(cpu: I, block: &[u8; 16]) -> u16 {
+        let lanes = I::U8x16::load(cpu, block);
+        lanes.cmp_eq(I::U8x16::splat(cpu, b'"')).to_bitmask()
+    }
+    hakmem::dispatch!(|cpu| quotes(cpu, block))
+}

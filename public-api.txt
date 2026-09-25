@@ -530,6 +530,7 @@ pub fn hakmem::isa::Native::hash<__H: core::hash::Hasher>(&self, &mut __H)
 impl core::marker::Copy for hakmem::isa::Native
 impl core::marker::StructuralPartialEq for hakmem::isa::Native
 impl hakmem::isa::Isa for hakmem::isa::Native
+pub type hakmem::isa::Native::U8x16 = hakmem::lanes::Swar16<hakmem::isa::Native>
 pub fn hakmem::isa::Native::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Native::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Native::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
@@ -558,6 +559,7 @@ pub fn hakmem::isa::Portable::hash<__H: core::hash::Hasher>(&self, &mut __H)
 impl core::marker::Copy for hakmem::isa::Portable
 impl core::marker::StructuralPartialEq for hakmem::isa::Portable
 impl hakmem::isa::Isa for hakmem::isa::Portable
+pub type hakmem::isa::Portable::U8x16 = hakmem::lanes::Swar16
 pub fn hakmem::isa::Portable::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Portable::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Portable::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
@@ -588,12 +590,15 @@ pub fn hakmem::isa::X86V3::hash<__H: core::hash::Hasher>(&self, &mut __H)
 impl core::marker::Copy for hakmem::isa::X86V3
 impl core::marker::StructuralPartialEq for hakmem::isa::X86V3
 impl hakmem::isa::Isa for hakmem::isa::X86V3
+pub type hakmem::isa::X86V3::U8x16 = hakmem::lanes::X86x16<hakmem::isa::X86V3>
 pub fn hakmem::isa::X86V3::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::X86V3::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::X86V3::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
 pub fn hakmem::isa::X86V3::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
 pub fn hakmem::isa::X86V3::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::X86V3::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl hakmem::isa::X86Level for hakmem::isa::X86V3
+pub const hakmem::isa::X86V3::GFNI: bool
 impl core::marker::Freeze for hakmem::isa::X86V3
 impl core::marker::Send for hakmem::isa::X86V3
 impl core::marker::Sync for hakmem::isa::X86V3
@@ -601,7 +606,8 @@ impl core::marker::Unpin for hakmem::isa::X86V3
 impl core::marker::UnsafeUnpin for hakmem::isa::X86V3
 impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::X86V3
 impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::X86V3
-pub trait hakmem::isa::Isa: core::marker::Copy + core::marker::Send + core::marker::Sync + core::fmt::Debug + 'static + hakmem::isa::sealed::Sealed
+pub trait hakmem::isa::Isa: core::marker::Copy + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + core::fmt::Debug + 'static + hakmem::isa::sealed::Sealed
+pub type hakmem::isa::Isa::U8x16: hakmem::lanes::Lanes<Isa = Self, Bitmask = u16>
 pub fn hakmem::isa::Isa::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Isa::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Isa::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
@@ -609,6 +615,7 @@ pub fn hakmem::isa::Isa::select<W: hakmem::word::Word>(self, W, u32) -> core::op
 pub fn hakmem::isa::Isa::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Isa::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 impl hakmem::isa::Isa for hakmem::isa::Native
+pub type hakmem::isa::Native::U8x16 = hakmem::lanes::Swar16<hakmem::isa::Native>
 pub fn hakmem::isa::Native::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Native::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Native::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
@@ -616,6 +623,7 @@ pub fn hakmem::isa::Native::select<W: hakmem::word::Word>(self, W, u32) -> core:
 pub fn hakmem::isa::Native::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Native::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 impl hakmem::isa::Isa for hakmem::isa::Portable
+pub type hakmem::isa::Portable::U8x16 = hakmem::lanes::Swar16
 pub fn hakmem::isa::Portable::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Portable::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Portable::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
@@ -623,80 +631,94 @@ pub fn hakmem::isa::Portable::select<W: hakmem::word::Word>(self, W, u32) -> cor
 pub fn hakmem::isa::Portable::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Portable::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 impl hakmem::isa::Isa for hakmem::isa::X86V3
+pub type hakmem::isa::X86V3::U8x16 = hakmem::lanes::X86x16<hakmem::isa::X86V3>
 pub fn hakmem::isa::X86V3::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::X86V3::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::X86V3::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
 pub fn hakmem::isa::X86V3::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
 pub fn hakmem::isa::X86V3::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::X86V3::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+pub trait hakmem::isa::X86Level: hakmem::isa::Isa
+pub const hakmem::isa::X86Level::GFNI: bool
+impl hakmem::isa::X86Level for hakmem::isa::X86V3
+pub const hakmem::isa::X86V3::GFNI: bool
 pub fn hakmem::isa::available() -> impl core::iter::traits::iterator::Iterator<Item = hakmem::isa::Level>
 pub fn hakmem::isa::detect() -> hakmem::isa::Level
 pub mod hakmem::lanes
-pub struct hakmem::lanes::U8x16(_)
-impl hakmem::lanes::U8x16
-pub fn hakmem::lanes::U8x16::from_halves(u64, u64) -> Self
-pub fn hakmem::lanes::U8x16::halves(self) -> (u64, u64)
-impl core::clone::Clone for hakmem::lanes::U8x16
-pub fn hakmem::lanes::U8x16::clone(&self) -> hakmem::lanes::U8x16
-impl core::cmp::Eq for hakmem::lanes::U8x16
-impl core::cmp::PartialEq for hakmem::lanes::U8x16
-pub fn hakmem::lanes::U8x16::eq(&self, &Self) -> bool
-impl core::fmt::Debug for hakmem::lanes::U8x16
-pub fn hakmem::lanes::U8x16::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for hakmem::lanes::U8x16
-impl hakmem::lanes::Lanes for hakmem::lanes::U8x16
-pub type hakmem::lanes::U8x16::Bitmask = u16
-pub const hakmem::lanes::U8x16::LANES: usize
-pub fn hakmem::lanes::U8x16::add(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::add_sat(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::affine(self, hakmem::affine::Affine8) -> Self
-pub fn hakmem::lanes::U8x16::and(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::avg_floor(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::avg_round(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::blend(self, Self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_eq(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_ge(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_gt(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_le(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_lt(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::concat_shift(self, Self, usize) -> Self
-pub fn hakmem::lanes::U8x16::lane(self, usize) -> u8
-pub fn hakmem::lanes::U8x16::load(&[u8]) -> Self
-pub fn hakmem::lanes::U8x16::lut16(self, [u8; 16]) -> Self
-pub fn hakmem::lanes::U8x16::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
-pub fn hakmem::lanes::U8x16::max(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::min(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::mul_add_pairs(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::not(self) -> Self
-pub fn hakmem::lanes::U8x16::or(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::reverse_bits(self) -> Self
-pub fn hakmem::lanes::U8x16::rotl(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::rotr(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shl(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shr(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::splat(u8) -> Self
-pub fn hakmem::lanes::U8x16::sra(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::sub(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::sub_sat(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::sum_abs_diff(self, Self) -> u32
-pub fn hakmem::lanes::U8x16::ternary(self, Self, Self, u8) -> Self
-pub fn hakmem::lanes::U8x16::to_bitmask(self) -> u16
-pub fn hakmem::lanes::U8x16::unpack_hi(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::unpack_lo(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::xor(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::zero() -> Self
-impl core::marker::Freeze for hakmem::lanes::U8x16
-impl core::marker::Send for hakmem::lanes::U8x16
-impl core::marker::Sync for hakmem::lanes::U8x16
-impl core::marker::Unpin for hakmem::lanes::U8x16
-impl core::marker::UnsafeUnpin for hakmem::lanes::U8x16
-impl core::panic::unwind_safe::RefUnwindSafe for hakmem::lanes::U8x16
-impl core::panic::unwind_safe::UnwindSafe for hakmem::lanes::U8x16
+pub struct hakmem::lanes::Swar16<I>(_, _)
+impl<I: hakmem::isa::Isa + core::default::Default> hakmem::lanes::Swar16<I>
+pub fn hakmem::lanes::Swar16<I>::from_halves(u64, u64) -> Self
+pub fn hakmem::lanes::Swar16<I>::halves(self) -> (u64, u64)
+pub fn hakmem::lanes::Swar16<I>::load(&[u8]) -> Self
+pub fn hakmem::lanes::Swar16<I>::splat(u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::zero() -> Self
+impl<I: core::clone::Clone> core::clone::Clone for hakmem::lanes::Swar16<I>
+pub fn hakmem::lanes::Swar16<I>::clone(&self) -> hakmem::lanes::Swar16<I>
+impl<I: core::marker::Copy> core::marker::Copy for hakmem::lanes::Swar16<I>
+impl<I: hakmem::isa::Isa + core::default::Default> core::cmp::Eq for hakmem::lanes::Swar16<I>
+impl<I: hakmem::isa::Isa + core::default::Default> core::cmp::PartialEq for hakmem::lanes::Swar16<I>
+pub fn hakmem::lanes::Swar16<I>::eq(&self, &Self) -> bool
+impl<I: hakmem::isa::Isa + core::default::Default> core::fmt::Debug for hakmem::lanes::Swar16<I>
+pub fn hakmem::lanes::Swar16<I>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<I: hakmem::isa::Isa + core::default::Default> hakmem::lanes::Lanes for hakmem::lanes::Swar16<I>
+pub type hakmem::lanes::Swar16<I>::Bitmask = u16
+pub type hakmem::lanes::Swar16<I>::Isa = I
+pub const hakmem::lanes::Swar16<I>::LANES: usize
+pub fn hakmem::lanes::Swar16<I>::add(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::add_sat(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::affine(self, hakmem::affine::Affine8) -> Self
+pub fn hakmem::lanes::Swar16<I>::and(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::avg_floor(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::avg_round(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::blend(self, Self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_eq(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_ge(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_gt(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_le(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_lt(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::Swar16<I>::isa(self) -> I
+pub fn hakmem::lanes::Swar16<I>::lane(self, usize) -> u8
+pub fn hakmem::lanes::Swar16<I>::load(I, &[u8]) -> Self
+pub fn hakmem::lanes::Swar16<I>::lut16(self, [u8; 16]) -> Self
+pub fn hakmem::lanes::Swar16<I>::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
+pub fn hakmem::lanes::Swar16<I>::max(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::min(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::mul_add_pairs(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::not(self) -> Self
+pub fn hakmem::lanes::Swar16<I>::or(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::reverse_bits(self) -> Self
+pub fn hakmem::lanes::Swar16<I>::rotl(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::rotr(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shl(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shr(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shuffle(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::splat(I, u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::sra(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::sub(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::sub_sat(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::sum_abs_diff(self, Self) -> u32
+pub fn hakmem::lanes::Swar16<I>::ternary(self, Self, Self, u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::to_bitmask(self) -> u16
+pub fn hakmem::lanes::Swar16<I>::unpack_hi(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::unpack_lo(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::xor(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::zero(Self::Isa) -> Self
+impl<I> core::marker::Freeze for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::Freeze
+impl<I> core::marker::Send for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::Send
+impl<I> core::marker::Sync for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::Sync
+impl<I> core::marker::Unpin for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::Unpin
+impl<I> core::marker::UnsafeUnpin for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::UnsafeUnpin
+impl<I> core::panic::unwind_safe::RefUnwindSafe for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::panic::unwind_safe::RefUnwindSafe
+impl<I> core::panic::unwind_safe::UnwindSafe for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::panic::unwind_safe::UnwindSafe
 pub struct hakmem::lanes::U8x8(_)
 impl hakmem::lanes::U8x8
 pub const fn hakmem::lanes::U8x8::bits(self) -> u64
 pub const fn hakmem::lanes::U8x8::new(u64) -> Self
+impl hakmem::lanes::U8x8
+pub const fn hakmem::lanes::U8x8::load(&[u8]) -> Self
+pub fn hakmem::lanes::U8x8::splat(u8) -> Self
+pub const fn hakmem::lanes::U8x8::zero() -> Self
 impl core::clone::Clone for hakmem::lanes::U8x8
 pub fn hakmem::lanes::U8x8::clone(&self) -> hakmem::lanes::U8x8
 impl core::cmp::Eq for hakmem::lanes::U8x8
@@ -708,6 +730,7 @@ impl core::marker::Copy for hakmem::lanes::U8x8
 impl core::marker::StructuralPartialEq for hakmem::lanes::U8x8
 impl hakmem::lanes::Lanes for hakmem::lanes::U8x8
 pub type hakmem::lanes::U8x8::Bitmask = u8
+pub type hakmem::lanes::U8x8::Isa = hakmem::isa::Portable
 pub const hakmem::lanes::U8x8::LANES: usize
 pub fn hakmem::lanes::U8x8::add(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::add_sat(self, Self) -> Self
@@ -722,8 +745,9 @@ pub fn hakmem::lanes::U8x8::cmp_gt(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::cmp_le(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::cmp_lt(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::U8x8::isa(self) -> hakmem::isa::Portable
 pub fn hakmem::lanes::U8x8::lane(self, usize) -> u8
-pub fn hakmem::lanes::U8x8::load(&[u8]) -> Self
+pub fn hakmem::lanes::U8x8::load(hakmem::isa::Portable, &[u8]) -> Self
 pub fn hakmem::lanes::U8x8::lut16(self, [u8; 16]) -> Self
 pub fn hakmem::lanes::U8x8::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
 pub fn hakmem::lanes::U8x8::max(self, Self) -> Self
@@ -737,7 +761,7 @@ pub fn hakmem::lanes::U8x8::rotr(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shl(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shr(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::U8x8::splat(u8) -> Self
+pub fn hakmem::lanes::U8x8::splat(hakmem::isa::Portable, u8) -> Self
 pub fn hakmem::lanes::U8x8::sra(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::sub(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::sub_sat(self, Self) -> Self
@@ -747,7 +771,7 @@ pub fn hakmem::lanes::U8x8::to_bitmask(self) -> u8
 pub fn hakmem::lanes::U8x8::unpack_hi(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::unpack_lo(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::xor(self, Self) -> Self
-pub fn hakmem::lanes::U8x8::zero() -> Self
+pub fn hakmem::lanes::U8x8::zero(Self::Isa) -> Self
 impl core::marker::Freeze for hakmem::lanes::U8x8
 impl core::marker::Send for hakmem::lanes::U8x8
 impl core::marker::Sync for hakmem::lanes::U8x8
@@ -755,8 +779,72 @@ impl core::marker::Unpin for hakmem::lanes::U8x8
 impl core::marker::UnsafeUnpin for hakmem::lanes::U8x8
 impl core::panic::unwind_safe::RefUnwindSafe for hakmem::lanes::U8x8
 impl core::panic::unwind_safe::UnwindSafe for hakmem::lanes::U8x8
+pub struct hakmem::lanes::X86x16<L>(_, _)
+impl<L: hakmem::isa::X86Level> hakmem::lanes::X86x16<L>
+pub fn hakmem::lanes::X86x16<L>::from_halves_in(L, u64, u64) -> Self
+pub fn hakmem::lanes::X86x16<L>::halves(self) -> (u64, u64)
+impl<L: core::clone::Clone> core::clone::Clone for hakmem::lanes::X86x16<L>
+pub fn hakmem::lanes::X86x16<L>::clone(&self) -> hakmem::lanes::X86x16<L>
+impl<L: core::marker::Copy> core::marker::Copy for hakmem::lanes::X86x16<L>
+impl<L: hakmem::isa::X86Level> core::cmp::Eq for hakmem::lanes::X86x16<L>
+impl<L: hakmem::isa::X86Level> core::cmp::PartialEq for hakmem::lanes::X86x16<L>
+pub fn hakmem::lanes::X86x16<L>::eq(&self, &Self) -> bool
+impl<L: hakmem::isa::X86Level> core::fmt::Debug for hakmem::lanes::X86x16<L>
+pub fn hakmem::lanes::X86x16<L>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<L: hakmem::isa::X86Level> hakmem::lanes::Lanes for hakmem::lanes::X86x16<L>
+pub type hakmem::lanes::X86x16<L>::Bitmask = u16
+pub type hakmem::lanes::X86x16<L>::Isa = L
+pub const hakmem::lanes::X86x16<L>::LANES: usize
+pub fn hakmem::lanes::X86x16<L>::add(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::add_sat(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::affine(self, hakmem::affine::Affine8) -> Self
+pub fn hakmem::lanes::X86x16<L>::and(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::avg_floor(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::avg_round(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::blend(self, Self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_eq(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_ge(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_gt(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_le(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_lt(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::X86x16<L>::isa(self) -> L
+pub fn hakmem::lanes::X86x16<L>::lane(self, usize) -> u8
+pub fn hakmem::lanes::X86x16<L>::load(L, &[u8]) -> Self
+pub fn hakmem::lanes::X86x16<L>::lut16(self, [u8; 16]) -> Self
+pub fn hakmem::lanes::X86x16<L>::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
+pub fn hakmem::lanes::X86x16<L>::max(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::min(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::mul_add_pairs(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::not(self) -> Self
+pub fn hakmem::lanes::X86x16<L>::or(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::reverse_bits(self) -> Self
+pub fn hakmem::lanes::X86x16<L>::rotl(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::rotr(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shl(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shr(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shuffle(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::splat(L, u8) -> Self
+pub fn hakmem::lanes::X86x16<L>::sra(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::sub(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::sub_sat(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::sum_abs_diff(self, Self) -> u32
+pub fn hakmem::lanes::X86x16<L>::ternary(self, Self, Self, u8) -> Self
+pub fn hakmem::lanes::X86x16<L>::to_bitmask(self) -> u16
+pub fn hakmem::lanes::X86x16<L>::unpack_hi(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::unpack_lo(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::xor(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::zero(Self::Isa) -> Self
+impl<L> core::marker::Freeze for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::Freeze
+impl<L> core::marker::Send for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::Send
+impl<L> core::marker::Sync for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::Sync
+impl<L> core::marker::Unpin for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::Unpin
+impl<L> core::marker::UnsafeUnpin for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::UnsafeUnpin
+impl<L> core::panic::unwind_safe::RefUnwindSafe for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::panic::unwind_safe::RefUnwindSafe
+impl<L> core::panic::unwind_safe::UnwindSafe for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::panic::unwind_safe::UnwindSafe
 pub trait hakmem::lanes::Lanes: core::marker::Copy + core::cmp::Eq + core::fmt::Debug
 pub type hakmem::lanes::Lanes::Bitmask: hakmem::word::Word
+pub type hakmem::lanes::Lanes::Isa: hakmem::isa::Isa
 pub const hakmem::lanes::Lanes::LANES: usize
 pub fn hakmem::lanes::Lanes::add(self, Self) -> Self
 pub fn hakmem::lanes::Lanes::add_sat(self, Self) -> Self
@@ -771,8 +859,9 @@ pub fn hakmem::lanes::Lanes::cmp_gt(self, Self) -> Self
 pub fn hakmem::lanes::Lanes::cmp_le(self, Self) -> Self
 pub fn hakmem::lanes::Lanes::cmp_lt(self, Self) -> Self
 pub fn hakmem::lanes::Lanes::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::Lanes::isa(self) -> Self::Isa
 pub fn hakmem::lanes::Lanes::lane(self, usize) -> u8
-pub fn hakmem::lanes::Lanes::load(&[u8]) -> Self
+pub fn hakmem::lanes::Lanes::load(Self::Isa, &[u8]) -> Self
 pub fn hakmem::lanes::Lanes::lut16(self, [u8; 16]) -> Self
 pub fn hakmem::lanes::Lanes::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
 pub fn hakmem::lanes::Lanes::max(self, Self) -> Self
@@ -786,7 +875,7 @@ pub fn hakmem::lanes::Lanes::rotr(self, u32) -> Self
 pub fn hakmem::lanes::Lanes::shl(self, u32) -> Self
 pub fn hakmem::lanes::Lanes::shr(self, u32) -> Self
 pub fn hakmem::lanes::Lanes::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::Lanes::splat(u8) -> Self
+pub fn hakmem::lanes::Lanes::splat(Self::Isa, u8) -> Self
 pub fn hakmem::lanes::Lanes::sra(self, u32) -> Self
 pub fn hakmem::lanes::Lanes::sub(self, Self) -> Self
 pub fn hakmem::lanes::Lanes::sub_sat(self, Self) -> Self
@@ -796,51 +885,10 @@ pub fn hakmem::lanes::Lanes::to_bitmask(self) -> Self::Bitmask
 pub fn hakmem::lanes::Lanes::unpack_hi(self, Self) -> Self
 pub fn hakmem::lanes::Lanes::unpack_lo(self, Self) -> Self
 pub fn hakmem::lanes::Lanes::xor(self, Self) -> Self
-pub fn hakmem::lanes::Lanes::zero() -> Self
-impl hakmem::lanes::Lanes for hakmem::lanes::U8x16
-pub type hakmem::lanes::U8x16::Bitmask = u16
-pub const hakmem::lanes::U8x16::LANES: usize
-pub fn hakmem::lanes::U8x16::add(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::add_sat(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::affine(self, hakmem::affine::Affine8) -> Self
-pub fn hakmem::lanes::U8x16::and(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::avg_floor(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::avg_round(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::blend(self, Self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_eq(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_ge(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_gt(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_le(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_lt(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::concat_shift(self, Self, usize) -> Self
-pub fn hakmem::lanes::U8x16::lane(self, usize) -> u8
-pub fn hakmem::lanes::U8x16::load(&[u8]) -> Self
-pub fn hakmem::lanes::U8x16::lut16(self, [u8; 16]) -> Self
-pub fn hakmem::lanes::U8x16::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
-pub fn hakmem::lanes::U8x16::max(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::min(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::mul_add_pairs(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::not(self) -> Self
-pub fn hakmem::lanes::U8x16::or(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::reverse_bits(self) -> Self
-pub fn hakmem::lanes::U8x16::rotl(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::rotr(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shl(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shr(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::splat(u8) -> Self
-pub fn hakmem::lanes::U8x16::sra(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::sub(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::sub_sat(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::sum_abs_diff(self, Self) -> u32
-pub fn hakmem::lanes::U8x16::ternary(self, Self, Self, u8) -> Self
-pub fn hakmem::lanes::U8x16::to_bitmask(self) -> u16
-pub fn hakmem::lanes::U8x16::unpack_hi(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::unpack_lo(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::xor(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::zero() -> Self
+pub fn hakmem::lanes::Lanes::zero(Self::Isa) -> Self
 impl hakmem::lanes::Lanes for hakmem::lanes::U8x8
 pub type hakmem::lanes::U8x8::Bitmask = u8
+pub type hakmem::lanes::U8x8::Isa = hakmem::isa::Portable
 pub const hakmem::lanes::U8x8::LANES: usize
 pub fn hakmem::lanes::U8x8::add(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::add_sat(self, Self) -> Self
@@ -855,8 +903,9 @@ pub fn hakmem::lanes::U8x8::cmp_gt(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::cmp_le(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::cmp_lt(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::U8x8::isa(self) -> hakmem::isa::Portable
 pub fn hakmem::lanes::U8x8::lane(self, usize) -> u8
-pub fn hakmem::lanes::U8x8::load(&[u8]) -> Self
+pub fn hakmem::lanes::U8x8::load(hakmem::isa::Portable, &[u8]) -> Self
 pub fn hakmem::lanes::U8x8::lut16(self, [u8; 16]) -> Self
 pub fn hakmem::lanes::U8x8::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
 pub fn hakmem::lanes::U8x8::max(self, Self) -> Self
@@ -870,7 +919,7 @@ pub fn hakmem::lanes::U8x8::rotr(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shl(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shr(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::U8x8::splat(u8) -> Self
+pub fn hakmem::lanes::U8x8::splat(hakmem::isa::Portable, u8) -> Self
 pub fn hakmem::lanes::U8x8::sra(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::sub(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::sub_sat(self, Self) -> Self
@@ -880,7 +929,97 @@ pub fn hakmem::lanes::U8x8::to_bitmask(self) -> u8
 pub fn hakmem::lanes::U8x8::unpack_hi(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::unpack_lo(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::xor(self, Self) -> Self
-pub fn hakmem::lanes::U8x8::zero() -> Self
+pub fn hakmem::lanes::U8x8::zero(Self::Isa) -> Self
+impl<I: hakmem::isa::Isa + core::default::Default> hakmem::lanes::Lanes for hakmem::lanes::Swar16<I>
+pub type hakmem::lanes::Swar16<I>::Bitmask = u16
+pub type hakmem::lanes::Swar16<I>::Isa = I
+pub const hakmem::lanes::Swar16<I>::LANES: usize
+pub fn hakmem::lanes::Swar16<I>::add(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::add_sat(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::affine(self, hakmem::affine::Affine8) -> Self
+pub fn hakmem::lanes::Swar16<I>::and(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::avg_floor(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::avg_round(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::blend(self, Self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_eq(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_ge(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_gt(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_le(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_lt(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::Swar16<I>::isa(self) -> I
+pub fn hakmem::lanes::Swar16<I>::lane(self, usize) -> u8
+pub fn hakmem::lanes::Swar16<I>::load(I, &[u8]) -> Self
+pub fn hakmem::lanes::Swar16<I>::lut16(self, [u8; 16]) -> Self
+pub fn hakmem::lanes::Swar16<I>::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
+pub fn hakmem::lanes::Swar16<I>::max(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::min(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::mul_add_pairs(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::not(self) -> Self
+pub fn hakmem::lanes::Swar16<I>::or(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::reverse_bits(self) -> Self
+pub fn hakmem::lanes::Swar16<I>::rotl(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::rotr(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shl(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shr(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shuffle(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::splat(I, u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::sra(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::sub(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::sub_sat(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::sum_abs_diff(self, Self) -> u32
+pub fn hakmem::lanes::Swar16<I>::ternary(self, Self, Self, u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::to_bitmask(self) -> u16
+pub fn hakmem::lanes::Swar16<I>::unpack_hi(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::unpack_lo(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::xor(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::zero(Self::Isa) -> Self
+impl<L: hakmem::isa::X86Level> hakmem::lanes::Lanes for hakmem::lanes::X86x16<L>
+pub type hakmem::lanes::X86x16<L>::Bitmask = u16
+pub type hakmem::lanes::X86x16<L>::Isa = L
+pub const hakmem::lanes::X86x16<L>::LANES: usize
+pub fn hakmem::lanes::X86x16<L>::add(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::add_sat(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::affine(self, hakmem::affine::Affine8) -> Self
+pub fn hakmem::lanes::X86x16<L>::and(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::avg_floor(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::avg_round(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::blend(self, Self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_eq(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_ge(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_gt(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_le(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_lt(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::X86x16<L>::isa(self) -> L
+pub fn hakmem::lanes::X86x16<L>::lane(self, usize) -> u8
+pub fn hakmem::lanes::X86x16<L>::load(L, &[u8]) -> Self
+pub fn hakmem::lanes::X86x16<L>::lut16(self, [u8; 16]) -> Self
+pub fn hakmem::lanes::X86x16<L>::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
+pub fn hakmem::lanes::X86x16<L>::max(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::min(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::mul_add_pairs(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::not(self) -> Self
+pub fn hakmem::lanes::X86x16<L>::or(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::reverse_bits(self) -> Self
+pub fn hakmem::lanes::X86x16<L>::rotl(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::rotr(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shl(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shr(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shuffle(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::splat(L, u8) -> Self
+pub fn hakmem::lanes::X86x16<L>::sra(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::sub(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::sub_sat(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::sum_abs_diff(self, Self) -> u32
+pub fn hakmem::lanes::X86x16<L>::ternary(self, Self, Self, u8) -> Self
+pub fn hakmem::lanes::X86x16<L>::to_bitmask(self) -> u16
+pub fn hakmem::lanes::X86x16<L>::unpack_hi(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::unpack_lo(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::xor(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::zero(Self::Isa) -> Self
+pub type hakmem::lanes::NativeU8x16 = hakmem::lanes::Swar16<hakmem::isa::Native>
+pub type hakmem::lanes::U8x16 = hakmem::lanes::NativeU8x16
 pub mod hakmem::laws
 pub mod hakmem::laws::reference
 pub fn hakmem::laws::reference::affine(hakmem::affine::Affine8, u8) -> u8
@@ -1615,6 +1754,7 @@ pub fn hakmem::hilbert3::Hilbert3<W>::from_key(W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::key(self) -> W
 pub trait hakmem::prelude::Lanes: core::marker::Copy + core::cmp::Eq + core::fmt::Debug
 pub type hakmem::prelude::Lanes::Bitmask: hakmem::word::Word
+pub type hakmem::prelude::Lanes::Isa: hakmem::isa::Isa
 pub const hakmem::prelude::Lanes::LANES: usize
 pub fn hakmem::prelude::Lanes::add(self, Self) -> Self
 pub fn hakmem::prelude::Lanes::add_sat(self, Self) -> Self
@@ -1629,8 +1769,9 @@ pub fn hakmem::prelude::Lanes::cmp_gt(self, Self) -> Self
 pub fn hakmem::prelude::Lanes::cmp_le(self, Self) -> Self
 pub fn hakmem::prelude::Lanes::cmp_lt(self, Self) -> Self
 pub fn hakmem::prelude::Lanes::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::prelude::Lanes::isa(self) -> Self::Isa
 pub fn hakmem::prelude::Lanes::lane(self, usize) -> u8
-pub fn hakmem::prelude::Lanes::load(&[u8]) -> Self
+pub fn hakmem::prelude::Lanes::load(Self::Isa, &[u8]) -> Self
 pub fn hakmem::prelude::Lanes::lut16(self, [u8; 16]) -> Self
 pub fn hakmem::prelude::Lanes::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
 pub fn hakmem::prelude::Lanes::max(self, Self) -> Self
@@ -1644,7 +1785,7 @@ pub fn hakmem::prelude::Lanes::rotr(self, u32) -> Self
 pub fn hakmem::prelude::Lanes::shl(self, u32) -> Self
 pub fn hakmem::prelude::Lanes::shr(self, u32) -> Self
 pub fn hakmem::prelude::Lanes::shuffle(self, Self) -> Self
-pub fn hakmem::prelude::Lanes::splat(u8) -> Self
+pub fn hakmem::prelude::Lanes::splat(Self::Isa, u8) -> Self
 pub fn hakmem::prelude::Lanes::sra(self, u32) -> Self
 pub fn hakmem::prelude::Lanes::sub(self, Self) -> Self
 pub fn hakmem::prelude::Lanes::sub_sat(self, Self) -> Self
@@ -1654,51 +1795,10 @@ pub fn hakmem::prelude::Lanes::to_bitmask(self) -> Self::Bitmask
 pub fn hakmem::prelude::Lanes::unpack_hi(self, Self) -> Self
 pub fn hakmem::prelude::Lanes::unpack_lo(self, Self) -> Self
 pub fn hakmem::prelude::Lanes::xor(self, Self) -> Self
-pub fn hakmem::prelude::Lanes::zero() -> Self
-impl hakmem::lanes::Lanes for hakmem::lanes::U8x16
-pub type hakmem::lanes::U8x16::Bitmask = u16
-pub const hakmem::lanes::U8x16::LANES: usize
-pub fn hakmem::lanes::U8x16::add(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::add_sat(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::affine(self, hakmem::affine::Affine8) -> Self
-pub fn hakmem::lanes::U8x16::and(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::avg_floor(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::avg_round(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::blend(self, Self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_eq(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_ge(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_gt(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_le(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_lt(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::concat_shift(self, Self, usize) -> Self
-pub fn hakmem::lanes::U8x16::lane(self, usize) -> u8
-pub fn hakmem::lanes::U8x16::load(&[u8]) -> Self
-pub fn hakmem::lanes::U8x16::lut16(self, [u8; 16]) -> Self
-pub fn hakmem::lanes::U8x16::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
-pub fn hakmem::lanes::U8x16::max(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::min(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::mul_add_pairs(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::not(self) -> Self
-pub fn hakmem::lanes::U8x16::or(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::reverse_bits(self) -> Self
-pub fn hakmem::lanes::U8x16::rotl(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::rotr(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shl(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shr(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::splat(u8) -> Self
-pub fn hakmem::lanes::U8x16::sra(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::sub(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::sub_sat(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::sum_abs_diff(self, Self) -> u32
-pub fn hakmem::lanes::U8x16::ternary(self, Self, Self, u8) -> Self
-pub fn hakmem::lanes::U8x16::to_bitmask(self) -> u16
-pub fn hakmem::lanes::U8x16::unpack_hi(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::unpack_lo(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::xor(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::zero() -> Self
+pub fn hakmem::prelude::Lanes::zero(Self::Isa) -> Self
 impl hakmem::lanes::Lanes for hakmem::lanes::U8x8
 pub type hakmem::lanes::U8x8::Bitmask = u8
+pub type hakmem::lanes::U8x8::Isa = hakmem::isa::Portable
 pub const hakmem::lanes::U8x8::LANES: usize
 pub fn hakmem::lanes::U8x8::add(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::add_sat(self, Self) -> Self
@@ -1713,8 +1813,9 @@ pub fn hakmem::lanes::U8x8::cmp_gt(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::cmp_le(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::cmp_lt(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::U8x8::isa(self) -> hakmem::isa::Portable
 pub fn hakmem::lanes::U8x8::lane(self, usize) -> u8
-pub fn hakmem::lanes::U8x8::load(&[u8]) -> Self
+pub fn hakmem::lanes::U8x8::load(hakmem::isa::Portable, &[u8]) -> Self
 pub fn hakmem::lanes::U8x8::lut16(self, [u8; 16]) -> Self
 pub fn hakmem::lanes::U8x8::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
 pub fn hakmem::lanes::U8x8::max(self, Self) -> Self
@@ -1728,7 +1829,7 @@ pub fn hakmem::lanes::U8x8::rotr(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shl(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shr(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::U8x8::splat(u8) -> Self
+pub fn hakmem::lanes::U8x8::splat(hakmem::isa::Portable, u8) -> Self
 pub fn hakmem::lanes::U8x8::sra(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::sub(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::sub_sat(self, Self) -> Self
@@ -1738,7 +1839,95 @@ pub fn hakmem::lanes::U8x8::to_bitmask(self) -> u8
 pub fn hakmem::lanes::U8x8::unpack_hi(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::unpack_lo(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::xor(self, Self) -> Self
-pub fn hakmem::lanes::U8x8::zero() -> Self
+pub fn hakmem::lanes::U8x8::zero(Self::Isa) -> Self
+impl<I: hakmem::isa::Isa + core::default::Default> hakmem::lanes::Lanes for hakmem::lanes::Swar16<I>
+pub type hakmem::lanes::Swar16<I>::Bitmask = u16
+pub type hakmem::lanes::Swar16<I>::Isa = I
+pub const hakmem::lanes::Swar16<I>::LANES: usize
+pub fn hakmem::lanes::Swar16<I>::add(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::add_sat(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::affine(self, hakmem::affine::Affine8) -> Self
+pub fn hakmem::lanes::Swar16<I>::and(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::avg_floor(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::avg_round(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::blend(self, Self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_eq(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_ge(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_gt(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_le(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_lt(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::Swar16<I>::isa(self) -> I
+pub fn hakmem::lanes::Swar16<I>::lane(self, usize) -> u8
+pub fn hakmem::lanes::Swar16<I>::load(I, &[u8]) -> Self
+pub fn hakmem::lanes::Swar16<I>::lut16(self, [u8; 16]) -> Self
+pub fn hakmem::lanes::Swar16<I>::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
+pub fn hakmem::lanes::Swar16<I>::max(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::min(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::mul_add_pairs(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::not(self) -> Self
+pub fn hakmem::lanes::Swar16<I>::or(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::reverse_bits(self) -> Self
+pub fn hakmem::lanes::Swar16<I>::rotl(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::rotr(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shl(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shr(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shuffle(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::splat(I, u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::sra(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::sub(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::sub_sat(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::sum_abs_diff(self, Self) -> u32
+pub fn hakmem::lanes::Swar16<I>::ternary(self, Self, Self, u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::to_bitmask(self) -> u16
+pub fn hakmem::lanes::Swar16<I>::unpack_hi(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::unpack_lo(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::xor(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::zero(Self::Isa) -> Self
+impl<L: hakmem::isa::X86Level> hakmem::lanes::Lanes for hakmem::lanes::X86x16<L>
+pub type hakmem::lanes::X86x16<L>::Bitmask = u16
+pub type hakmem::lanes::X86x16<L>::Isa = L
+pub const hakmem::lanes::X86x16<L>::LANES: usize
+pub fn hakmem::lanes::X86x16<L>::add(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::add_sat(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::affine(self, hakmem::affine::Affine8) -> Self
+pub fn hakmem::lanes::X86x16<L>::and(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::avg_floor(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::avg_round(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::blend(self, Self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_eq(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_ge(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_gt(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_le(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_lt(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::X86x16<L>::isa(self) -> L
+pub fn hakmem::lanes::X86x16<L>::lane(self, usize) -> u8
+pub fn hakmem::lanes::X86x16<L>::load(L, &[u8]) -> Self
+pub fn hakmem::lanes::X86x16<L>::lut16(self, [u8; 16]) -> Self
+pub fn hakmem::lanes::X86x16<L>::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
+pub fn hakmem::lanes::X86x16<L>::max(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::min(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::mul_add_pairs(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::not(self) -> Self
+pub fn hakmem::lanes::X86x16<L>::or(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::reverse_bits(self) -> Self
+pub fn hakmem::lanes::X86x16<L>::rotl(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::rotr(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shl(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shr(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shuffle(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::splat(L, u8) -> Self
+pub fn hakmem::lanes::X86x16<L>::sra(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::sub(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::sub_sat(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::sum_abs_diff(self, Self) -> u32
+pub fn hakmem::lanes::X86x16<L>::ternary(self, Self, Self, u8) -> Self
+pub fn hakmem::lanes::X86x16<L>::to_bitmask(self) -> u16
+pub fn hakmem::lanes::X86x16<L>::unpack_hi(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::unpack_lo(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::xor(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::zero(Self::Isa) -> Self
 pub trait hakmem::prelude::Word: core::marker::Copy + core::cmp::Ord + core::hash::Hash + core::fmt::Debug + core::fmt::Binary + core::fmt::LowerHex + core::fmt::UpperHex + core::marker::Send + core::marker::Sync + 'static
 pub const hakmem::prelude::Word::BITS: u32
 pub const hakmem::prelude::Word::ONE: Self
@@ -2979,6 +3168,7 @@ pub fn hakmem::hilbert3::Hilbert3<W>::from_key(W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::key(self) -> W
 pub trait hakmem::Lanes: core::marker::Copy + core::cmp::Eq + core::fmt::Debug
 pub type hakmem::Lanes::Bitmask: hakmem::word::Word
+pub type hakmem::Lanes::Isa: hakmem::isa::Isa
 pub const hakmem::Lanes::LANES: usize
 pub fn hakmem::Lanes::add(self, Self) -> Self
 pub fn hakmem::Lanes::add_sat(self, Self) -> Self
@@ -2993,8 +3183,9 @@ pub fn hakmem::Lanes::cmp_gt(self, Self) -> Self
 pub fn hakmem::Lanes::cmp_le(self, Self) -> Self
 pub fn hakmem::Lanes::cmp_lt(self, Self) -> Self
 pub fn hakmem::Lanes::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::Lanes::isa(self) -> Self::Isa
 pub fn hakmem::Lanes::lane(self, usize) -> u8
-pub fn hakmem::Lanes::load(&[u8]) -> Self
+pub fn hakmem::Lanes::load(Self::Isa, &[u8]) -> Self
 pub fn hakmem::Lanes::lut16(self, [u8; 16]) -> Self
 pub fn hakmem::Lanes::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
 pub fn hakmem::Lanes::max(self, Self) -> Self
@@ -3008,7 +3199,7 @@ pub fn hakmem::Lanes::rotr(self, u32) -> Self
 pub fn hakmem::Lanes::shl(self, u32) -> Self
 pub fn hakmem::Lanes::shr(self, u32) -> Self
 pub fn hakmem::Lanes::shuffle(self, Self) -> Self
-pub fn hakmem::Lanes::splat(u8) -> Self
+pub fn hakmem::Lanes::splat(Self::Isa, u8) -> Self
 pub fn hakmem::Lanes::sra(self, u32) -> Self
 pub fn hakmem::Lanes::sub(self, Self) -> Self
 pub fn hakmem::Lanes::sub_sat(self, Self) -> Self
@@ -3018,51 +3209,10 @@ pub fn hakmem::Lanes::to_bitmask(self) -> Self::Bitmask
 pub fn hakmem::Lanes::unpack_hi(self, Self) -> Self
 pub fn hakmem::Lanes::unpack_lo(self, Self) -> Self
 pub fn hakmem::Lanes::xor(self, Self) -> Self
-pub fn hakmem::Lanes::zero() -> Self
-impl hakmem::lanes::Lanes for hakmem::lanes::U8x16
-pub type hakmem::lanes::U8x16::Bitmask = u16
-pub const hakmem::lanes::U8x16::LANES: usize
-pub fn hakmem::lanes::U8x16::add(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::add_sat(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::affine(self, hakmem::affine::Affine8) -> Self
-pub fn hakmem::lanes::U8x16::and(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::avg_floor(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::avg_round(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::blend(self, Self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_eq(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_ge(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_gt(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_le(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::cmp_lt(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::concat_shift(self, Self, usize) -> Self
-pub fn hakmem::lanes::U8x16::lane(self, usize) -> u8
-pub fn hakmem::lanes::U8x16::load(&[u8]) -> Self
-pub fn hakmem::lanes::U8x16::lut16(self, [u8; 16]) -> Self
-pub fn hakmem::lanes::U8x16::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
-pub fn hakmem::lanes::U8x16::max(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::min(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::mul_add_pairs(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::not(self) -> Self
-pub fn hakmem::lanes::U8x16::or(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::reverse_bits(self) -> Self
-pub fn hakmem::lanes::U8x16::rotl(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::rotr(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shl(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shr(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::splat(u8) -> Self
-pub fn hakmem::lanes::U8x16::sra(self, u32) -> Self
-pub fn hakmem::lanes::U8x16::sub(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::sub_sat(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::sum_abs_diff(self, Self) -> u32
-pub fn hakmem::lanes::U8x16::ternary(self, Self, Self, u8) -> Self
-pub fn hakmem::lanes::U8x16::to_bitmask(self) -> u16
-pub fn hakmem::lanes::U8x16::unpack_hi(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::unpack_lo(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::xor(self, Self) -> Self
-pub fn hakmem::lanes::U8x16::zero() -> Self
+pub fn hakmem::Lanes::zero(Self::Isa) -> Self
 impl hakmem::lanes::Lanes for hakmem::lanes::U8x8
 pub type hakmem::lanes::U8x8::Bitmask = u8
+pub type hakmem::lanes::U8x8::Isa = hakmem::isa::Portable
 pub const hakmem::lanes::U8x8::LANES: usize
 pub fn hakmem::lanes::U8x8::add(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::add_sat(self, Self) -> Self
@@ -3077,8 +3227,9 @@ pub fn hakmem::lanes::U8x8::cmp_gt(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::cmp_le(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::cmp_lt(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::U8x8::isa(self) -> hakmem::isa::Portable
 pub fn hakmem::lanes::U8x8::lane(self, usize) -> u8
-pub fn hakmem::lanes::U8x8::load(&[u8]) -> Self
+pub fn hakmem::lanes::U8x8::load(hakmem::isa::Portable, &[u8]) -> Self
 pub fn hakmem::lanes::U8x8::lut16(self, [u8; 16]) -> Self
 pub fn hakmem::lanes::U8x8::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
 pub fn hakmem::lanes::U8x8::max(self, Self) -> Self
@@ -3092,7 +3243,7 @@ pub fn hakmem::lanes::U8x8::rotr(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shl(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shr(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::shuffle(self, Self) -> Self
-pub fn hakmem::lanes::U8x8::splat(u8) -> Self
+pub fn hakmem::lanes::U8x8::splat(hakmem::isa::Portable, u8) -> Self
 pub fn hakmem::lanes::U8x8::sra(self, u32) -> Self
 pub fn hakmem::lanes::U8x8::sub(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::sub_sat(self, Self) -> Self
@@ -3102,7 +3253,95 @@ pub fn hakmem::lanes::U8x8::to_bitmask(self) -> u8
 pub fn hakmem::lanes::U8x8::unpack_hi(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::unpack_lo(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::xor(self, Self) -> Self
-pub fn hakmem::lanes::U8x8::zero() -> Self
+pub fn hakmem::lanes::U8x8::zero(Self::Isa) -> Self
+impl<I: hakmem::isa::Isa + core::default::Default> hakmem::lanes::Lanes for hakmem::lanes::Swar16<I>
+pub type hakmem::lanes::Swar16<I>::Bitmask = u16
+pub type hakmem::lanes::Swar16<I>::Isa = I
+pub const hakmem::lanes::Swar16<I>::LANES: usize
+pub fn hakmem::lanes::Swar16<I>::add(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::add_sat(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::affine(self, hakmem::affine::Affine8) -> Self
+pub fn hakmem::lanes::Swar16<I>::and(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::avg_floor(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::avg_round(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::blend(self, Self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_eq(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_ge(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_gt(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_le(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::cmp_lt(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::Swar16<I>::isa(self) -> I
+pub fn hakmem::lanes::Swar16<I>::lane(self, usize) -> u8
+pub fn hakmem::lanes::Swar16<I>::load(I, &[u8]) -> Self
+pub fn hakmem::lanes::Swar16<I>::lut16(self, [u8; 16]) -> Self
+pub fn hakmem::lanes::Swar16<I>::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
+pub fn hakmem::lanes::Swar16<I>::max(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::min(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::mul_add_pairs(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::not(self) -> Self
+pub fn hakmem::lanes::Swar16<I>::or(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::reverse_bits(self) -> Self
+pub fn hakmem::lanes::Swar16<I>::rotl(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::rotr(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shl(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shr(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::shuffle(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::splat(I, u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::sra(self, u32) -> Self
+pub fn hakmem::lanes::Swar16<I>::sub(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::sub_sat(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::sum_abs_diff(self, Self) -> u32
+pub fn hakmem::lanes::Swar16<I>::ternary(self, Self, Self, u8) -> Self
+pub fn hakmem::lanes::Swar16<I>::to_bitmask(self) -> u16
+pub fn hakmem::lanes::Swar16<I>::unpack_hi(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::unpack_lo(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::xor(self, Self) -> Self
+pub fn hakmem::lanes::Swar16<I>::zero(Self::Isa) -> Self
+impl<L: hakmem::isa::X86Level> hakmem::lanes::Lanes for hakmem::lanes::X86x16<L>
+pub type hakmem::lanes::X86x16<L>::Bitmask = u16
+pub type hakmem::lanes::X86x16<L>::Isa = L
+pub const hakmem::lanes::X86x16<L>::LANES: usize
+pub fn hakmem::lanes::X86x16<L>::add(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::add_sat(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::affine(self, hakmem::affine::Affine8) -> Self
+pub fn hakmem::lanes::X86x16<L>::and(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::avg_floor(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::avg_round(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::blend(self, Self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_eq(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_ge(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_gt(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_le(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::cmp_lt(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::concat_shift(self, Self, usize) -> Self
+pub fn hakmem::lanes::X86x16<L>::isa(self) -> L
+pub fn hakmem::lanes::X86x16<L>::lane(self, usize) -> u8
+pub fn hakmem::lanes::X86x16<L>::load(L, &[u8]) -> Self
+pub fn hakmem::lanes::X86x16<L>::lut16(self, [u8; 16]) -> Self
+pub fn hakmem::lanes::X86x16<L>::lut16_nibbles(self, [u8; 16], [u8; 16]) -> Self
+pub fn hakmem::lanes::X86x16<L>::max(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::min(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::mul_add_pairs(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::not(self) -> Self
+pub fn hakmem::lanes::X86x16<L>::or(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::reverse_bits(self) -> Self
+pub fn hakmem::lanes::X86x16<L>::rotl(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::rotr(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shl(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shr(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::shuffle(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::splat(L, u8) -> Self
+pub fn hakmem::lanes::X86x16<L>::sra(self, u32) -> Self
+pub fn hakmem::lanes::X86x16<L>::sub(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::sub_sat(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::sum_abs_diff(self, Self) -> u32
+pub fn hakmem::lanes::X86x16<L>::ternary(self, Self, Self, u8) -> Self
+pub fn hakmem::lanes::X86x16<L>::to_bitmask(self) -> u16
+pub fn hakmem::lanes::X86x16<L>::unpack_hi(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::unpack_lo(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::xor(self, Self) -> Self
+pub fn hakmem::lanes::X86x16<L>::zero(Self::Isa) -> Self
 pub trait hakmem::Word: core::marker::Copy + core::cmp::Ord + core::hash::Hash + core::fmt::Debug + core::fmt::Binary + core::fmt::LowerHex + core::fmt::UpperHex + core::marker::Send + core::marker::Sync + 'static
 pub const hakmem::Word::BITS: u32
 pub const hakmem::Word::ONE: Self

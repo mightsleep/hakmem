@@ -2,7 +2,7 @@
 //! down, and the primitives inside compile to its instructions.
 //!
 //! A token is a zero-sized proof that the CPU has a set of features.
-//! [`Portable`] and [`Native`] exist everywhere; [`X86V3`] only comes out
+//! [`Portable`] and [`Native`] exist everywhere; `X86V3` (x86) only comes out
 //! of [`detect`] (or an `unsafe` promise). [`Isa::run`] runs a closure
 //! compiled with the token's features, and [`dispatch!`](crate::dispatch)
 //! does the detection and the `run` in one go:
@@ -44,7 +44,13 @@ mod sealed {
 ///
 /// The per-width methods are the hooks [`Word`](crate::Word) routes
 /// through; the generic ones (`pext`, `select`, ...) are what code reads.
-pub trait Isa: Copy + Send + Sync + Debug + 'static + sealed::Sealed {
+pub trait Isa:
+    Copy + Eq + core::hash::Hash + Send + Sync + Debug + 'static + sealed::Sealed
+{
+    /// Sixteen byte lanes with this token's instructions: a PSHUFB register
+    /// on x86 with SSSE3, NEON on aarch64, two SWAR words elsewhere.
+    type U8x16: crate::lanes::Lanes<Isa = Self, Bitmask = u16>;
+
     /// `f`, compiled with this token's target features. Everything `f`
     /// inlines gets them too.
     fn run<R>(self, f: impl FnOnce(Self) -> R) -> R;
@@ -99,6 +105,7 @@ pub struct Portable;
 impl sealed::Sealed for Portable {}
 
 impl Isa for Portable {
+    type U8x16 = crate::lanes::Swar16<Self>;
     #[inline(always)]
     fn run<R>(self, f: impl FnOnce(Self) -> R) -> R {
         f(self)
@@ -196,6 +203,7 @@ macro_rules! native_clmul {
 // method cannot carry. The `cfg` is the proof instead.
 #[allow(unsafe_code)]
 impl Isa for Native {
+    type U8x16 = crate::lanes::NativeU8x16;
     #[inline(always)]
     fn run<R>(self, f: impl FnOnce(Self) -> R) -> R {
         f(self)
@@ -299,6 +307,7 @@ mod x86v3 {
     // SAFETY, for every method: the token exists, so the CPU has the
     // level's features (`detect` or the caller of `new_unchecked` said so).
     impl Isa for X86V3 {
+        type U8x16 = crate::lanes::X86x16<Self>;
         #[inline]
         fn run<R>(self, f: impl FnOnce(Self) -> R) -> R {
             #[target_feature(
@@ -376,12 +385,11 @@ pub fn detect() -> Level {
 /// Every level this CPU has, lowest first: for tests that want each path
 /// the machine can run.
 pub fn available() -> impl Iterator<Item = Level> {
-    let mut levels = [Some(Level::Portable(Portable)), None];
-    #[cfg(target_arch = "x86_64")]
-    if let Level::X86V3(cpu) = detect() {
-        levels[1] = Some(Level::X86V3(cpu));
-    }
-    levels.into_iter().flatten()
+    let top = detect();
+    let portable = Level::Portable(Portable);
+    [Some(portable), (top != portable).then_some(top)]
+        .into_iter()
+        .flatten()
 }
 
 /// Detects the level once (or takes one) and runs the body with a token
@@ -408,4 +416,46 @@ macro_rules! dispatch {
             $crate::isa::Level::X86V3(t) => $crate::isa::Isa::run(t, |$cpu| $body),
         }
     };
+}
+
+/// The x86 levels with SSSE3, which is what [`X86x16`](crate::lanes::X86x16)
+/// needs. Sealed like [`Isa`].
+#[cfg(target_arch = "x86_64")]
+#[allow(unsafe_code)]
+pub trait X86Level: Isa {
+    /// The level has GFNI: byte maps are one `gf2p8affineqb`.
+    const GFNI: bool;
+
+    /// The token, from a value that already proves the level (a carrier
+    /// of it exists).
+    ///
+    /// # Safety
+    ///
+    /// The CPU has the level's features.
+    #[doc(hidden)]
+    unsafe fn assume() -> Self;
+}
+
+#[cfg(target_arch = "x86_64")]
+#[allow(unsafe_code)]
+impl X86Level for X86V3 {
+    const GFNI: bool = false;
+    unsafe fn assume() -> Self {
+        // SAFETY: the caller's.
+        unsafe { Self::new_unchecked() }
+    }
+}
+
+// `Native` is an x86 level with SSSE3 when the build says so.
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "ssse3",
+    not(feature = "portable")
+))]
+#[allow(unsafe_code)]
+impl X86Level for Native {
+    const GFNI: bool = cfg!(target_feature = "gfni");
+    unsafe fn assume() -> Self {
+        Self
+    }
 }

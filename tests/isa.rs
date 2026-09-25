@@ -101,3 +101,31 @@ fn native_is_the_plain_methods() {
         assert_eq!(isa::Native.select(x, 3), hakmem::Bits::select(x, 3));
     }
 }
+
+/// The lanes of every level against the per-lane definitions: in a build
+/// without flags this is the only place the SSSE3 carrier runs.
+fn lanes_of<I: Isa>(cpu: I) {
+    use hakmem::lanes::Lanes;
+    use hakmem::laws;
+    let table = [
+        9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0x80, 0x7F, 0xFF, 0x10, 0x20, 0x30,
+    ];
+    let texts: [&[u8; 16]; 3] = [b"hello, world!\t\n\r", b"{\"a\": [1, 2]}   ", &[0xFF; 16]];
+    for x in texts {
+        for y in texts {
+            let (a, b) = (I::U8x16::load(cpu, x), I::U8x16::load(cpu, y));
+            for n in 0..9 {
+                assert!(laws::lanes_match_reference(a, b, n, table), "{cpu:?} n={n}");
+            }
+            assert!(laws::lut16_composes(a, table, [0xFF; 16]), "{cpu:?}");
+            assert_eq!(a.isa(), cpu);
+        }
+    }
+}
+
+#[test]
+fn every_level_has_lawful_lanes() {
+    for level in isa::available() {
+        hakmem::dispatch!(level, |cpu| lanes_of(cpu));
+    }
+}

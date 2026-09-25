@@ -735,7 +735,7 @@ mod board8 {
 // pits the vector instructions against the scalar definitions).
 mod lanes {
     use hakmem::affine::Affine8;
-    use hakmem::lanes::{Lanes, U8x8, U8x16};
+    use hakmem::lanes::{U8x8, U8x16};
     use hakmem::laws;
     use proptest::prelude::*;
 

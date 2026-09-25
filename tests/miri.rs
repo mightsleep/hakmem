@@ -54,7 +54,7 @@ fn primitives_on_every_carrier() {
 /// against the per-lane definitions and the SWAR halves.
 #[test]
 fn lanes_hardware_paths() {
-    use hakmem::lanes::{Lanes, U8x8, U8x16};
+    use hakmem::lanes::{U8x8, U8x16};
     use hakmem::laws;
     let table = [
         9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0x80, 0x7F, 0xFF, 0x10, 0x20, 0x30,

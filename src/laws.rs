@@ -1724,8 +1724,8 @@ pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) 
         && unpack
         && sad
         && madd
-        && L::splat(0x5A).lane(lanes - 1) == 0x5A
-        && L::zero() == L::splat(0)
+        && L::splat(lhs.isa(), 0x5A).lane(lanes - 1) == 0x5A
+        && L::zero(lhs.isa()) == L::splat(lhs.isa(), 0)
         && lane_maps_match_reference(lhs, rhs, n, table)
 }
 
@@ -1734,7 +1734,7 @@ pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) 
 /// applying PSHUFB's zero-on-top-bit rule to `a`'s entries.
 #[must_use]
 pub fn lut16_composes<L: Lanes>(x: L, a: [u8; 16], b: [u8; 16]) -> bool {
-    let x = x.and(L::splat(0x7F));
+    let x = x.and(L::splat(x.isa(), 0x7F));
     let mut composed = [0u8; 16];
     for (c, &v) in composed.iter_mut().zip(a.iter()) {
         *c = if v & 0x80 == 0 {
@@ -1929,7 +1929,7 @@ pub fn lane_maps_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 1
             && u16::from(lhs.avg_round(rhs).lane(i)) == (u16::from(x) + u16::from(y) + 1) >> 1
             && u16::from(lhs.avg_floor(rhs).lane(i)) == u16::midpoint(u16::from(x), u16::from(y))
             && lhs.ternary(rhs, third, truth).lane(i) == x.ternary(y, z, truth)
-    }) && L::zero().avg_round(L::zero().not()) == L::splat(0x80)
+    }) && L::zero(lhs.isa()).avg_round(L::zero(lhs.isa()).not()) == L::splat(lhs.isa(), 0x80)
 }
 
 // --- carry-rippler and gather ------------------------------------------

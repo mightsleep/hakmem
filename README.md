@@ -387,13 +387,29 @@ The batch conversions (`from_morton_in_place`, `to_morton_in_place`,
 `Hilbert2` too) choose their kernel at run time on
 `x86_64`: AVX-512 VBMI (and GFNI), else AVX2, else the per-key form,
 with no build flags and still `no_std`; the `portable` feature turns
-that off. Everything else is chosen at compile time, never at run
-time: build with
+that off. The methods on words and lanes use what the build proves:
+build with
 `-C target-feature=+bmi2,+pclmulqdq` (or `-C target-cpu=native`) and
 `pext`/`pdep`/`select`/`prefix_xor`/`suffix_xor` become single
 instructions; without
 them every combinator has a portable definition with the same
-contract. `pext` and `pdep` fall back to Hacker's Delight's
+contract. A hot loop that should not depend on the build asks once
+instead (`hakmem::isa`, design notes section 11):
+
+```rust
+use hakmem::isa::Isa;
+
+fn gather<I: Isa>(cpu: I, xs: &[u64], mask: u64) -> u64 {
+    xs.iter().fold(0, |a, &x| a ^ cpu.pext(x, mask))
+}
+// One CPUID, then the loop compiled for the level it found: PEXT here
+// even in a build without flags.
+let n = hakmem::dispatch!(|cpu| gather(cpu, &[0b1011, 0b0110], 0b0110));
+assert_eq!(n, 0b01 ^ 0b11);
+```
+
+Anything the loop calls has to inline into it, or it is compiled
+without the level's features and each primitive in it is a call. `pext` and `pdep` fall back to Hacker's Delight's
 parallel-suffix compress and expand (7-4, 7-5), `log₂ w` rounds of one
 prefix-XOR scan each, constant time. The `portable` cargo feature turns
 the hardware paths off even when the target feature is present, for the
@@ -402,7 +418,10 @@ microarchitectures where the instruction exists but is microcoded
 For the lanes, `+ssse3` (NEON on aarch64) makes `U8x16` a vector
 register, and `+gfni` makes every byte map, `affine` and the shifts,
 rotates and bit reversal built on it, one `gf2p8affineqb`; without it
-a byte map is two nibble lookups.
+a byte map is two nibble lookups. Under a token the level's own
+carrier is `I::U8x16`, made with `I::U8x16::load(cpu, bytes)`: a value
+of it is the proof the CPU has its instructions, which is why the
+constructor asks for the token.
 
 ## Laws
 

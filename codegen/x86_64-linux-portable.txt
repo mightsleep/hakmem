@@ -6,3 +6,4 @@ cg_hilbert2_encode_u64: addq=1 andl=8 andq=23 movabsq=1 movdqa=7 movl=4 movq=34 
 cg_quote_mask: addq=2 andl=1 andq=6 imulq=2 movabsq=5 movq=6 notq=2 orl=1 orq=2 retq=1 shlq=2 shrq=4 subq=2 xorq=2 total=38
 <hakmem::hilbert3::Hilbert3<u64>>::from_morton_in_place: addq=1 callq=6 cmpq=4 ja=1 jbe=1 je=3 jmp=1 jne=3 jns=2 leaq=1 movl=4 movq=14 orl=2 popq=3 pushq=3 retq=1 shlq=2 testb=4 testl=2 xorl=1 total=59
 <hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<u64, hakmem_codegen::cg_dispatch_gather::{closure#1}>: addq=1 andl=1 andq=1 cmpq=3 incq=1 jae=1 je=2 jmp=1 jne=2 leaq=1 movl=1 movq=9 pextq=5 retq=2 testq=2 xorl=6 xorq=5 total=44
+<hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<u16, hakmem_codegen::cg_dispatch_quote_mask::{closure#1}>: retq=1 vmovq=2 vpcmpeqb=1 vpmovmskb=1 vpunpcklqdq=1 total=6
