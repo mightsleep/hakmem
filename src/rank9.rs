@@ -159,6 +159,7 @@ impl<'a> Rank9<'a> {
     /// Words of `counts` that [`build`](Self::build) needs for `words`
     /// words of bits.
     #[must_use]
+    #[inline]
     pub const fn counts_len(words: usize) -> usize {
         2 * (Self::blocks(words) + 1)
     }
@@ -167,6 +168,7 @@ impl<'a> Rank9<'a> {
     /// words of bits: three per block. Zero is accepted too and means
     /// no select inventory.
     #[must_use]
+    #[inline]
     pub const fn select_len(words: usize) -> usize {
         3 * Self::blocks(words) + 2
     }
@@ -190,6 +192,8 @@ impl<'a> Rank9<'a> {
     ///
     /// If `counts` is shorter than [`counts_len`](Self::counts_len), or
     /// `select` is neither empty nor at least [`select_len`](Self::select_len).
+    // Once per bit vector or per process, not per query.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn build(bits: &'a [u64], counts: &'a mut [u64], select: &'a mut [u64]) -> Self {
         Self::fill(bits, counts, select);
         Self::from_parts(bits, counts, select)
@@ -352,6 +356,8 @@ impl<'a> Rank9<'a> {
     /// If `counts` is too short for `bits`, or `select` is neither empty
     /// nor long enough.
     #[must_use]
+    // Once per bit vector or per process, not per query.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn from_parts(bits: &'a [u64], counts: &'a [u64], select: &'a [u64]) -> Self {
         let blocks = Self::blocks(bits.len());
         Self::check_lengths(bits.len(), counts.len(), select.len());
@@ -372,30 +378,35 @@ impl<'a> Rank9<'a> {
 
     /// The bits this directory indexes.
     #[must_use]
+    #[inline]
     pub const fn bits(&self) -> &'a [u64] {
         self.bits
     }
 
     /// Length in bits.
     #[must_use]
+    #[inline]
     pub const fn len(&self) -> usize {
         self.bits.len() * 64
     }
 
     /// `true` when there are no bits at all.
     #[must_use]
+    #[inline]
     pub const fn is_empty(&self) -> bool {
         self.bits.is_empty()
     }
 
     /// Number of set bits.
     #[must_use]
+    #[inline]
     pub const fn count_ones(&self) -> usize {
         self.ones
     }
 
     /// `true` when the select inventory was built.
     #[must_use]
+    #[inline]
     pub const fn has_select(&self) -> bool {
         !self.inventory.is_empty()
     }
@@ -403,6 +414,7 @@ impl<'a> Rank9<'a> {
     /// Number of set bits at positions `< i`; `i` past the end counts
     /// them all.
     #[must_use]
+    #[inline]
     pub fn rank(&self, i: usize) -> usize {
         crate::dispatch!(|cpu| self.rank_in(i, cpu))
     }
@@ -432,12 +444,14 @@ impl<'a> Rank9<'a> {
     /// Number of clear bits at positions `< i`; `i` past the end counts
     /// them all.
     #[must_use]
+    #[inline]
     pub fn rank0(&self, i: usize) -> usize {
         i.min(self.len()) - self.rank(i)
     }
 
     /// Position of set bit number `k` (0-based), if `k < count_ones()`.
     #[must_use]
+    #[inline]
     pub fn select(&self, k: usize) -> Option<usize> {
         crate::dispatch!(|cpu| self.select_in(k, cpu))
     }
@@ -640,6 +654,8 @@ pub struct Rank9Buf<'a> {
 impl<'a> Rank9Buf<'a> {
     /// Rank and select over `bits`.
     #[must_use]
+    // Once per bit vector or per process, not per query.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn new(bits: &'a [u64]) -> Self {
         Self::build(bits, Rank9::select_len(bits.len()))
     }
@@ -647,6 +663,8 @@ impl<'a> Rank9Buf<'a> {
     /// Rank only, at 25 % instead of 62.5 % of the bits; `select` falls
     /// back to a binary search.
     #[must_use]
+    // Once per bit vector or per process, not per query.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn rank_only(bits: &'a [u64]) -> Self {
         Self::build(bits, 0)
     }
@@ -664,36 +682,43 @@ impl<'a> Rank9Buf<'a> {
 
     /// The borrowed view, for anything not forwarded here.
     #[must_use]
+    #[inline]
     pub fn view(&self) -> Rank9<'_> {
         Rank9::from_parts(self.bits, &self.counts, &self.select)
     }
 
     /// See [`Rank9::rank`].
     #[must_use]
+    #[inline]
     pub fn rank(&self, i: usize) -> usize {
         self.view().rank(i)
     }
 
     /// See [`Rank9::rank0`].
     #[must_use]
+    #[inline]
     pub fn rank0(&self, i: usize) -> usize {
         self.view().rank0(i)
     }
 
     /// See [`Rank9::select`].
     #[must_use]
+    #[inline]
     pub fn select(&self, k: usize) -> Option<usize> {
         self.view().select(k)
     }
 
     /// See [`Rank9::count_ones`].
     #[must_use]
+    #[inline]
     pub fn count_ones(&self) -> usize {
         self.view().count_ones()
     }
 
     /// The directory's two buffers, to keep next to the bits.
     #[must_use]
+    // Once per bit vector or per process, not per query.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn into_parts(self) -> (alloc::boxed::Box<[u64]>, alloc::boxed::Box<[u64]>) {
         (self.counts, self.select)
     }

@@ -12,6 +12,10 @@
 //! breaking one. A test suite built on them should not wake up to a
 //! different theorem.
 
+// Properties for tests, each a handful of calls over a reference model:
+// nothing here is on anyone's hot path.
+#![allow(clippy::missing_inline_in_public_items)]
+
 use crate::affine::Affine8;
 use crate::bits::truth_table;
 use crate::lanes::{Lanes, U8x8, U8x16};

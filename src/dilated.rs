@@ -48,6 +48,8 @@ impl<W: Word, const D: u32> Default for Dilated<W, D> {
 }
 
 impl<W: Word, const D: u32> core::fmt::Binary for Dilated<W, D> {
+    // Debug output, not a hot path.
+    #[allow(clippy::missing_inline_in_public_items)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Binary::fmt(&self.0, f)
     }
@@ -296,6 +298,8 @@ macro_rules! morton2_columns {
             /// # Panics
             ///
             /// If the three slices differ in length.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn encode_columns(xs: &[$w], ys: &[$w], out: &mut [$w]) {
                 let n = out.len();
                 assert!(
@@ -320,6 +324,8 @@ macro_rules! morton2_columns {
             /// # Panics
             ///
             /// If the three slices differ in length.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn decode_columns(codes: &[$w], xs: &mut [$w], ys: &mut [$w]) {
                 let n = codes.len();
                 assert!(
@@ -449,6 +455,7 @@ impl<W: Word> Morton2<W> {
     /// # Panics
     ///
     /// If the rectangle is not empty and `out` is.
+    #[inline]
     pub fn cover(x: impl RangeBounds<W>, y: impl RangeBounds<W>, out: &mut [(W, W)]) -> &[(W, W)] {
         crate::cover::cover_ranges::<W, ZQuadrants>(Self::LEVELS, x, y, out)
     }
@@ -464,6 +471,7 @@ impl<W: Word> Morton2<W> {
     /// assert!(Morton2::<u8>::intersects(4..=11, 0..=2, 0..=1));
     /// ```
     #[must_use]
+    #[inline]
     pub fn intersects(
         keys: impl RangeBounds<W>,
         x: impl RangeBounds<W>,

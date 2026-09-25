@@ -319,6 +319,8 @@ macro_rules! hilbert2_batch {
             /// last whole batch, it is [`from_morton`](Self::from_morton)
             /// per key. Coordinates never enter: fill the slice with
             /// [`Morton2::encode`] from whatever layout the points are in.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn from_morton_in_place(keys: &mut [$w]) {
                 let done = batch::$kernel(keys);
                 for key in &mut keys[done..] {
@@ -330,6 +332,8 @@ macro_rules! hilbert2_batch {
             /// place: each Hilbert index becomes the Morton code of the
             /// same cell. Per key; the decode is two suffix XORs and has no
             /// table to batch.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place(keys: &mut [$w]) {
                 for key in keys {
                     *key = Self::from_index(*key).to_morton().code();
@@ -342,6 +346,8 @@ macro_rules! hilbert2_batch {
             /// (debug-asserted). The order-`n` curve is the full-width one
             /// with `x` and `y` swapped when `LEVELS − n` is odd: a swap of
             /// the Morton lanes per key, then the full-width batch.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn from_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
@@ -360,6 +366,8 @@ macro_rules! hilbert2_batch {
             /// [`to_morton_in_place`](Self::to_morton_in_place) on the
             /// curve of `order` levels, as [`decode_order`](Self::decode_order)
             /// per key; indices below `4^order` (debug-asserted).
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
@@ -398,6 +406,8 @@ macro_rules! hilbert2_columns {
             /// # Panics
             ///
             /// If the three slices differ in length.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn encode_columns(xs: &[$w], ys: &[$w], out: &mut [$w]) {
                 Morton2::<$w>::encode_columns(xs, ys, out);
                 Self::from_morton_in_place(out);
@@ -413,6 +423,8 @@ macro_rules! hilbert2_columns {
             /// # Panics
             ///
             /// If the three slices differ in length.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn decode_columns(keys: &[$w], xs: &mut [$w], ys: &mut [$w]) {
                 let n = keys.len();
                 assert!(
@@ -761,6 +773,7 @@ impl<W: Word> Hilbert2<W> {
     /// # Panics
     ///
     /// If the rectangle is not empty and `out` is.
+    #[inline]
     pub fn cover(x: impl RangeBounds<W>, y: impl RangeBounds<W>, out: &mut [(W, W)]) -> &[(W, W)] {
         crate::cover::cover_ranges::<W, HilbertQuadrants>(Self::LEVELS, x, y, out)
     }
@@ -782,6 +795,7 @@ impl<W: Word> Hilbert2<W> {
     /// assert!(!Hilbert2::<u8>::intersects(0..4, 2..=5, ..));
     /// ```
     #[must_use]
+    #[inline]
     pub fn intersects(
         keys: impl RangeBounds<W>,
         x: impl RangeBounds<W>,

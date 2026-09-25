@@ -101,8 +101,9 @@
             mkdir -p $out
             jq -r 'select(.target.kind == ["bench"] and .executable != null) | "\(.target.name) \(.executable)"' build.json \
               | while read -r bench bin; do
+                  awk -f ${../codegen/got.awk} <(llvm-nm -C --defined-only "$bin") <(llvm-objdump -R "$bin") > got
                   llvm-objdump -d -l --no-show-raw-insn --no-leading-addr -C "$bin" \
-                    | awk -v bench="$bench" -v dir=$out -f ${../codegen/outlined.awk}
+                    | awk -v bench="$bench" -v dir=$out -v got=got -f ${../codegen/outlined.awk}
                 done
             sort $out/outlined | uniq -c \
               | awk '{ c = $1; sub(/^ *[0-9]+ /, ""); print (c > 1 ? $0 " ×" c : $0) }' \

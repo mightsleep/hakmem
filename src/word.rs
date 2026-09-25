@@ -378,6 +378,7 @@ const INCR_STEP_8: u64 = 0x8040_2010_0804_0201;
 /// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 3), 64);
 /// ```
 #[must_use]
+#[inline]
 pub fn select_broadword64(x: u64, k: u32) -> u32 {
     // Phase 1: per-byte popcounts, then per-byte prefix sums by
     // multiplying with 0x0101…: byte j = popcount of bytes 0..=j.

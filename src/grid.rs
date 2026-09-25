@@ -35,6 +35,7 @@ use crate::word::Word;
 /// # Panics
 ///
 /// If `out` and `rows` differ in length.
+#[inline]
 pub fn block_starts<W: Word>(rows: &[W], w: u32, h: u32, out: &mut [W]) {
     assert_eq!(rows.len(), out.len(), "block_starts: out must match rows");
     debug_assert!(
@@ -85,6 +86,7 @@ pub fn block_starts<W: Word>(rows: &[W], w: u32, h: u32, out: &mut [W]) {
 ///
 /// If `scratch` and `rows` differ in length.
 #[must_use]
+#[inline]
 pub fn find_block<W: Word>(rows: &[W], w: u32, h: u32, scratch: &mut [W]) -> Option<(usize, u32)> {
     block_starts(rows, w, h, scratch);
     scratch
@@ -109,6 +111,7 @@ pub fn find_block<W: Word>(rows: &[W], w: u32, h: u32, scratch: &mut [W]) -> Opt
 /// # Panics
 ///
 /// If the block reaches past the last row.
+#[inline]
 pub fn fill_block<W: Word>(rows: &mut [W], row: usize, col: u32, w: u32, h: u32) {
     let mask = block_mask::<W>(rows.len(), row, col, w, h);
     for cell in &mut rows[row..row + h as usize] {
@@ -122,6 +125,7 @@ pub fn fill_block<W: Word>(rows: &mut [W], row: usize, col: u32, w: u32, h: u32)
 /// # Panics
 ///
 /// If the block reaches past the last row.
+#[inline]
 pub fn clear_block<W: Word>(rows: &mut [W], row: usize, col: u32, w: u32, h: u32) {
     let mask = block_mask::<W>(rows.len(), row, col, w, h);
     for cell in &mut rows[row..row + h as usize] {

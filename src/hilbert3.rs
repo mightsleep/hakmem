@@ -507,6 +507,8 @@ macro_rules! hilbert3_batch {
             /// translations: 24 entries, two PSHUFB of 16 between XORs a
             /// level. Otherwise, and for the keys past the last whole
             /// batch, it is [`from_morton`](Self::from_morton) per key.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn from_morton_in_place(keys: &mut [$w]) {
                 let done = batch::$encode(keys);
                 for key in &mut keys[done..] {
@@ -526,6 +528,8 @@ macro_rules! hilbert3_batch {
             /// key it is the algebraic scan
             /// ([`to_morton`](Self::to_morton)), which beats a table
             /// walk, and that finishes the keys past the last whole batch.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place(keys: &mut [$w]) {
                 let done = batch::$decode(keys);
                 for key in &mut keys[done..] {
@@ -539,6 +543,8 @@ macro_rules! hilbert3_batch {
             /// (debug-asserted). The axes rotate by `LEVELS − order`
             /// modulo three, which in a Morton code rotates every triple of
             /// bits: one pass over the keys, then the full-width batch.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn from_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
@@ -552,6 +558,8 @@ macro_rules! hilbert3_batch {
             /// [`to_morton_in_place`](Self::to_morton_in_place) on the
             /// curve of `order` levels, as [`decode_order`](Self::decode_order)
             /// per key; indices below `8^order` (debug-asserted).
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
@@ -586,6 +594,8 @@ impl Hilbert3<u64> {
     /// # Panics
     ///
     /// If the four slices differ in length.
+    // A whole slice per call: the loop is inside, the call is paid once.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn encode_columns(xs: &[u64], ys: &[u64], zs: &[u64], out: &mut [u64]) {
         let n = out.len();
         assert!(
@@ -622,6 +632,8 @@ impl Hilbert3<u64> {
     /// # Panics
     ///
     /// If the four slices differ in length.
+    // A whole slice per call: the loop is inside, the call is paid once.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn decode_columns(keys: &[u64], xs: &mut [u64], ys: &mut [u64], zs: &mut [u64]) {
         let n = keys.len();
         assert!(

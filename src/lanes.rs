@@ -1534,6 +1534,7 @@ pub type U8x16 = NativeU8x16;
 macro_rules! halves_eq_debug {
     ($([$($g:tt)*] $t:ty),*) => {$(
         impl<$($g)*> PartialEq for $t {
+            #[inline]
             fn eq(&self, other: &Self) -> bool {
                 self.halves() == other.halves()
             }
@@ -1542,6 +1543,8 @@ macro_rules! halves_eq_debug {
         impl<$($g)*> Eq for $t {}
 
         impl<$($g)*> core::fmt::Debug for $t {
+            // Debug output, not a hot path.
+            #[allow(clippy::missing_inline_in_public_items)]
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 let (lo, hi) = self.halves();
                 let mut bytes = [0u8; 16];

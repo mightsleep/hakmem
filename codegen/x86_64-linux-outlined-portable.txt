@@ -56,8 +56,6 @@ rank9	<hakmem::rank9::Rank9>::build
 rank9	<hakmem::rank9::Rank9>::check_lengths
 rank9	<hakmem::rank9::Rank9>::fill
 rank9	<hakmem::rank9::Rank9>::fill_entry
-rank9	<hakmem::rank9::Rank9>::rank
-rank9	<hakmem::rank9::Rank9>::select
 rank9	<hakmem::rank9::Rank9>::select_in_block::<hakmem::isa::Portable>
 rank9	<hakmem::rank9::Rank9>::select_in_block::<hakmem::isa::x86v3::X86V3>
 rank9	hakmem::cpu::detect

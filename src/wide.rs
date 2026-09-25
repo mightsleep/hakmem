@@ -23,12 +23,14 @@ pub struct Wide<const N: usize>([u64; N]);
 /// As an unsigned integer: the top limb decides first. The derived order
 /// would have compared limb 0 first, which is the order of nothing.
 impl<const N: usize> Ord for Wide<N> {
+    #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.0.iter().rev().cmp(other.0.iter().rev())
     }
 }
 
 impl<const N: usize> PartialOrd for Wide<N> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
@@ -40,6 +42,8 @@ impl<const N: usize> PartialOrd for Wide<N> {
 macro_rules! wide_fmt {
     ($($trait:ident, $prefix:literal, $digits:literal, $top:literal, $rest:literal);*) => {$(
         impl<const N: usize> core::fmt::$trait for Wide<N> {
+            // Debug output, not a hot path.
+            #[allow(clippy::missing_inline_in_public_items)]
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 if f.alternate() {
                     f.write_str($prefix)?;
@@ -64,18 +68,21 @@ wide_fmt!(
 );
 
 impl<const N: usize> Default for Wide<N> {
+    #[inline]
     fn default() -> Self {
         Self([0; N])
     }
 }
 
 impl<const N: usize> From<[u64; N]> for Wide<N> {
+    #[inline]
     fn from(limbs: [u64; N]) -> Self {
         Self(limbs)
     }
 }
 
 impl<const N: usize> From<Wide<N>> for [u64; N] {
+    #[inline]
     fn from(w: Wide<N>) -> Self {
         w.0
     }

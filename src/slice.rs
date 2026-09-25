@@ -243,6 +243,7 @@ impl<W: Word> Words for [W] {
         });
     }
 
+    #[inline]
     fn next_set_from(&self, i: usize) -> Option<usize> {
         let bits = W::BITS as usize;
         let (wi, bit) = (i / bits, i % bits);
@@ -259,6 +260,7 @@ impl<W: Word> Words for [W] {
             .find_map(|(j, w)| w.first_set().map(|p| (wi + 1 + j) * bits + p as usize))
     }
 
+    #[inline]
     fn find_run(&self, k: u32) -> Option<usize> {
         debug_assert!(
             (1..=W::BITS).contains(&k),
@@ -287,6 +289,7 @@ impl<W: Word> Words for [W] {
         None
     }
 
+    #[inline]
     fn positions(&self) -> impl Iterator<Item = usize> + '_ {
         let bits = W::BITS as usize;
         self.iter()

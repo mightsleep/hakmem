@@ -14,7 +14,16 @@
 #             lines objdump found.
 #
 # Names lose the `.llvm.<n>` of a promoted local and the legacy `::h<hash>`;
-# both change with any edit anywhere.
+# both change with any edit anywhere. With `-v got=file` (got.awk), a call
+# through the GOT is annotated with the function it reaches.
+
+BEGIN {
+  if (got != "")
+    while ((getline line < got) > 0) {
+      split(line, f, "\t")
+      slot[f[1]] = f[2]
+    }
+}
 
 /^<.*>:$/ {
   flush()
@@ -31,6 +40,11 @@ name == "" { next }
 # Source lines from `-l` are `; file:line`. `int3` is the padding up to
 # the next function, not code.
 /^[ \t]+[a-z]/ && $1 != "int3" { n++ }
+keep && match($0, /# 0x[0-9a-f]+ <[^>]*>$/) {
+  s = substr($0, RSTART + 4)
+  sub(/ .*/, "", s)
+  if (s in slot) $0 = substr($0, 1, RSTART - 1) "# <" slot[s] ">"
+}
 keep && NF { body = body $0 "\n" }
 
 END { flush() }

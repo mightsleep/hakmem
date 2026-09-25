@@ -273,6 +273,8 @@ macro_rules! x86_level {
             pub struct $name(());
 
             impl core::fmt::Debug for $name {
+                // Debug output, not a hot path.
+                #[allow(clippy::missing_inline_in_public_items)]
                 fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                     f.write_str(stringify!($name))
                 }
@@ -360,6 +362,7 @@ macro_rules! x86_level {
 
             impl X86Level for $name {
                 const GFNI: bool = $gfni;
+                #[inline]
                 unsafe fn assume() -> Self {
                     Self(())
                 }
@@ -477,6 +480,8 @@ pub fn detect() -> Level {
 /// Every level this CPU has, lowest first, and [`Level::Native`] where
 /// the build proves a level of its own: for tests that want each path
 /// the machine can run.
+// Once per bit vector or per process, not per query.
+#[allow(clippy::missing_inline_in_public_items)]
 pub fn available() -> impl Iterator<Item = Level> {
     let top = detect();
     #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
@@ -597,6 +602,7 @@ pub trait X86Level: Isa {
 #[allow(unsafe_code)]
 impl X86Level for Native {
     const GFNI: bool = cfg!(target_feature = "gfni");
+    #[inline]
     unsafe fn assume() -> Self {
         Self
     }

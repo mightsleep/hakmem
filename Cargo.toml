@@ -72,6 +72,10 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 missing_errors_doc = "allow"
 module_name_repetitions = "allow"
+# A generic or a provided method that is not `#[inline]` can stay a call in
+# a user's crate however small it is (docs/design.md 11.11): every
+# public function says which it wants.
+missing_inline_in_public_items = "warn"
 
 [package.metadata.docs.rs]
 all-features = true

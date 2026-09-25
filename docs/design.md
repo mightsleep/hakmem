@@ -828,6 +828,16 @@ called where the features are already proven (fearless_simd #293).
   first; opening it later breaks nothing.
 - Where slices stop detecting. Measured in 11.11: nowhere, the check
   is lost in one word.
+- `Rank9::select` keeps eight bounds checks and five slice-range checks
+  in every build (`annotated.s` of the outlined cells, 11.11). Three
+  are the `Tiny` span's `next[0]`, `next[2]` and `next[4]`: the last
+  two are read under `hi - lo >= 2` and `>= 3`, which LLVM does not
+  relate to `next.len() == 2 * (hi - lo)`, so one assert up front
+  (what `clippy::missing_asserts_for_indexing` suggests) does not
+  remove them. A fixed window into `counts`, if its padding always
+  covers it, would; `Flat`, `Two` and the `Pos` spans have one each on
+  `counts[2 * lo]` and `pool`. For 0.3, with the scan engines, measured
+  on the `select` bench.
 
 ### 11.11 What the prototype changed
 
@@ -1006,6 +1016,22 @@ only: instruction counts move with every edit, so they sit next to
 the list for reading, with the disassembly of every hakmem and bench
 function and the source lines the line tables give (which do not
 move an inlining decision; the list is the same without them).
+Calls through the GOT carry the name of the function they reach, not
+the dynamic symbol objdump guesses (`codegen/got.awk`).
+
+The cell catches a lost inlining after the fact; clippy's
+`missing_inline_in_public_items` asks before. It is on for the crate,
+and every public function either is `#[inline]` or says why not: the
+`Debug` impls, the slice conversions whose loop is inside, the
+constructors, the Myers entry points, and `laws` as a whole. The
+first pass found `Rank9::rank`, `rank0` and `select` without it:
+not generic, so no caller outside the crate could inline them, and
+the outlined list had both. With it, `rank` is 6 to 8 % faster in
+the bench and `select` 7 % on dense bits, 39 % on sparse. The same
+pass taught why the lint cannot be satisfied by `#[inline]`
+everywhere: on the Myers entry points it moved LLVM's split of the
+function, `Peq::new` went out of line instead, and short patterns got
+13 % slower. They are exempt with that reason.
 
 ## Sources
 
