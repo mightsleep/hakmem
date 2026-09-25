@@ -256,6 +256,14 @@ draft of wider lanes for 0.3, 32- and 64-lane registers beside it). Miri runs it
 minutes where the old six took twenty; the AVX-512 cells wait for Miri
 to interpret AVX-512 (rust-lang/miri#5345).
 
+The README starts from the jobs people bring (spatial keys, succinct
+bit vectors, fuzzy text, bits and bytes), a table of each against the
+crate people use, and the laws as the reason to believe the table.
+`benches/hilbert.rs` races `Morton2` against the three most downloaded
+Morton crates, `morton`, `morton-encoding` and `zorder`: the columns
+win by ten times without flags, a point at a time it ties, and two
+rows go to the incumbents, which the README's table says.
+
 ### Changed, for anyone on 0.1
 
 A clean break, no deprecated aliases: 0.2 is a new major for Cargo,

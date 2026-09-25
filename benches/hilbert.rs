@@ -488,6 +488,249 @@ fn bench_morton_batch(c: &mut Criterion) {
     }
 }
 
+/// The points of the Morton benches, and their codes, checked against
+/// every incumbent first: all of them name the same curve.
+struct MortonData {
+    xs: Vec<u32>,
+    ys: Vec<u32>,
+    x64: Vec<u64>,
+    y64: Vec<u64>,
+    codes: Vec<u64>,
+    bmi2: Option<zorder::bmi2::HardwareSupportToken>,
+}
+
+/// 2D Morton codes against the most downloaded Morton crates, per point
+/// and hakmem's columns: `u32` coordinates to `u64` keys, and `u16` to
+/// `u32` for `morton`, which has no other width. `lindel`'s Morton is
+/// `morton-encoding` re-exported. `morton-encoding` puts its first
+/// coordinate in the high bit of each pair, so it gets `[y, x]`.
+fn morton_data() -> MortonData {
+    let w = words();
+    #[allow(clippy::cast_possible_truncation)]
+    let xs: Vec<u32> = w.iter().map(|&v| v as u32).collect();
+    #[allow(clippy::cast_possible_truncation)]
+    let ys: Vec<u32> = w.iter().map(|&v| (v >> 32) as u32).collect();
+    let (x64, y64): (Vec<u64>, Vec<u64>) = (
+        xs.iter().map(|&x| x.into()).collect(),
+        ys.iter().map(|&y| y.into()).collect(),
+    );
+    let codes: Vec<u64> = xs
+        .iter()
+        .zip(&ys)
+        .map(|(&x, &y)| Morton2::<u64>::encode(x.into(), y.into()).code())
+        .collect();
+    let bmi2 = zorder::bmi2::HardwareSupportToken::new();
+    for ((&x, &y), &m) in xs.iter().zip(&ys).zip(&codes) {
+        assert_eq!(zorder::index_of([x, y]), m, "zorder order");
+        assert_eq!(
+            morton_encoding::morton_encode([y, x]),
+            m,
+            "morton-encoding order"
+        );
+        if let Some(t) = bmi2 {
+            assert_eq!(zorder::bmi2::index_of([x, y], t), m, "zorder bmi2 order");
+        }
+    }
+    MortonData {
+        xs,
+        ys,
+        x64,
+        y64,
+        codes,
+        bmi2,
+    }
+}
+
+fn bench_morton(c: &mut Criterion) {
+    let MortonData {
+        xs,
+        ys,
+        x64,
+        y64,
+        bmi2,
+        ..
+    } = morton_data();
+    let mut out = vec![0u64; N];
+    {
+        let mut g = c.benchmark_group("morton2/encode");
+        g.bench_function("hakmem", |b| {
+            b.iter(|| {
+                for ((o, &x), &y) in out.iter_mut().zip(&xs).zip(&ys) {
+                    *o = Morton2::<u64>::encode(black_box(x).into(), black_box(y).into()).code();
+                }
+                black_box(&out);
+            });
+        });
+        g.bench_function("hakmem columns", |b| {
+            b.iter(|| {
+                Morton2::<u64>::encode_columns(black_box(&x64), &y64, &mut out);
+                black_box(&out);
+            });
+        });
+        g.bench_function("morton-encoding", |b| {
+            b.iter(|| {
+                for ((o, &x), &y) in out.iter_mut().zip(&xs).zip(&ys) {
+                    *o = morton_encoding::morton_encode([black_box(y), black_box(x)]);
+                }
+                black_box(&out);
+            });
+        });
+        g.bench_function("zorder", |b| {
+            b.iter(|| {
+                for ((o, &x), &y) in out.iter_mut().zip(&xs).zip(&ys) {
+                    *o = zorder::index_of([black_box(x), black_box(y)]);
+                }
+                black_box(&out);
+            });
+        });
+        if let Some(t) = bmi2 {
+            g.bench_function("zorder bmi2", |b| {
+                b.iter(|| {
+                    for ((o, &x), &y) in out.iter_mut().zip(&xs).zip(&ys) {
+                        *o = zorder::bmi2::index_of([black_box(x), black_box(y)], t);
+                    }
+                    black_box(&out);
+                });
+            });
+        }
+        g.finish();
+    }
+}
+
+fn bench_morton_decode(c: &mut Criterion) {
+    let MortonData {
+        xs,
+        ys,
+        codes,
+        bmi2,
+        ..
+    } = morton_data();
+    let (mut dx, mut dy) = (vec![0u64; N], vec![0u64; N]);
+    let (mut ex, mut ey) = (vec![0u32; N], vec![0u32; N]);
+    {
+        let mut g = c.benchmark_group("morton2/decode");
+        g.bench_function("hakmem", |b| {
+            b.iter(|| {
+                for ((&m, x), y) in codes.iter().zip(&mut dx).zip(&mut dy) {
+                    (*x, *y) = Morton2::<u64>::from_code(black_box(m)).decode();
+                }
+                black_box((&dx, &dy));
+            });
+        });
+        g.bench_function("hakmem columns", |b| {
+            b.iter(|| {
+                Morton2::<u64>::decode_columns(black_box(&codes), &mut dx, &mut dy);
+                black_box((&dx, &dy));
+            });
+        });
+        g.bench_function("morton-encoding", |b| {
+            b.iter(|| {
+                for ((&m, x), y) in codes.iter().zip(&mut ex).zip(&mut ey) {
+                    [*y, *x] = morton_encoding::morton_decode::<u32, 2>(black_box(m));
+                }
+                black_box((&ex, &ey));
+            });
+        });
+        g.bench_function("zorder", |b| {
+            b.iter(|| {
+                for ((&m, x), y) in codes.iter().zip(&mut ex).zip(&mut ey) {
+                    [*x, *y] = zorder::coord_of(black_box(m));
+                }
+                black_box((&ex, &ey));
+            });
+        });
+        if let Some(t) = bmi2 {
+            g.bench_function("zorder bmi2", |b| {
+                b.iter(|| {
+                    for ((&m, x), y) in codes.iter().zip(&mut ex).zip(&mut ey) {
+                        [*x, *y] = zorder::bmi2::coord_of(black_box(m), t);
+                    }
+                    black_box((&ex, &ey));
+                });
+            });
+        }
+        g.finish();
+    }
+    assert!(ex.iter().zip(&xs).all(|(a, b)| a == b) && ey.iter().zip(&ys).all(|(a, b)| a == b));
+}
+
+/// `morton` has `u16` coordinates only: against `Morton2<u32>`.
+fn bench_morton_u16(c: &mut Criterion) {
+    let w = words();
+    #[allow(clippy::cast_possible_truncation)]
+    let (sx, sy): (Vec<u16>, Vec<u16>) = (
+        w.iter().map(|&v| v as u16).collect(),
+        w.iter().map(|&v| (v >> 32) as u16).collect(),
+    );
+    let (wide_x, wide_y): (Vec<u32>, Vec<u32>) = (
+        sx.iter().map(|&x| x.into()).collect(),
+        sy.iter().map(|&y| y.into()).collect(),
+    );
+    for (&x, &y) in sx.iter().zip(&sy) {
+        assert_eq!(
+            morton::interleave_morton(x, y),
+            Morton2::<u32>::encode(x.into(), y.into()).code(),
+            "morton order"
+        );
+    }
+    let mut out32 = vec![0u32; N];
+    {
+        let mut g = c.benchmark_group("morton2/encode u16");
+        g.bench_function("hakmem", |b| {
+            b.iter(|| {
+                for ((o, &x), &y) in out32.iter_mut().zip(&sx).zip(&sy) {
+                    *o = Morton2::<u32>::encode(black_box(x).into(), black_box(y).into()).code();
+                }
+                black_box(&out32);
+            });
+        });
+        g.bench_function("hakmem columns", |b| {
+            b.iter(|| {
+                Morton2::<u32>::encode_columns(black_box(&wide_x), &wide_y, &mut out32);
+                black_box(&out32);
+            });
+        });
+        g.bench_function("morton", |b| {
+            b.iter(|| {
+                for ((o, &x), &y) in out32.iter_mut().zip(&sx).zip(&sy) {
+                    *o = morton::interleave_morton(black_box(x), black_box(y));
+                }
+                black_box(&out32);
+            });
+        });
+        g.finish();
+    }
+    let (mut ux, mut uy) = (vec![0u32; N], vec![0u32; N]);
+    let (mut vx, mut vy) = (vec![0u16; N], vec![0u16; N]);
+    {
+        let mut g = c.benchmark_group("morton2/decode u16");
+        g.bench_function("hakmem", |b| {
+            b.iter(|| {
+                for ((&m, x), y) in out32.iter().zip(&mut ux).zip(&mut uy) {
+                    (*x, *y) = Morton2::<u32>::from_code(black_box(m)).decode();
+                }
+                black_box((&ux, &uy));
+            });
+        });
+        g.bench_function("hakmem columns", |b| {
+            b.iter(|| {
+                Morton2::<u32>::decode_columns(black_box(&out32), &mut ux, &mut uy);
+                black_box((&ux, &uy));
+            });
+        });
+        g.bench_function("morton", |b| {
+            b.iter(|| {
+                for ((&m, x), y) in out32.iter().zip(&mut vx).zip(&mut vy) {
+                    (*x, *y) = morton::deinterleave_morton(black_box(m));
+                }
+                black_box((&vx, &vy));
+            });
+        });
+        g.finish();
+    }
+    assert!(vx == sx && vy == sy);
+}
+
 /// A granule and a rectangle, `intersects` in its argument order.
 type Query = ((u64, u64), (u64, u64), (u64, u64));
 /// A curve for the intersects bench: name, encode, the test.
@@ -608,6 +851,9 @@ criterion_group!(
     bench3,
     bench3_batch,
     bench_morton_batch,
+    bench_morton,
+    bench_morton_decode,
+    bench_morton_u16,
     bench_cover
 );
 criterion_main!(benches);

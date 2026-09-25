@@ -863,6 +863,15 @@ called where the features are already proven (fearless_simd #293).
   12 GB/s classifying, 11.11): x86 and aarch64 never use it, but an
   engine on anything else would. A nibble lookup in a `u64` has better
   shapes than sixteen table reads.
+- Two Morton rows lost when the README's table got incumbents: with
+  `+bmi2`, `zorder` decodes 1024 `u64` keys in 0.40 µs against
+  `Morton2::decode`'s 0.58, both two PEXTs a key (`zorder` shifts
+  its mask to the bit instead of the key), the difference not yet read
+  off the asm (`codegen/x86_64-linux-loops-v3.txt` has this crate's loop);
+  and without flags `morton` decodes `u16` pairs in 1.15 µs against
+  1.62, by spreading both coordinates of the `u32` key through one
+  ladder in a `u64`. `Morton2<u32>` could do the same whenever a wider
+  word is free.
 
 ### 11.11 What the prototype changed
 

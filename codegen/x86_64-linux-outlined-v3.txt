@@ -4,6 +4,8 @@ compact	hakmem::word::compress_broadword::<u64>
 compact	hakmem::word::expand_broadword::<u64>
 hilbert	<hakmem::cover::Gaps<u64> as hakmem::cover::Sink<u64>>::emit_mask
 hilbert	<hakmem::cover::Merge<u64> as hakmem::cover::Sink<u64>>::emit_mask
+hilbert	<hakmem::dilated::Morton2<u32>>::decode_columns
+hilbert	<hakmem::dilated::Morton2<u32>>::encode_columns
 hilbert	<hakmem::dilated::Morton2<u64>>::decode_columns
 hilbert	<hakmem::dilated::Morton2<u64>>::encode_columns
 hilbert	<hakmem::dilated::ZQuadrants as hakmem::cover::Quadrants>::runs::<u64>
@@ -27,7 +29,9 @@ hilbert	hakmem::cover::walk::<u64, hakmem::dilated::ZQuadrants, hakmem::cover::M
 hilbert	hakmem::cover::walk::<u64, hakmem::hilbert::HilbertQuadrants, hakmem::cover::Gaps<u64>>
 hilbert	hakmem::cover::walk::<u64, hakmem::hilbert::HilbertQuadrants, hakmem::cover::Merge<u64>>
 hilbert	hakmem::cpu::detect
+hilbert	hakmem::dilated::batch::avx2::decode_u32
 hilbert	hakmem::dilated::batch::avx2::decode_u64
+hilbert	hakmem::dilated::batch::avx2::encode_u32
 hilbert	hakmem::dilated::batch::avx2::encode_u64
 hilbert	hakmem::hilbert3::batch::avx2::from_morton_u64
 hilbert	hakmem::hilbert3::batch::avx2::to_morton_u64

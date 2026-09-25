@@ -42,11 +42,11 @@ hilbert hilbert.rs:222  141 insns  znver5 24.3  x86-64-v3 43.2
     8      word::shl
     3      word::or
    11  (not hakmem)
-hilbert hilbert.rs:583  16 insns  znver5 4.1  x86-64-v3 5.1
+hilbert hilbert.rs:826  16 insns  znver5 4.1  x86-64-v3 5.1
        calls cover::cover_ranges
     4  dilated::cover
    12  (not hakmem)
-hilbert hilbert.rs:592  16 insns  znver5 4.1  x86-64-v3 5.1
+hilbert hilbert.rs:835  16 insns  znver5 4.1  x86-64-v3 5.1
        calls cover::cover_ranges
     4  hilbert::cover
    12  (not hakmem)
@@ -105,6 +105,31 @@ hilbert hilbert.rs:371  103 insns  znver5 17.2  x86-64-v3 25.4
 hilbert hilbert.rs:390  14 insns  znver5 13.3  x86-64-v3 10.8
        calls <hilbert3::Hilbert3<u64>>::encode_columns
    14  (not hakmem)
+hilbert hilbert.rs:558  40 insns  znver5 7.1  x86-64-v3 12.2
+   31  dilated::encode<u64>
+   27    dilated::from_int<u64, 2> → word::pdep<u64> → word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+   14      word::and
+    9      word::shl
+    4      word::or
+    3    word::or
+    1    word::shl
+    9  (not hakmem)
+hilbert hilbert.rs:681  35 insns  znver5 6.2  x86-64-v3 9.6
+   23  dilated::encode<u32>
+   19    dilated::from_int<u32, 2> → word::pdep<u32> → word::pdep_in<isa::Native> → isa::pdep_u32 → word::expand_broadword<u32>
+   11      word::and
+    5      word::shl
+    3      word::or
+    3    word::or
+    1    word::shl
+   12  (not hakmem)
+hilbert hilbert.rs:709  42 insns  znver5 9.0  x86-64-v3 10.4
+   34  dilated::decode<u32> → dilated::to_int<u32, 2> → word::pext<u32> → word::pext_in<isa::Native> → isa::pext_u32 → word::compress_broadword<u32>
+   20    word::shr
+    9    word::or
+    5    word::xor
+    1  dilated::from_code<u32>
+    7  (not hakmem)
 hilbert hilbert.rs:456  42 insns  znver5 7.3  x86-64-v3 11.7
    34  dilated::encode<u64>
    30    dilated::from_int<u64, 2> → word::pdep<u64> → word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
