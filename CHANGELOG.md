@@ -230,6 +230,11 @@ a token for loops that have chosen. The batch kernels take the level
 too, so a CPU with VBMI and no GFNI (Cannon Lake) now runs the AVX2
 ones. `tests/isa.rs` checks every level the machine has in one
 `cargo test`, where it used to take one build per `RUSTFLAGS`.
+Soft-float x86 targets (`x86_64-unknown-none`, kernels) build again:
+the tokens, `X86x16`, the batch kernels and the PCLMULQDQ leaf want
+SSE2 in the build, and `detect` there answers `Portable` without
+asking the CPU, whose answer is about userspace's registers. A kernel
+built with `+bmi2` still gets PEXT through `Native`.
 
 `codegen/` holds the README's claims about instructions as FileCheck
 directives next to the wrappers they are about, and the count of each

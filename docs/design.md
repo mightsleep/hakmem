@@ -821,8 +821,10 @@ called where the features are already proven (fearless_simd #293).
 - How `Word` carriers route to leaves: `u32` and `u64` directly,
   `u128` and `Wide<N>` by limbs, `u8` and `u16` widened.
 - Zen 1 and 2 as a level of their own, or a flag in `detect()`.
-- An aarch64 level with PMULL for the scans (11.11), and how a
-  `no_std` crate learns it is there.
+- An aarch64 level with PMULL for the scans (11.11), detected through
+  libc's `getauxval` or Windows' `IsProcessorFeaturePresent` by
+  `extern`, and never in a kernel.
+- A check that builds the soft-float targets, so 11.11's fix stays.
 - `Isa` sealed (hakmem's levels only) or open to user levels. Sealed
   first; opening it later breaks nothing.
 - Where slices stop detecting. Measured in 11.11: nowhere, the check
@@ -946,8 +948,25 @@ has it, so `Native` proves it already; where it is off
 and the token could only come from `unsafe`. The aarch64 level worth
 having is a different one: PMULL (the `aes` feature) is a carry-less
 multiply, which would give `xor_scan` there what PCLMULQDQ gives it on
-x86, and asking for it needs `getauxval`, so `std`, or a caller who
-knows.
+x86. Asking for it needs no `std`: `getauxval` is libc's, and an
+`extern` declaration reaches it on Linux, as `IsProcessorFeaturePresent`
+does on Windows. In a kernel nothing may ask, for the reason below.
+
+Soft-float targets. `x86_64-unknown-none` and the kernels' targets
+turn SSE off, and rustc refuses a `#[target_feature]` that implies it
+there: the crate did not build. It was also wrong where the compiler
+could not see it. CPUID and XCR0 in a kernel describe what userspace
+may use, and an `xmm` written outside `kernel_fpu_begin` belongs to
+whichever process the scheduler returns to next. The tokens,
+`X86x16`, the batch kernels and the PCLMULQDQ leaf now want `sse2` in
+the build, which every hard-float `x86_64` target has and no
+soft-float one does, and `detect` there answers `Portable` without
+asking. BMI2 touches general registers only, so a kernel built with
+`+bmi2` keeps PEXT through `Native`: 52 of them in the crate, and no
+`xmm`. `aarch64-unknown-none-softfloat` already built, since NEON off
+in the build means none in `Native` and nothing asks. A token in a
+kernel will come from `new_unchecked`, whose safety will then have to
+say the caller holds the vector state, not only that the CPU has it.
 
 ## Sources
 

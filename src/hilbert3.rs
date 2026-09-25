@@ -355,7 +355,11 @@ const ENCODE_PADDED: [u8; 128] = {
 /// [`ENCODE_PADDED`].
 #[cfg_attr(
     not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -453,7 +457,11 @@ const fn m_bits(m: u8) -> u8 {
 /// the rotation's [`m_bits`] XOR the current one's: the state takes the
 /// entry by XOR, all of it relative.
 #[cfg_attr(
-    not(all(target_arch = "x86_64", not(feature = "portable"))),
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )),
     allow(dead_code)
 )]
 const fn shuffle_tables(decode: bool) -> [[u8; 16]; 2] {
@@ -637,7 +645,11 @@ impl Hilbert3<u64> {
 /// carries its features in `target_feature` and is called only where
 /// `crate::isa` found them; on `aarch64` NEON is a compile-time fact.
 mod batch {
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod vbmi {
         use core::arch::x86_64::{
@@ -742,7 +754,11 @@ mod batch {
     /// count that matters is the first kind: about 5 a key here against
     /// 8 in the lane kernel. Eight groups of 64 keys go through the
     /// level loop together, or the loop waits on its own latency.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     // `inline(always)`: the planes are arrays of registers, and an
     // outlined helper takes them by memory.
     #[allow(unsafe_code, clippy::inline_always)]
@@ -1427,7 +1443,11 @@ mod batch {
     /// of 16 entries between XORs; the octants travel in the basis
     /// `to_x`, which the encode enters and the decode leaves once per
     /// key.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod avx2 {
         use core::arch::x86_64::{
@@ -1608,7 +1628,11 @@ mod batch {
     /// `target_feature`; `crate::isa` answers at compile time when the
     /// build has the features, which makes the branch a constant, and at
     /// run time otherwise.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod dispatch {
         use super::{avx2, planes, vbmi};
@@ -1666,19 +1690,31 @@ mod batch {
         }
     }
 
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     pub(super) use dispatch::{
         decode_columns, encode_columns, from_morton_u32, from_morton_u64, to_morton_u32,
         to_morton_u64,
     };
 
     /// No column kernel: the caller goes through Morton codes.
-    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
     pub(super) const fn encode_columns(_: &[u64], _: &[u64], _: &[u64], _: &mut [u64]) -> usize {
         0
     }
 
-    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
     pub(super) const fn decode_columns(
         _: &[u64],
         _: &mut [u64],
@@ -1690,7 +1726,11 @@ mod batch {
 
     /// No batch path: the caller converts every key.
     #[cfg(not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -1713,7 +1753,11 @@ mod batch {
     }
 
     #[cfg(not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",

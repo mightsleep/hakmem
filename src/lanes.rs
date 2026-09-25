@@ -638,7 +638,7 @@ impl Lanes for U8x8 {
 /// way to make one is a constructor that takes the level's token. The
 /// attribute route is closed: `#[target_feature]` cannot go on safe trait
 /// methods, and the build configuration does not count for the check.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 #[allow(unsafe_code)]
 mod x86 {
     use core::arch::x86_64::{
@@ -966,7 +966,7 @@ mod x86 {
     }
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 pub use x86::X86x16;
 
 // --- 16 lanes on aarch64: NEON --------------------------------------------------------
@@ -1554,7 +1554,7 @@ macro_rules! halves_eq_debug {
 }
 
 halves_eq_debug!([I: Isa + Default] Swar16<I>);
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 halves_eq_debug!([L: crate::isa::X86Level] X86x16<L>);
 #[cfg(all(
     target_arch = "aarch64",

@@ -238,7 +238,11 @@ const fn level(frame: u8, x: u8, y: u8) -> (u8, u8) {
 /// itself. `N = 2 · 4^L` entries, half of the unreduced table.
 #[cfg_attr(
     not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -287,7 +291,11 @@ const TABLE4: [u8; 32] = reduced();
 /// Three levels a byte, 128 entries: two AVX-512 registers for
 /// `vpermi2b`.
 #[cfg_attr(
-    not(all(target_arch = "x86_64", not(feature = "portable"))),
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )),
     allow(dead_code)
 )]
 const TABLE6: [u8; 128] = reduced();
@@ -788,7 +796,11 @@ impl<W: Word> Hilbert2<W> {
 /// `target_feature` and is called only where `crate::isa` found them;
 /// on `aarch64` NEON is a compile-time fact.
 mod batch {
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod vbmi {
         use core::arch::x86_64::{
@@ -910,7 +922,11 @@ mod batch {
 
     /// `x86_64` chooses the kernel once a call, as in `hilbert3`: at
     /// compile time when the build has the features, else at run time.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod dispatch {
         use super::vbmi;
@@ -934,7 +950,11 @@ mod batch {
         }
     }
 
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     pub(super) use dispatch::{from_morton_u32, from_morton_u64};
 
     #[cfg(all(
@@ -1062,7 +1082,11 @@ mod batch {
 
     /// No batch path: the caller converts every key.
     #[cfg(not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -1074,7 +1098,11 @@ mod batch {
     }
 
     #[cfg(not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",

@@ -10,7 +10,7 @@ pub mod affine;
 pub mod bits;
 pub mod cookbook;
 mod cover;
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 mod cpu;
 pub mod curve;
 pub mod dilated;

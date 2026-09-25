@@ -257,7 +257,7 @@ impl Isa for Native {
 /// makes, the trampoline under its features, the primitives through the
 /// leaves, and its 16-lane carrier. The levels differ in their feature
 /// string and in GFNI, nothing else.
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 macro_rules! x86_level {
     (
         $(#[$doc:meta])*
@@ -370,7 +370,7 @@ macro_rules! x86_level {
     };
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 x86_level! {
     /// x86-64-v3 and PCLMULQDQ: Haswell, Zen 1 and later.
     ///
@@ -383,7 +383,7 @@ x86_level! {
     crate::cpu::x86v3, gfni = false, bmi2 = true, clmul = true
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 x86_level! {
     /// x86-64-v4, VBMI and GFNI: Ice Lake, Zen 4 and later.
     ///
@@ -395,7 +395,7 @@ x86_level! {
     crate::cpu::x86v4, gfni = true, bmi2 = true, clmul = true
 }
 
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 x86_level! {
     /// x86-64-v2: Nehalem, Bulldozer, Silvermont and later.
     ///
@@ -413,13 +413,13 @@ pub enum Level {
     /// [`Portable`].
     Portable(Portable),
     /// `X86V3`, on x86.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
     X86V3(X86V3),
     /// `X86V2`, on x86.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
     X86V2(X86V2),
     /// `X86V4`, on x86.
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
     X86V4(X86V4),
     /// [`Native`], when the build already proves as much as the CPU has
     /// to offer: a token would compile the body for less than the build
@@ -431,15 +431,20 @@ pub enum Level {
 ///
 /// The higher of what the build proves and what the CPU has: a token
 /// where the CPU has more than the build, [`Level::Native`] where the
-/// build already has it all. With the `portable` feature, and under Miri
-/// without the features in the build, [`Level::Portable`].
+/// build already has it all. With the `portable` feature, on soft-float
+/// targets (kernels), and under Miri without the features in the build,
+/// [`Level::Portable`].
 #[inline]
 #[must_use]
 // A constant in some builds, CPUID in the rest.
 #[allow(clippy::missing_const_for_fn)]
 #[allow(unsafe_code)]
 pub fn detect() -> Level {
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     {
         use crate::cpu::{self, x86v2_in_build, x86v3_in_build, x86v4_in_build};
         if x86v4_in_build() {
@@ -474,13 +479,13 @@ pub fn detect() -> Level {
 /// the machine can run.
 pub fn available() -> impl Iterator<Item = Level> {
     let top = detect();
-    #[cfg(target_arch = "x86_64")]
+    #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
     let (v2, v3, v4) = (
         X86V2::detect().map(Level::X86V2),
         X86V3::detect().map(Level::X86V3),
         X86V4::detect().map(Level::X86V4),
     );
-    #[cfg(not(target_arch = "x86_64"))]
+    #[cfg(not(all(target_arch = "x86_64", target_feature = "sse2")))]
     let (v2, v3, v4) = (None, None, None);
     [
         Some(Level::Portable(Portable)),
@@ -496,7 +501,11 @@ pub fn available() -> impl Iterator<Item = Level> {
 /// Which batch kernels a call may run: the level's, and whatever the
 /// build proves on its own (a build with `+avx2` and no rest of
 /// x86-64-v3, as the Miri cells are, still runs the AVX2 kernels).
-#[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "sse2",
+    not(feature = "portable")
+))]
 #[derive(Clone, Copy)]
 pub(crate) struct Batch {
     /// AVX2, with the OS saving `ymm`.
@@ -507,7 +516,11 @@ pub(crate) struct Batch {
     pub vbmi_gfni: bool,
 }
 
-#[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "sse2",
+    not(feature = "portable")
+))]
 #[inline]
 pub(crate) fn batch() -> Batch {
     let level = detect();
@@ -545,13 +558,13 @@ macro_rules! dispatch {
     ($level:expr, |$cpu:ident| $body:expr) => {
         match $level {
             $crate::isa::Level::Portable(t) => $crate::isa::Isa::run(t, |$cpu| $body),
-            #[cfg(target_arch = "x86_64")]
+            #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
             $crate::isa::Level::X86V3(t) => $crate::isa::Isa::run(t, |$cpu| $body),
-            #[cfg(target_arch = "x86_64")]
+            #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
             $crate::isa::Level::X86V4(t) => $crate::isa::Isa::run(t, |$cpu| $body),
             $crate::isa::Level::Native(t) => $crate::isa::Isa::run(t, |$cpu| $body),
             // Last, so the closures of the other arms keep their numbers.
-            #[cfg(target_arch = "x86_64")]
+            #[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
             $crate::isa::Level::X86V2(t) => $crate::isa::Isa::run(t, |$cpu| $body),
         }
     };
@@ -559,7 +572,7 @@ macro_rules! dispatch {
 
 /// The x86 levels with SSSE3, which is what [`X86x16`](crate::lanes::X86x16)
 /// needs. Sealed like [`Isa`].
-#[cfg(target_arch = "x86_64")]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 #[allow(unsafe_code)]
 pub trait X86Level: Isa {
     /// The level has GFNI: byte maps are one `gf2p8affineqb`.

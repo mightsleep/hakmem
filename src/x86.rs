@@ -88,7 +88,9 @@ pub mod bmi2 {
     }
 }
 
-/// Carry-less multiplication as a scan.
+/// Carry-less multiplication as a scan. Not on soft-float targets
+/// (kernels, `x86_64-unknown-none`): an `xmm` there is somebody else's.
+#[cfg(target_feature = "sse2")]
 pub mod pclmulqdq {
     use core::arch::x86_64::{
         __m128i, _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x, _mm_unpackhi_epi64,

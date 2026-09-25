@@ -481,7 +481,11 @@ morton2_columns!(
 /// The Morton batch kernels; each returns how many points from the front
 /// it converted, a whole number of batches.
 mod batch {
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     // `inline(always)` on the table load: a helper without the kernel's
     // `target_feature` must be inlined into it for the intrinsics to be.
     #[allow(unsafe_code, clippy::inline_always)]
@@ -638,7 +642,11 @@ mod batch {
     }
 
     /// `x86_64` chooses once a call, as the Hilbert batches do.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod dispatch {
         use super::avx2;
@@ -664,11 +672,19 @@ mod batch {
         }
     }
 
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     pub(super) use dispatch::{decode_u32, decode_u64, encode_u32, encode_u64};
 
     /// No batch path: the caller converts every point.
-    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
     mod none {
         pub(in crate::dilated) const fn encode_u32(_: &[u32], _: &[u32], _: &mut [u32]) -> usize {
             0
@@ -692,6 +708,10 @@ mod batch {
         }
     }
 
-    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
     pub(super) use none::{decode_u32, decode_u64, encode_u32, encode_u64};
 }
