@@ -154,14 +154,13 @@ impl<W: Word> Morton2<W> {
     /// Levels: `BITS / 2`.
     pub const LEVELS: u32 = W::BITS / 2;
 
-    /// Interleaves `x` (even bits) and `y` (odd bits). Coordinates
-    /// above `BITS / 2` bits are dropped.
+    /// Interleaves `x` (even bits) and `y` (odd bits): [`Word::zip`],
+    /// two PDEP with BMI2 and the shift ladder without. Coordinates above
+    /// `BITS / 2` bits are dropped.
     #[inline]
     #[must_use]
     pub fn encode(x: W, y: W) -> Self {
-        let xd = Dilated::<W, 2>::from_int(x).bits();
-        let yd = Dilated::<W, 2>::from_int(y).bits();
-        Self(xd.or(yd.shl(1)))
+        Self(x.zip(y))
     }
 
     /// Splits the code back into `(x, y)`: [`Word::unzip`], two PEXT of

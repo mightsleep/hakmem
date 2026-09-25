@@ -538,6 +538,7 @@ pub fn hakmem::isa::Native::select<W: hakmem::word::Word>(self, W, u32) -> core:
 pub fn hakmem::isa::Native::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Native::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Native::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Native::zip<W: hakmem::word::Word>(self, W, W) -> W
 impl core::marker::Freeze for hakmem::isa::Native
 impl core::marker::Send for hakmem::isa::Native
 impl core::marker::Sync for hakmem::isa::Native
@@ -568,6 +569,7 @@ pub fn hakmem::isa::Portable::select<W: hakmem::word::Word>(self, W, u32) -> cor
 pub fn hakmem::isa::Portable::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Portable::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Portable::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Portable::zip<W: hakmem::word::Word>(self, W, W) -> W
 impl core::marker::Freeze for hakmem::isa::Portable
 impl core::marker::Send for hakmem::isa::Portable
 impl core::marker::Sync for hakmem::isa::Portable
@@ -584,6 +586,7 @@ pub fn hakmem::isa::Isa::select<W: hakmem::word::Word>(self, W, u32) -> core::op
 pub fn hakmem::isa::Isa::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Isa::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Isa::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Isa::zip<W: hakmem::word::Word>(self, W, W) -> W
 impl hakmem::isa::Isa for hakmem::isa::Native
 pub type hakmem::isa::Native::U8x16 = hakmem::lanes::Neon16
 pub fn hakmem::isa::Native::pdep<W: hakmem::word::Word>(self, W, W) -> W
@@ -593,6 +596,7 @@ pub fn hakmem::isa::Native::select<W: hakmem::word::Word>(self, W, u32) -> core:
 pub fn hakmem::isa::Native::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Native::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Native::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Native::zip<W: hakmem::word::Word>(self, W, W) -> W
 impl hakmem::isa::Isa for hakmem::isa::Portable
 pub type hakmem::isa::Portable::U8x16 = hakmem::lanes::Swar16
 pub fn hakmem::isa::Portable::pdep<W: hakmem::word::Word>(self, W, W) -> W
@@ -602,6 +606,7 @@ pub fn hakmem::isa::Portable::select<W: hakmem::word::Word>(self, W, u32) -> cor
 pub fn hakmem::isa::Portable::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Portable::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Portable::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Portable::zip<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::available() -> impl core::iter::traits::iterator::Iterator<Item = hakmem::isa::Level>
 pub fn hakmem::isa::detect() -> hakmem::isa::Level
 pub mod hakmem::lanes
@@ -1103,9 +1108,11 @@ pub fn hakmem::laws::swar_lanes_match_reference<W: hakmem::word::Word>(W, u8, u8
 pub fn hakmem::laws::ternary_is_truth_table<W: hakmem::word::Word>(W, W, W, u8) -> bool
 pub fn hakmem::laws::truth_table_names_the_function<W: hakmem::word::Word>(W, W, W) -> bool
 pub fn hakmem::laws::u8x16_agrees_with_halves((u64, u64), (u64, u64), u32, [u8; 16]) -> bool
+pub fn hakmem::laws::unzip_after_zip<W: hakmem::word::Word>(W, W) -> bool
 pub fn hakmem::laws::unzip_is_two_compacts<W: hakmem::word::Word>(W) -> bool
 pub fn hakmem::laws::xor_linear_combinators<W: hakmem::word::Word>(W, W, W, u32) -> bool
 pub fn hakmem::laws::zero_bytes_turns_or_into_and<W: hakmem::word::Word>(W, W) -> bool
+pub fn hakmem::laws::zip_is_two_expands<W: hakmem::word::Word>(W, W) -> bool
 pub mod hakmem::myers
 pub struct hakmem::myers::Occurrence
 impl hakmem::myers::Occurrence
@@ -1560,6 +1567,8 @@ pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
@@ -1933,6 +1942,8 @@ pub fn hakmem::prelude::Word::xor_scan(self) -> Self
 pub fn hakmem::prelude::Word::xor_scan_down(self) -> Self
 pub fn hakmem::prelude::Word::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::prelude::Word::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::prelude::Word::zip(self, Self) -> Self
+pub fn hakmem::prelude::Word::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u128
 pub const u128::BITS: u32
 pub const u128::ONE: Self
@@ -1971,6 +1982,8 @@ pub fn u128::xor_scan(self) -> Self
 pub fn u128::xor_scan_down(self) -> Self
 pub fn u128::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u128::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u128::zip(self, Self) -> Self
+pub fn u128::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u16
 pub const u16::BITS: u32
 pub const u16::ONE: Self
@@ -2009,6 +2022,8 @@ pub fn u16::xor_scan(self) -> Self
 pub fn u16::xor_scan_down(self) -> Self
 pub fn u16::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u16::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u16::zip(self, Self) -> Self
+pub fn u16::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u32
 pub const u32::BITS: u32
 pub const u32::ONE: Self
@@ -2047,6 +2062,8 @@ pub fn u32::xor_scan(self) -> Self
 pub fn u32::xor_scan_down(self) -> Self
 pub fn u32::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u32::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u32::zip(self, Self) -> Self
+pub fn u32::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u64
 pub const u64::BITS: u32
 pub const u64::ONE: Self
@@ -2085,6 +2102,8 @@ pub fn u64::xor_scan(self) -> Self
 pub fn u64::xor_scan_down(self) -> Self
 pub fn u64::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u64::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u64::zip(self, Self) -> Self
+pub fn u64::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u8
 pub const u8::BITS: u32
 pub const u8::ONE: Self
@@ -2123,6 +2142,8 @@ pub fn u8::xor_scan(self) -> Self
 pub fn u8::xor_scan_down(self) -> Self
 pub fn u8::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u8::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u8::zip(self, Self) -> Self
+pub fn u8::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
@@ -2161,6 +2182,8 @@ pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub trait hakmem::prelude::Words
 pub type hakmem::prelude::Words::Word: hakmem::word::Word
 pub fn hakmem::prelude::Words::bit(&self, usize) -> bool
@@ -2383,6 +2406,8 @@ pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
@@ -2429,6 +2454,8 @@ pub fn hakmem::word::Word::xor_scan(self) -> Self
 pub fn hakmem::word::Word::xor_scan_down(self) -> Self
 pub fn hakmem::word::Word::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::word::Word::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::word::Word::zip(self, Self) -> Self
+pub fn hakmem::word::Word::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u128
 pub const u128::BITS: u32
 pub const u128::ONE: Self
@@ -2467,6 +2494,8 @@ pub fn u128::xor_scan(self) -> Self
 pub fn u128::xor_scan_down(self) -> Self
 pub fn u128::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u128::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u128::zip(self, Self) -> Self
+pub fn u128::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u16
 pub const u16::BITS: u32
 pub const u16::ONE: Self
@@ -2505,6 +2534,8 @@ pub fn u16::xor_scan(self) -> Self
 pub fn u16::xor_scan_down(self) -> Self
 pub fn u16::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u16::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u16::zip(self, Self) -> Self
+pub fn u16::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u32
 pub const u32::BITS: u32
 pub const u32::ONE: Self
@@ -2543,6 +2574,8 @@ pub fn u32::xor_scan(self) -> Self
 pub fn u32::xor_scan_down(self) -> Self
 pub fn u32::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u32::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u32::zip(self, Self) -> Self
+pub fn u32::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u64
 pub const u64::BITS: u32
 pub const u64::ONE: Self
@@ -2581,6 +2614,8 @@ pub fn u64::xor_scan(self) -> Self
 pub fn u64::xor_scan_down(self) -> Self
 pub fn u64::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u64::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u64::zip(self, Self) -> Self
+pub fn u64::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u8
 pub const u8::BITS: u32
 pub const u8::ONE: Self
@@ -2619,6 +2654,8 @@ pub fn u8::xor_scan(self) -> Self
 pub fn u8::xor_scan_down(self) -> Self
 pub fn u8::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u8::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u8::zip(self, Self) -> Self
+pub fn u8::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
@@ -2657,6 +2694,8 @@ pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::word::compress_broadword<W: hakmem::word::Word>(W, W) -> W
 pub fn hakmem::word::expand_broadword<W: hakmem::word::Word>(W, W) -> W
 pub fn hakmem::word::select_broadword64(u64, u32) -> u32
@@ -3018,6 +3057,8 @@ pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
@@ -3391,6 +3432,8 @@ pub fn hakmem::Word::xor_scan(self) -> Self
 pub fn hakmem::Word::xor_scan_down(self) -> Self
 pub fn hakmem::Word::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::Word::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::Word::zip(self, Self) -> Self
+pub fn hakmem::Word::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u128
 pub const u128::BITS: u32
 pub const u128::ONE: Self
@@ -3429,6 +3472,8 @@ pub fn u128::xor_scan(self) -> Self
 pub fn u128::xor_scan_down(self) -> Self
 pub fn u128::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u128::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u128::zip(self, Self) -> Self
+pub fn u128::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u16
 pub const u16::BITS: u32
 pub const u16::ONE: Self
@@ -3467,6 +3512,8 @@ pub fn u16::xor_scan(self) -> Self
 pub fn u16::xor_scan_down(self) -> Self
 pub fn u16::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u16::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u16::zip(self, Self) -> Self
+pub fn u16::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u32
 pub const u32::BITS: u32
 pub const u32::ONE: Self
@@ -3505,6 +3552,8 @@ pub fn u32::xor_scan(self) -> Self
 pub fn u32::xor_scan_down(self) -> Self
 pub fn u32::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u32::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u32::zip(self, Self) -> Self
+pub fn u32::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u64
 pub const u64::BITS: u32
 pub const u64::ONE: Self
@@ -3543,6 +3592,8 @@ pub fn u64::xor_scan(self) -> Self
 pub fn u64::xor_scan_down(self) -> Self
 pub fn u64::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u64::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u64::zip(self, Self) -> Self
+pub fn u64::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl hakmem::word::Word for u8
 pub const u8::BITS: u32
 pub const u8::ONE: Self
@@ -3581,6 +3632,8 @@ pub fn u8::xor_scan(self) -> Self
 pub fn u8::xor_scan_down(self) -> Self
 pub fn u8::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn u8::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u8::zip(self, Self) -> Self
+pub fn u8::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
@@ -3619,6 +3672,8 @@ pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub trait hakmem::Words
 pub type hakmem::Words::Word: hakmem::word::Word
 pub fn hakmem::Words::bit(&self, usize) -> bool

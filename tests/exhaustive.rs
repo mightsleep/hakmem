@@ -714,3 +714,32 @@ fn unzip_moves_every_bit() {
         assert!(laws::unzip_is_two_compacts(x), "u32 {x:x}");
     }
 }
+
+/// `zip` on every pair of `u8`s.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8_zip_pairs() {
+    for a in u8::MIN..=u8::MAX {
+        for b in u8::MIN..=u8::MAX {
+            assert!(laws::zip_is_two_expands(a, b), "a={a} b={b}");
+            assert!(laws::unzip_after_zip(a, b), "a={a} b={b}");
+        }
+    }
+}
+
+/// `zip` under its fixed mask is linear over GF(2) in the pair, PDEP or
+/// not: the image of `(a, b)` is the XOR of the images of their bits,
+/// and every single bit of either is every pair.
+#[test]
+fn zip_moves_every_bit() {
+    for i in 0..32 {
+        assert!(laws::zip_is_two_expands(1u32 << i, 0), "u32 a bit {i}");
+        assert!(laws::zip_is_two_expands(0, 1u32 << i), "u32 b bit {i}");
+    }
+    for i in 0..64 {
+        assert!(laws::zip_is_two_expands(1u64 << i, 0), "u64 a bit {i}");
+        assert!(laws::zip_is_two_expands(0, 1u64 << i), "u64 b bit {i}");
+    }
+    assert!(laws::zip_is_two_expands(u32::MAX, u32::MAX));
+    assert!(laws::zip_is_two_expands(u64::MAX, u64::MAX));
+}

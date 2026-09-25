@@ -265,7 +265,11 @@ win by five to ten times, and a point at a time it ties. It lost two
 rows first, and `Word::unzip` (with `Isa::unzip`) is what won them
 back: the even and the odd bits compacted, two PEXT of the code with
 BMI2, one ladder for both halves of a `u32` key without, the Morton
-decode on every carrier and held to two compresses by a law.
+decode on every carrier and held to two compresses by a law. Its
+inverse, `Word::zip` (`Isa::zip`), is the Morton encode by name, two
+PDEP or two expands, with laws of its own; without flags the `u64`
+`unzip` gathers by the shift ladder, and the 2D Hilbert decode, which
+inlines it, went from 2.9 to 2.6 µs for 1024 points.
 
 ### Changed, for anyone on 0.1
 

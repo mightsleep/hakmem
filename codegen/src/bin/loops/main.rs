@@ -545,21 +545,37 @@ fn mca(cpu: &str, input: &str) -> Option<Vec<f64>> {
 #[derive(Default)]
 struct Tree {
     count: usize,
+    /// Where it was inlined from: the caller's line and column. Two sites
+    /// under one name are two calls, and their instructions add up here,
+    /// so the label says `×2` rather than let 30 read as one call's 30.
+    sites: std::collections::BTreeSet<String>,
     children: Vec<(String, Tree)>,
 }
 
 impl Tree {
-    fn add(&mut self, path: &[&str]) {
+    fn add(&mut self, path: &[(&str, &str)]) {
         self.count += 1;
-        if let Some((first, rest)) = path.split_first() {
-            let i = match self.children.iter().position(|(n, _)| n == first) {
+        if let Some(((name, site), rest)) = path.split_first() {
+            let i = match self.children.iter().position(|(n, _)| n == name) {
                 Some(i) => i,
                 None => {
-                    self.children.push(((*first).to_owned(), Tree::default()));
+                    self.children.push(((*name).to_owned(), Tree::default()));
                     self.children.len() - 1
                 }
             };
-            self.children[i].1.add(rest);
+            let child = &mut self.children[i].1;
+            child.sites.insert((*site).to_owned());
+            child.add(rest);
+        }
+    }
+
+    /// A leaf (`word::and`) is called from everywhere and says so by its
+    /// count; the mark is for a function whose inlined body sums over
+    /// several calls.
+    fn label(name: &str, t: &Tree) -> String {
+        match t.sites.len() {
+            n if n > 1 && !t.children.is_empty() => format!("{name} ×{n}"),
+            _ => name.to_owned(),
         }
     }
 
@@ -569,11 +585,11 @@ impl Tree {
         let mut kids: Vec<&(String, Tree)> = self.children.iter().collect();
         kids.sort_by(|a, b| b.1.count.cmp(&a.1.count).then(a.0.cmp(&b.0)));
         for (name, t) in kids {
-            let mut label = name.clone();
+            let mut label = Self::label(name, t);
             let mut t = t;
             while t.children.len() == 1 && t.children[0].1.count == t.count {
                 label.push_str(" → ");
-                label.push_str(&t.children[0].0);
+                label.push_str(&Self::label(&t.children[0].0, &t.children[0].1));
                 t = &t.children[0].1;
             }
             let _ = writeln!(out, "{:>5}  {}{label}", t.count, "  ".repeat(depth));
@@ -814,13 +830,24 @@ fn main() {
                 tree.add(&[]);
                 continue;
             }
-            let path: Vec<String> = s
+            // Innermost first: a frame's call site is where its caller,
+            // the next frame out, stood.
+            let path: Vec<(String, &str)> = s
                 .iter()
+                .enumerate()
                 .rev()
-                .filter(|(_, file)| ours(file, &src))
-                .map(|(n, file)| frame(n, file))
+                .filter(|(_, (_, file))| ours(file, &src))
+                .map(|(k, (n, file))| {
+                    let site = s.get(k + 1).map_or("", |(_, at)| at.as_str());
+                    (frame(n, file), site)
+                })
                 .collect();
-            tree.add(&path.iter().map(String::as_str).collect::<Vec<_>>());
+            tree.add(
+                &path
+                    .iter()
+                    .map(|(n, site)| (n.as_str(), *site))
+                    .collect::<Vec<_>>(),
+            );
         }
         let hakmem: usize = tree.children.iter().map(|(_, t)| t.count).sum();
         // hakmem's loop: a quarter of it inlined from hakmem, or a call into

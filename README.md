@@ -355,7 +355,7 @@ proves: ask once instead, with the columns or `dispatch!`
 
 | Hilbert curve, 32 levels, `u32` coordinates (1024 points) | decode, portable | decode, `+pclmulqdq` | encode, portable | encode, `+bmi2,+pclmulqdq` |
 |---|---|---|---|---|
-| `hakmem` `Hilbert2` | **3.0 µs** | **1.7 µs** | **10.9 µs** | **5.4 µs** |
+| `hakmem` `Hilbert2` | **2.6 µs** | **1.7 µs** | **10.9 µs** | **5.4 µs** |
 | `fast_hilbert` (512-byte transition table) | 12.8 µs | 12.7 µs | 11.5 µs | 11.4 µs |
 | `lindel` (Skilling) | 66 µs | 71 µs | 70 µs | 76 µs |
 | `Morton2`, for the price of the frames | 1.6 µs | 0.56 µs | 1.6 µs | 0.46 µs |

@@ -863,6 +863,16 @@ called where the features are already proven (fearless_simd #293).
   12 GB/s classifying, 11.11): x86 and aarch64 never use it, but an
   engine on anything else would. A nibble lookup in a `u64` has better
   shapes than sixteen table reads.
+- The Morton columns on AVX-512, for 0.3 with the wider lanes. The
+  kernel is AVX2 on every level that has it: PSHUFB, four `u64` keys a
+  register, 0.17 ns a point, about 0.8 cycles on Zen 5. With VBMI and
+  GFNI a register holds eight keys, `vpermb` puts each byte in its
+  slot and one lookup or affine spreads it: about twelve operations for
+  eight points, 0.4 cycles, which L1 carries. It pays only in cache:
+  a point is 24 bytes of traffic, and past a million points one core
+  reads memory at about 1 ns a point, five times what the AVX2 kernel
+  already takes. In cache is where the scan engines work, block by
+  block, which is why it goes with them and `scan.rs`.
 
 ### 11.11 What the prototype changed
 
@@ -1161,6 +1171,21 @@ a tenth of the time, and now every row writes them at their width. A
 law holds `unzip` to two compresses on every carrier, and the ladder,
 being a bit permutation, is checked on every single bit of a `u32`
 and a `u64`, which is every word.
+
+The next estimate was wrong, and the tool was how. Its tree said the
+portable Morton encode spent 30 instructions in `expand_broadword` and
+the decode 33 in `compress_broadword`, where the classic ladder takes
+15 or 16 for 32 bits, so a leaf per width promised twice the speed.
+The ladders went in as `zip` and as the portable `unzip` on `u64`, and
+the encode came out 11 % slower. The 30 had been two calls, `x` and
+`y`, whose inline frames share a name and summed into one node:
+the general expand and compress under the Morton mask fold to the
+ladder already. What stayed is what measured: `unzip` on `u64` keeps
+the gathering ladder, which schedules better inside the Hilbert decode
+(2.94 to 2.62 µs for 1024 points, no flags); `Word::zip` is the pair of
+PDEP or expands it always was, the encode's name for it. And the tree
+keys a node's calls by where each was inlined from, the caller's line
+and column, and prints `×2` when two calls share it.
 
 ## Sources
 

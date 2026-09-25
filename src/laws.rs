@@ -199,6 +199,21 @@ pub fn unzip_is_two_compacts<W: Word>(x: W) -> bool {
     x.unzip() == (x.compact(even), x.compact(even.shl(1)))
 }
 
+/// `zip` is two expands, the second a bit up: `a` on the even bits, `b`
+/// on the odd, whichever way a carrier computes it.
+#[must_use]
+pub fn zip_is_two_expands<W: Word>(a: W, b: W) -> bool {
+    let even = W::splat_byte(0x55);
+    a.zip(b) == a.expand(even).or(b.expand(even).shl(1))
+}
+
+/// `unzip` undoes `zip` on the low halves, which is all `zip` reads.
+#[must_use]
+pub fn unzip_after_zip<W: Word>(a: W, b: W) -> bool {
+    let low = W::low_ones(W::BITS / 2);
+    a.zip(b).unzip() == (a.and(low), b.and(low))
+}
+
 // --- dilated / Morton -------------------------------------------------
 
 /// Dilating then un-dilating is the identity on values that fit.
