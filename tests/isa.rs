@@ -129,3 +129,51 @@ fn every_level_has_lawful_lanes() {
         hakmem::dispatch!(level, |cpu| lanes_of(cpu));
     }
 }
+
+/// The slice methods under every level agree with `Portable`, and the
+/// plain ones (which pick a level per call) with both.
+fn slices_of<I: Isa>(cpu: I, xs: &[u64]) {
+    use hakmem::Words;
+    let p = isa::Portable;
+    assert_eq!(xs.count_ones_in(cpu), xs.count_ones_in(p), "{cpu:?}");
+    assert_eq!(xs.count_ones(), xs.count_ones_in(p));
+    let bits = xs.len() * 64;
+    for i in [
+        0,
+        1,
+        63,
+        64,
+        65,
+        bits / 2,
+        bits.saturating_sub(1),
+        bits,
+        bits + 7,
+    ] {
+        assert_eq!(xs.rank_in(i, cpu), xs.rank_in(i, p), "{cpu:?} rank {i}");
+        assert_eq!(xs.rank(i), xs.rank_in(i, p));
+    }
+    let n = xs.count_ones_in(p);
+    for k in [0, 1, n / 3, n / 2, n.saturating_sub(1), n, n + 1] {
+        assert_eq!(
+            xs.select_in(k, cpu),
+            xs.select_in(k, p),
+            "{cpu:?} select {k}"
+        );
+        assert_eq!(xs.select(k), xs.select_in(k, p));
+    }
+    let (mut a, mut b) = (Vec::new(), Vec::new());
+    xs.for_each_position_in(cpu, |i| a.push(i));
+    xs.for_each_position(|i| b.push(i));
+    assert_eq!(a, xs.positions().collect::<Vec<_>>(), "{cpu:?}");
+    assert_eq!(b, a);
+}
+
+#[test]
+fn every_level_agrees_on_slices() {
+    let xs: Vec<u64> = samples().take(37).collect();
+    for level in isa::available() {
+        for len in [0, 1, 2, 5, 37] {
+            hakmem::dispatch!(level, |cpu| slices_of(cpu, &xs[..len]));
+        }
+    }
+}

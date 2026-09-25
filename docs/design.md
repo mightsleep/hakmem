@@ -818,9 +818,8 @@ called where the features are already proven (fearless_simd #293).
 - Zen 1 and 2 as a level of their own, or a flag in `detect()`.
 - `Isa` sealed (hakmem's levels only) or open to user levels. Sealed
   first; opening it later breaks nothing.
-- Where slices stop detecting. A check costs one relaxed load and a
-  predicted branch per call, nothing next to a thousand words and
-  something next to two; the cut-off is a measurement, not a guess.
+- Where slices stop detecting. Measured in 11.11: nowhere, the check
+  is lost in one word.
 
 ### 11.11 What the prototype changed
 
@@ -856,6 +855,33 @@ load assembled from two halves, which one MOVDQU would replace.
 the same run, and flipping the SSSE3 shift fails it. `Isa` gained
 `Eq` and `Hash`: a carrier hands its token back, and a test wants to
 compare it.
+
+The slices were the third cut, and the measurement decided what the
+plain methods do. In a build without flags, ns a call on Zen 5:
+
+| words | `count_ones` Native / plain | `rank` Native / plain | `select` Native / plain |
+|---|---|---|---|
+| 1 | 1.05 / 1.26 | 1.50 / 1.48 | 5.69 / 1.39 |
+| 16 | 6.51 / 2.48 | 6.50 / 3.11 | 14.12 / 2.93 |
+| 1024 | 396.6 / 114.8 | 397.5 / 117.2 | 480.7 / 135.4 |
+
+Plain is `dispatch!` on every call; the detection is one relaxed load
+and a predicted branch, lost in the noise of a single word, where
+POPCNT already beats the SWAR count. So `count_ones`, `rank`,
+`select` and `for_each_position` ask per call, and section 11.10's
+question of where slices stop detecting has the answer: nowhere.
+
+The same run with `-C target-cpu=native` found the one mistake. A
+token held outside, `select_in(k, X86V3)`, was half again as slow at
+1024 words as `Native`: the trampoline compiles the loop for
+x86-64-v3, and the build had AVX-512, which LLVM uses for the count.
+A token below the build is a downgrade, so `detect()` answers
+`Level::Native` when the build already proves x86-64-v3, and the
+dispatch changes nothing there: `xs.select(k)` and
+`xs.select_in(k, Native)` compile to one function (LLVM aliases the
+symbols). The benchmark still shows them apart at some lengths, by
+the same amount on every run; that is the timing loop inlining the
+call differently at two call sites, not the library.
 
 ## Sources
 

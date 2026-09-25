@@ -19,7 +19,8 @@ FNR == NR {
 
 /^[^ \t.#][^ \t]*:$/ || /^[^\t.#].*[^:]:$/ {
   label = substr($0, 1, length($0) - 1)
-  current = (label in wanted) ? label : ""
+  # The same instantiation can be in both crates' asm; the first is it.
+  current = (label in wanted && !(label in body)) ? label : ""
 }
 current != "" { body[current] = body[current] $0 "\n" }
 /^\.Lfunc_end/ { current = "" }

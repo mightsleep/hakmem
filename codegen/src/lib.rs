@@ -110,3 +110,14 @@ pub fn cg_dispatch_quote_mask(block: &[u8; 16]) -> u16 {
     }
     hakmem::dispatch!(|cpu| quotes(cpu, block))
 }
+
+// A slice method with no token in sight: it asks once per call and runs
+// under x86-64-v3, so the build without flags counts with POPCNT.
+// CHECK-LABEL: <hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<usize, <[u64] as hakmem::slice::Words>::count_ones::{closure#1}>:
+// CHECK: popcnt
+// CHECK-NOT: call
+#[unsafe(no_mangle)]
+pub fn cg_words_count_ones(xs: &[u64]) -> usize {
+    use hakmem::Words;
+    xs.count_ones()
+}

@@ -495,6 +495,7 @@ impl<W> core::panic::unwind_safe::RefUnwindSafe for hakmem::hilbert3::Hilbert3<W
 impl<W> core::panic::unwind_safe::UnwindSafe for hakmem::hilbert3::Hilbert3<W> where W: core::panic::unwind_safe::UnwindSafe
 pub mod hakmem::isa
 pub enum hakmem::isa::Level
+pub hakmem::isa::Level::Native(hakmem::isa::Native)
 pub hakmem::isa::Level::Portable(hakmem::isa::Portable)
 pub hakmem::isa::Level::X86V3(hakmem::isa::X86V3)
 impl core::clone::Clone for hakmem::isa::Level
@@ -2185,22 +2186,32 @@ pub type hakmem::prelude::Words::Word: hakmem::word::Word
 pub fn hakmem::prelude::Words::bit(&self, usize) -> bool
 pub fn hakmem::prelude::Words::clear_bit(&mut self, usize)
 pub fn hakmem::prelude::Words::count_ones(&self) -> usize
+pub fn hakmem::prelude::Words::count_ones_in<I: hakmem::isa::Isa>(&self, I) -> usize
 pub fn hakmem::prelude::Words::find_run(&self, u32) -> core::option::Option<usize>
+pub fn hakmem::prelude::Words::for_each_position(&self, impl core::ops::function::FnMut(usize))
+pub fn hakmem::prelude::Words::for_each_position_in<I: hakmem::isa::Isa>(&self, I, impl core::ops::function::FnMut(usize))
 pub fn hakmem::prelude::Words::next_set_from(&self, usize) -> core::option::Option<usize>
 pub fn hakmem::prelude::Words::positions(&self) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
 pub fn hakmem::prelude::Words::rank(&self, usize) -> usize
+pub fn hakmem::prelude::Words::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -> usize
 pub fn hakmem::prelude::Words::select(&self, usize) -> core::option::Option<usize>
+pub fn hakmem::prelude::Words::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub fn hakmem::prelude::Words::set_bit(&mut self, usize)
 impl<W: hakmem::word::Word> hakmem::slice::Words for [W]
 pub type [W]::Word = W
 pub fn [W]::bit(&self, usize) -> bool
 pub fn [W]::clear_bit(&mut self, usize)
 pub fn [W]::count_ones(&self) -> usize
+pub fn [W]::count_ones_in<I: hakmem::isa::Isa>(&self, I) -> usize
 pub fn [W]::find_run(&self, u32) -> core::option::Option<usize>
+pub fn [W]::for_each_position(&self, impl core::ops::function::FnMut(usize))
+pub fn [W]::for_each_position_in<I: hakmem::isa::Isa>(&self, I, impl core::ops::function::FnMut(usize))
 pub fn [W]::next_set_from(&self, usize) -> core::option::Option<usize>
 pub fn [W]::positions(&self) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
 pub fn [W]::rank(&self, usize) -> usize
+pub fn [W]::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -> usize
 pub fn [W]::select(&self, usize) -> core::option::Option<usize>
+pub fn [W]::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub fn [W]::set_bit(&mut self, usize)
 pub mod hakmem::rank9
 pub struct hakmem::rank9::Rank9<'a>
@@ -2293,22 +2304,32 @@ pub type hakmem::slice::Words::Word: hakmem::word::Word
 pub fn hakmem::slice::Words::bit(&self, usize) -> bool
 pub fn hakmem::slice::Words::clear_bit(&mut self, usize)
 pub fn hakmem::slice::Words::count_ones(&self) -> usize
+pub fn hakmem::slice::Words::count_ones_in<I: hakmem::isa::Isa>(&self, I) -> usize
 pub fn hakmem::slice::Words::find_run(&self, u32) -> core::option::Option<usize>
+pub fn hakmem::slice::Words::for_each_position(&self, impl core::ops::function::FnMut(usize))
+pub fn hakmem::slice::Words::for_each_position_in<I: hakmem::isa::Isa>(&self, I, impl core::ops::function::FnMut(usize))
 pub fn hakmem::slice::Words::next_set_from(&self, usize) -> core::option::Option<usize>
 pub fn hakmem::slice::Words::positions(&self) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
 pub fn hakmem::slice::Words::rank(&self, usize) -> usize
+pub fn hakmem::slice::Words::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -> usize
 pub fn hakmem::slice::Words::select(&self, usize) -> core::option::Option<usize>
+pub fn hakmem::slice::Words::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub fn hakmem::slice::Words::set_bit(&mut self, usize)
 impl<W: hakmem::word::Word> hakmem::slice::Words for [W]
 pub type [W]::Word = W
 pub fn [W]::bit(&self, usize) -> bool
 pub fn [W]::clear_bit(&mut self, usize)
 pub fn [W]::count_ones(&self) -> usize
+pub fn [W]::count_ones_in<I: hakmem::isa::Isa>(&self, I) -> usize
 pub fn [W]::find_run(&self, u32) -> core::option::Option<usize>
+pub fn [W]::for_each_position(&self, impl core::ops::function::FnMut(usize))
+pub fn [W]::for_each_position_in<I: hakmem::isa::Isa>(&self, I, impl core::ops::function::FnMut(usize))
 pub fn [W]::next_set_from(&self, usize) -> core::option::Option<usize>
 pub fn [W]::positions(&self) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
 pub fn [W]::rank(&self, usize) -> usize
+pub fn [W]::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -> usize
 pub fn [W]::select(&self, usize) -> core::option::Option<usize>
+pub fn [W]::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub fn [W]::set_bit(&mut self, usize)
 pub mod hakmem::wide
 pub struct hakmem::wide::Wide<const N: usize>(_)
@@ -3599,20 +3620,30 @@ pub type hakmem::Words::Word: hakmem::word::Word
 pub fn hakmem::Words::bit(&self, usize) -> bool
 pub fn hakmem::Words::clear_bit(&mut self, usize)
 pub fn hakmem::Words::count_ones(&self) -> usize
+pub fn hakmem::Words::count_ones_in<I: hakmem::isa::Isa>(&self, I) -> usize
 pub fn hakmem::Words::find_run(&self, u32) -> core::option::Option<usize>
+pub fn hakmem::Words::for_each_position(&self, impl core::ops::function::FnMut(usize))
+pub fn hakmem::Words::for_each_position_in<I: hakmem::isa::Isa>(&self, I, impl core::ops::function::FnMut(usize))
 pub fn hakmem::Words::next_set_from(&self, usize) -> core::option::Option<usize>
 pub fn hakmem::Words::positions(&self) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
 pub fn hakmem::Words::rank(&self, usize) -> usize
+pub fn hakmem::Words::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -> usize
 pub fn hakmem::Words::select(&self, usize) -> core::option::Option<usize>
+pub fn hakmem::Words::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub fn hakmem::Words::set_bit(&mut self, usize)
 impl<W: hakmem::word::Word> hakmem::slice::Words for [W]
 pub type [W]::Word = W
 pub fn [W]::bit(&self, usize) -> bool
 pub fn [W]::clear_bit(&mut self, usize)
 pub fn [W]::count_ones(&self) -> usize
+pub fn [W]::count_ones_in<I: hakmem::isa::Isa>(&self, I) -> usize
 pub fn [W]::find_run(&self, u32) -> core::option::Option<usize>
+pub fn [W]::for_each_position(&self, impl core::ops::function::FnMut(usize))
+pub fn [W]::for_each_position_in<I: hakmem::isa::Isa>(&self, I, impl core::ops::function::FnMut(usize))
 pub fn [W]::next_set_from(&self, usize) -> core::option::Option<usize>
 pub fn [W]::positions(&self) -> impl core::iter::traits::iterator::Iterator<Item = usize> + '_
 pub fn [W]::rank(&self, usize) -> usize
+pub fn [W]::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -> usize
 pub fn [W]::select(&self, usize) -> core::option::Option<usize>
+pub fn [W]::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub fn [W]::set_bit(&mut self, usize)

@@ -363,21 +363,33 @@ mod x86v3 {
 pub enum Level {
     /// [`Portable`].
     Portable(Portable),
-    /// [`X86V3`].
+    /// `X86V3`, on x86.
     #[cfg(target_arch = "x86_64")]
     X86V3(X86V3),
+    /// [`Native`], when the build already proves the highest level this
+    /// crate knows: a token would compile the body for less than the
+    /// build has (x86-64-v3 where the build says Zen 5, and AVX-512 lost).
+    Native(Native),
 }
 
-/// The highest level this CPU has. With the `portable` feature, and under
-/// Miri without the features in the build, [`Level::Portable`].
+/// The level a dispatch should run.
+///
+/// [`Level::Native`] when the build already proves x86-64-v3 or more,
+/// else the highest level this CPU has. With the `portable` feature, and
+/// under Miri without the features in the build, [`Level::Portable`].
 #[inline]
 #[must_use]
 // A constant in some builds, CPUID in the rest.
 #[allow(clippy::missing_const_for_fn)]
 pub fn detect() -> Level {
     #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
-    if let Some(cpu) = X86V3::detect() {
-        return Level::X86V3(cpu);
+    {
+        if crate::cpu::x86v3_in_build() {
+            return Level::Native(Native);
+        }
+        if let Some(cpu) = X86V3::detect() {
+            return Level::X86V3(cpu);
+        }
     }
     Level::Portable(Portable)
 }
@@ -386,10 +398,17 @@ pub fn detect() -> Level {
 /// the machine can run.
 pub fn available() -> impl Iterator<Item = Level> {
     let top = detect();
-    let portable = Level::Portable(Portable);
-    [Some(portable), (top != portable).then_some(top)]
-        .into_iter()
-        .flatten()
+    #[cfg(target_arch = "x86_64")]
+    let v3 = X86V3::detect().map(Level::X86V3);
+    #[cfg(not(target_arch = "x86_64"))]
+    let v3 = None;
+    [
+        Some(Level::Portable(Portable)),
+        v3,
+        matches!(top, Level::Native(_)).then_some(top),
+    ]
+    .into_iter()
+    .flatten()
 }
 
 /// Detects the level once (or takes one) and runs the body with a token
@@ -414,6 +433,7 @@ macro_rules! dispatch {
             $crate::isa::Level::Portable(t) => $crate::isa::Isa::run(t, |$cpu| $body),
             #[cfg(target_arch = "x86_64")]
             $crate::isa::Level::X86V3(t) => $crate::isa::Isa::run(t, |$cpu| $body),
+            $crate::isa::Level::Native(t) => $crate::isa::Isa::run(t, |$cpu| $body),
         }
     };
 }

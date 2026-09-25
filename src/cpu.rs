@@ -54,6 +54,11 @@ pub(super) fn avx512vbmi() -> bool {
 /// Every feature of `isa::X86V3::FEATURES`, and the OS saving `ymm`.
 #[inline]
 pub(super) fn x86v3() -> bool {
+    x86v3_in_build() || detected(X86V3)
+}
+
+/// The build itself enables every feature of `isa::X86V3::FEATURES`.
+pub(super) const fn x86v3_in_build() -> bool {
     cfg!(all(
         target_feature = "sse3",
         target_feature = "ssse3",
@@ -71,7 +76,7 @@ pub(super) fn x86v3() -> bool {
         target_feature = "f16c",
         target_feature = "xsave",
         target_feature = "pclmulqdq"
-    )) || detected(X86V3)
+    ))
 }
 
 /// [`avx512vbmi`] and GFNI.
