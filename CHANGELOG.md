@@ -202,6 +202,43 @@ docs search (`pext`, `pdep`, `popcnt`, `movemask`, `pshufb`, `z-order`),
 and the two claims that something does not compile are doctests that
 fail to, with the error code.
 
+`hakmem::isa`: instruction sets as values (design notes section 11).
+A caller that dispatched the usual way, a loop under
+`#[target_feature]` picked after a CPUID check, got the portable
+primitives anyway, since `cfg` is decided once per crate: 291
+instructions and no PEXT for a `compact`. A token (`Portable`,
+`Native`, `X86V3` for x86-64-v3 with PCLMULQDQ, `X86V4` for x86-64-v4
+with VBMI and GFNI) is a zero-sized proof that the CPU has its
+features; `dispatch!` detects once and runs a body compiled for the
+level it found, and `cpu.pext(x, m)` in it is a PEXT in a build
+without flags. `detect` takes the higher of the build and the CPU, so
+a build that already proves the level keeps `Native` and the dispatch
+folds away; `available` lists every level the machine can run.
+`Word` routes its five hardware primitives through `_in(…, isa)`
+forms, the plain methods being `Native`; `hakmem::x86` has the leaves,
+safe `#[target_feature]` functions with exactly the features they
+use, for code under someone else's dispatch. Sixteen lanes are per
+level: `X86x16<L>`, `Swar16`, `Neon16`, `I::U8x16` under a token and
+`U8x16` the build's; under `X86V4` a byte map is one `gf2p8affineqb`
+without flags. `Words::count_ones`, `rank`, `select` and the new
+`for_each_position`, and `Rank9::build`, `rank` and `select`, ask the
+CPU once a call: without flags, at 1024 words, 3.4 times the speed of
+`count_ones` and 3.5 of `select`, twice `Rank9`'s dense select, and
+no slower at one word or with `-C target-cpu=native`. `_in` forms take
+a token for loops that have chosen. The batch kernels take the level
+too, so a CPU with VBMI and no GFNI (Cannon Lake) now runs the AVX2
+ones. `tests/isa.rs` checks every level the machine has in one
+`cargo test`, where it used to take one build per `RUSTFLAGS`.
+
+`codegen/` holds the README's claims about instructions as FileCheck
+directives next to the wrappers they are about, and the count of each
+mnemonic per function as a snapshot a nix check diffs, like the public
+API: a build without flags and one with `+bmi2,+pclmulqdq,+ssse3,+avx2`.
+It found `select` paying for its popcount in software under the flags
+the README recommended. Miri runs its three cells side by side in two
+minutes where the old six took twenty; the AVX-512 cells wait for Miri
+to interpret AVX-512 (rust-lang/miri#5345).
+
 ### Changed, for anyone on 0.1
 
 A clean break, no deprecated aliases: 0.2 is a new major for Cargo,
@@ -233,6 +270,17 @@ and the old names were wrong in ways an alias would have kept.
   crate with nothing that allocates, as it was.
 - `myers::search` borrows the pattern for as long as the text: the
   search keeps it, to find where each occurrence starts.
+- The `Lanes` constructors take the carrier's token, `splat(isa, b)`,
+  `load(isa, bytes)` and `zero(isa)`, and a carrier has `type Isa` and
+  `isa()`: a value of an SSSE3 carrier is the proof the CPU has SSSE3.
+  `U8x16::load(bytes)` and `U8x8::splat(b)` read as before, being
+  inherent; code generic over `L: Lanes` passes `x.isa()`.
+- `U8x16` is an alias for the build's carrier (`X86x16<Native>`,
+  `Neon16` or `Swar16<Native>`), not a type of its own.
+- `Word` gains `pext_in`, `pdep_in`, `select_lowest_in`, `xor_scan_in`
+  and `xor_scan_down_in`, with portable defaults, and the plain methods
+  call them with `Native`. A carrier of your own that overrode `pext`
+  for speed overrides `pext_in` now, or a token gets the default.
 
 ## 0.1.0, 2026-09-19
 
