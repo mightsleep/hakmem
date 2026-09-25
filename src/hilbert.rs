@@ -785,7 +785,7 @@ impl<W: Word> Hilbert2<W> {
 /// converted, a whole number of batches; the caller finishes the rest.
 /// The intrinsics are `unsafe` solely because they require the target
 /// feature: on `x86_64` a kernel carries its features in
-/// `target_feature` and is called only where `crate::cpu` found them;
+/// `target_feature` and is called only where `crate::isa` found them;
 /// on `aarch64` NEON is a compile-time fact.
 mod batch {
     #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
@@ -914,12 +914,11 @@ mod batch {
     #[allow(unsafe_code)]
     mod dispatch {
         use super::vbmi;
-        use crate::cpu;
 
         macro_rules! keys {
             ($($name:ident: $w:ty;)*) => {$(
                 pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
-                    if cpu::avx512vbmi() {
+                    if crate::isa::batch().vbmi {
                         // SAFETY: AVX-512 F, BW and VBMI are present.
                         unsafe { vbmi::$name(keys) }
                     } else {

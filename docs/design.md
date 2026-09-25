@@ -907,6 +907,26 @@ asks once: 20.4 µs to 12.5 on the dense bitmap, 34.4 to 25.6 on the
 sparse, with the pass marked `inline(always)` so it compiles inside
 the trampoline and not beside it.
 
+`X86V4` was the fifth: x86-64-v4, VBMI and GFNI, from the same macro
+as `X86V3`, since the two differ in their feature string and in
+GFNI. Two consequences. The lanes under the token are GFNI's, so a
+build without flags reverses the bits of sixteen bytes with one
+`gf2p8affineqb` (codegen cell `portable`), and `tests/isa.rs` runs the
+GFNI byte maps on this machine without a special build. And the batch
+kernels stopped asking `cpu.rs` feature by feature: `cpu.rs` knows two
+levels now, and the kernels take the level `detect` found, or what
+the build proves on its own (the Miri cell with `+avx2` alone still
+runs the AVX2 kernel). A CPU with VBMI and no GFNI, Cannon Lake and
+nothing since, now gets the AVX2 kernels; the price of one level where
+there were three flags.
+
+`detect` answers with the higher of the build and the CPU: `Native`
+where the build proves v4, `X86V4` where the CPU has it and the build
+does not, then the same for v3. The first cut read the cache once per
+question and asked twice per call; the `bmi2` snapshot showed three
+extra calls in `Hilbert3::from_morton_in_place`, and one read of both
+levels took them out and ten instructions more than the old code had.
+
 ## Sources
 
 - Beeler, Gosper, Schroeppel. *HAKMEM*. MIT AI Memo 239, 1972.

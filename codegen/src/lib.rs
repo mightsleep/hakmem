@@ -121,3 +121,18 @@ pub fn cg_words_count_ones(xs: &[u64]) -> usize {
     use hakmem::Words;
     xs.count_ones()
 }
+
+// GFNI through a token: in a build without flags, the X86V4 carrier
+// reverses the bits of sixteen bytes with one `gf2p8affineqb`, where
+// SSSE3 alone needs two lookups and a shift.
+// CHECK-LABEL: <hakmem::isa::x86v4::X86V4 as hakmem::isa::Isa>::run::trampoline::<u16, hakmem_codegen::cg_dispatch_reverse_bits::{closure#2}>:
+// CHECK: gf2p8affineqb
+// CHECK-NOT: call
+#[unsafe(no_mangle)]
+pub fn cg_dispatch_reverse_bits(block: &[u8; 16]) -> u16 {
+    #[inline]
+    fn reversed<I: hakmem::isa::Isa>(cpu: I, block: &[u8; 16]) -> u16 {
+        I::U8x16::load(cpu, block).reverse_bits().to_bitmask()
+    }
+    hakmem::dispatch!(|cpu| reversed(cpu, block))
+}

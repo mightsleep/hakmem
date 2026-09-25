@@ -635,7 +635,7 @@ impl Hilbert3<u64> {
 /// converted, a whole number of batches. The intrinsics are `unsafe`
 /// solely because they require the target feature: on `x86_64` a kernel
 /// carries its features in `target_feature` and is called only where
-/// `crate::cpu` found them; on `aarch64` NEON is a compile-time fact.
+/// `crate::isa` found them; on `aarch64` NEON is a compile-time fact.
 mod batch {
     #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     #[allow(unsafe_code)]
@@ -1605,22 +1605,22 @@ mod batch {
 
     /// `x86_64` chooses among the kernels once a call. They are compiled
     /// whatever the build's target features, each under its own
-    /// `target_feature`; `crate::cpu` answers at compile time when the
+    /// `target_feature`; `crate::isa` answers at compile time when the
     /// build has the features, which makes the branch a constant, and at
     /// run time otherwise.
     #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     #[allow(unsafe_code)]
     mod dispatch {
         use super::{avx2, planes, vbmi};
-        use crate::cpu;
 
         macro_rules! keys {
             ($($name:ident: $w:ty, $wide:ident;)*) => {$(
                 pub(in crate::hilbert3) fn $name(keys: &mut [$w]) -> usize {
-                    if cpu::avx512vbmi() {
+                    let batch = crate::isa::batch();
+                    if batch.vbmi {
                         // SAFETY: AVX-512 F, BW and VBMI are present.
                         unsafe { $wide::$name(keys) }
-                    } else if cpu::avx2() {
+                    } else if batch.avx2 {
                         // SAFETY: AVX2 is present.
                         unsafe { avx2::$name(keys) }
                     } else {
@@ -1643,7 +1643,7 @@ mod batch {
             zs: &[u64],
             out: &mut [u64],
         ) -> usize {
-            if cpu::avx512vbmi_gfni() {
+            if crate::isa::batch().vbmi_gfni {
                 // SAFETY: AVX-512 F, BW, VBMI and GFNI are present.
                 unsafe { planes::encode_columns(xs, ys, zs, out) }
             } else {
@@ -1657,7 +1657,7 @@ mod batch {
             ys: &mut [u64],
             zs: &mut [u64],
         ) -> usize {
-            if cpu::avx512vbmi_gfni() {
+            if crate::isa::batch().vbmi_gfni {
                 // SAFETY: as above.
                 unsafe { planes::decode_columns(keys, xs, ys, zs) }
             } else {

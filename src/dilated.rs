@@ -642,12 +642,11 @@ mod batch {
     #[allow(unsafe_code)]
     mod dispatch {
         use super::avx2;
-        use crate::cpu;
 
         macro_rules! pick {
             ($($name:ident($a:ident: $ta:ty, $b:ident: $tb:ty, $c:ident: $tc:ty);)*) => {$(
                 pub(in crate::dilated) fn $name($a: $ta, $b: $tb, $c: $tc) -> usize {
-                    if cpu::avx2() {
+                    if crate::isa::batch().avx2 {
                         // SAFETY: AVX2 is present.
                         unsafe { avx2::$name($a, $b, $c) }
                     } else {

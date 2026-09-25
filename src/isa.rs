@@ -2,7 +2,7 @@
 //! down, and the primitives inside compile to its instructions.
 //!
 //! A token is a zero-sized proof that the CPU has a set of features.
-//! [`Portable`] and [`Native`] exist everywhere; `X86V3` (x86) only comes out
+//! [`Portable`] and [`Native`] exist everywhere; `X86V3` and `X86V4` (x86) only come out
 //! of [`detect`] (or an `unsafe` promise). [`Isa::run`] runs a closure
 //! compiled with the token's features, and [`dispatch!`](crate::dispatch)
 //! does the detection and the `run` in one go:
@@ -253,109 +253,145 @@ impl Isa for Native {
     }
 }
 
+/// One x86 level: a token that only detection (or an `unsafe` promise)
+/// makes, the trampoline under its features, the primitives through the
+/// leaves, and its 16-lane carrier. The levels differ in their feature
+/// string and in GFNI, nothing else.
 #[cfg(target_arch = "x86_64")]
-pub use x86v3::X86V3;
+macro_rules! x86_level {
+    (
+        $(#[$doc:meta])*
+        $module:ident, $name:ident, $features:literal, $detect:path, gfni = $gfni:literal
+    ) => {
+        #[allow(unsafe_code)]
+        mod $module {
+            use super::{Isa, X86Level, sealed};
+            use crate::x86::{bmi2, pclmulqdq};
+
+            $(#[$doc])*
+            #[derive(Clone, Copy, PartialEq, Eq, Hash)]
+            pub struct $name(());
+
+            impl core::fmt::Debug for $name {
+                fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                    f.write_str(stringify!($name))
+                }
+            }
+
+            impl $name {
+                /// The token, if the CPU and the OS have every feature of
+                /// the level (the OS: it saves the vector registers).
+                #[inline]
+                #[must_use]
+                pub fn detect() -> Option<Self> {
+                    $detect().then_some(Self(()))
+                }
+
+                /// The token, unchecked.
+                ///
+                /// # Safety
+                ///
+                /// The CPU has every feature in `FEATURES` and the OS saves
+                /// the registers they use.
+                #[inline]
+                #[must_use]
+                pub const unsafe fn new_unchecked() -> Self {
+                    Self(())
+                }
+
+                /// The `target_feature` string of the level.
+                pub const FEATURES: &str = $features;
+            }
+
+            impl sealed::Sealed for $name {}
+
+            // SAFETY, for every method: the token exists, so the CPU has
+            // the level's features (`detect` or the caller of
+            // `new_unchecked` said so).
+            impl Isa for $name {
+                type U8x16 = crate::lanes::X86x16<Self>;
+                #[inline]
+                fn run<R>(self, f: impl FnOnce(Self) -> R) -> R {
+                    #[target_feature(enable = $features)]
+                    #[inline]
+                    fn trampoline<R>(cpu: $name, f: impl FnOnce($name) -> R) -> R {
+                        f(cpu)
+                    }
+                    // SAFETY: see above.
+                    unsafe { trampoline(self, f) }
+                }
+                #[inline(always)]
+                fn pext_u32(self, x: u32, mask: u32) -> u32 {
+                    // SAFETY: see above.
+                    unsafe { bmi2::pext_u32(x, mask) }
+                }
+                #[inline(always)]
+                fn pext_u64(self, x: u64, mask: u64) -> u64 {
+                    // SAFETY: see above.
+                    unsafe { bmi2::pext_u64(x, mask) }
+                }
+                #[inline(always)]
+                fn pdep_u32(self, x: u32, mask: u32) -> u32 {
+                    // SAFETY: see above.
+                    unsafe { bmi2::pdep_u32(x, mask) }
+                }
+                #[inline(always)]
+                fn pdep_u64(self, x: u64, mask: u64) -> u64 {
+                    // SAFETY: see above.
+                    unsafe { bmi2::pdep_u64(x, mask) }
+                }
+                #[inline(always)]
+                fn select_u64(self, x: u64, k: u32) -> u32 {
+                    // SAFETY: see above.
+                    unsafe { bmi2::select_u64(x, k) }
+                }
+                #[inline(always)]
+                fn xor_scan_u64(self, x: u64) -> u64 {
+                    // SAFETY: see above.
+                    unsafe { pclmulqdq::xor_scan_u64(x) }
+                }
+                #[inline(always)]
+                fn xor_scan_down_u64(self, x: u64) -> u64 {
+                    // SAFETY: see above.
+                    unsafe { pclmulqdq::xor_scan_down_u64(x) }
+                }
+            }
+
+            impl X86Level for $name {
+                const GFNI: bool = $gfni;
+                unsafe fn assume() -> Self {
+                    Self(())
+                }
+            }
+        }
+
+        pub use $module::$name;
+    };
+}
 
 #[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
-mod x86v3 {
-    use super::{Isa, sealed};
-    use crate::x86::{bmi2, pclmulqdq};
-
+x86_level! {
     /// x86-64-v3 and PCLMULQDQ: Haswell, Zen 1 and later.
     ///
-    /// PEXT, PDEP and the carry-less scan; POPCNT, TZCNT and LZCNT for everything the
-    /// compiler derives. PCLMULQDQ is in no psABI level; every CPU with
-    /// v3 we know of has it, and the check asks anyway.
-    #[derive(Clone, Copy, PartialEq, Eq, Hash)]
-    pub struct X86V3(());
+    /// PEXT, PDEP and the carry-less scan; POPCNT, TZCNT and LZCNT for
+    /// everything the compiler derives; the AVX2 batch kernels.
+    /// PCLMULQDQ is in no psABI level; every CPU with v3 we know of has
+    /// it, and the check asks anyway.
+    x86v3, X86V3,
+    "sse3,ssse3,sse4.1,sse4.2,popcnt,cmpxchg16b,avx,avx2,bmi1,bmi2,fma,lzcnt,movbe,f16c,xsave,pclmulqdq",
+    crate::cpu::x86v3, gfni = false
+}
 
-    impl core::fmt::Debug for X86V3 {
-        fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-            f.write_str("X86V3")
-        }
-    }
-
-    impl X86V3 {
-        /// The token, if the CPU and the OS have every feature of the
-        /// level (the OS: it saves the `ymm` registers).
-        #[inline]
-        #[must_use]
-        pub fn detect() -> Option<Self> {
-            crate::cpu::x86v3().then_some(Self(()))
-        }
-
-        /// The token, unchecked.
-        ///
-        /// # Safety
-        ///
-        /// The CPU has every feature in [`X86V3::FEATURES`] and the OS
-        /// saves `ymm`.
-        #[inline]
-        #[must_use]
-        pub const unsafe fn new_unchecked() -> Self {
-            Self(())
-        }
-
-        /// The `target_feature` string of the level.
-        pub const FEATURES: &str = "sse3,ssse3,sse4.1,sse4.2,popcnt,cmpxchg16b,avx,avx2,\
-            bmi1,bmi2,fma,lzcnt,movbe,f16c,xsave,pclmulqdq";
-    }
-
-    impl sealed::Sealed for X86V3 {}
-
-    // SAFETY, for every method: the token exists, so the CPU has the
-    // level's features (`detect` or the caller of `new_unchecked` said so).
-    impl Isa for X86V3 {
-        type U8x16 = crate::lanes::X86x16<Self>;
-        #[inline]
-        fn run<R>(self, f: impl FnOnce(Self) -> R) -> R {
-            #[target_feature(
-                enable = "sse3,ssse3,sse4.1,sse4.2,popcnt,cmpxchg16b,avx,avx2,bmi1,bmi2,fma,lzcnt,movbe,f16c,xsave,pclmulqdq"
-            )]
-            #[inline]
-            fn trampoline<R>(cpu: X86V3, f: impl FnOnce(X86V3) -> R) -> R {
-                f(cpu)
-            }
-            // SAFETY: see above.
-            unsafe { trampoline(self, f) }
-        }
-        #[inline(always)]
-        fn pext_u32(self, x: u32, mask: u32) -> u32 {
-            // SAFETY: see above.
-            unsafe { bmi2::pext_u32(x, mask) }
-        }
-        #[inline(always)]
-        fn pext_u64(self, x: u64, mask: u64) -> u64 {
-            // SAFETY: see above.
-            unsafe { bmi2::pext_u64(x, mask) }
-        }
-        #[inline(always)]
-        fn pdep_u32(self, x: u32, mask: u32) -> u32 {
-            // SAFETY: see above.
-            unsafe { bmi2::pdep_u32(x, mask) }
-        }
-        #[inline(always)]
-        fn pdep_u64(self, x: u64, mask: u64) -> u64 {
-            // SAFETY: see above.
-            unsafe { bmi2::pdep_u64(x, mask) }
-        }
-        #[inline(always)]
-        fn select_u64(self, x: u64, k: u32) -> u32 {
-            // SAFETY: see above.
-            unsafe { bmi2::select_u64(x, k) }
-        }
-        #[inline(always)]
-        fn xor_scan_u64(self, x: u64) -> u64 {
-            // SAFETY: see above.
-            unsafe { pclmulqdq::xor_scan_u64(x) }
-        }
-        #[inline(always)]
-        fn xor_scan_down_u64(self, x: u64) -> u64 {
-            // SAFETY: see above.
-            unsafe { pclmulqdq::xor_scan_down_u64(x) }
-        }
-    }
+#[cfg(target_arch = "x86_64")]
+x86_level! {
+    /// x86-64-v4, VBMI and GFNI: Ice Lake, Zen 4 and later.
+    ///
+    /// Everything [`X86V3`](super::X86V3) has, the AVX-512 VBMI batch kernels, and
+    /// byte maps in one `gf2p8affineqb` (shifts, rotates and bit reversal
+    /// of the lanes included).
+    x86v4, X86V4,
+    "sse3,ssse3,sse4.1,sse4.2,popcnt,cmpxchg16b,avx,avx2,bmi1,bmi2,fma,lzcnt,movbe,f16c,xsave,pclmulqdq,avx512f,avx512dq,avx512cd,avx512bw,avx512vl,avx512vbmi,gfni",
+    crate::cpu::x86v4, gfni = true
 }
 
 /// The levels, as one value to match on.
@@ -366,49 +402,102 @@ pub enum Level {
     /// `X86V3`, on x86.
     #[cfg(target_arch = "x86_64")]
     X86V3(X86V3),
-    /// [`Native`], when the build already proves the highest level this
-    /// crate knows: a token would compile the body for less than the
-    /// build has (x86-64-v3 where the build says Zen 5, and AVX-512 lost).
+    /// `X86V4`, on x86.
+    #[cfg(target_arch = "x86_64")]
+    X86V4(X86V4),
+    /// [`Native`], when the build already proves as much as the CPU has
+    /// to offer: a token would compile the body for less than the build
+    /// has (x86-64-v3 where the build says Zen 5, and AVX-512 lost).
     Native(Native),
 }
 
 /// The level a dispatch should run.
 ///
-/// [`Level::Native`] when the build already proves x86-64-v3 or more,
-/// else the highest level this CPU has. With the `portable` feature, and
-/// under Miri without the features in the build, [`Level::Portable`].
+/// The higher of what the build proves and what the CPU has: a token
+/// where the CPU has more than the build, [`Level::Native`] where the
+/// build already has it all. With the `portable` feature, and under Miri
+/// without the features in the build, [`Level::Portable`].
 #[inline]
 #[must_use]
 // A constant in some builds, CPUID in the rest.
 #[allow(clippy::missing_const_for_fn)]
+#[allow(unsafe_code)]
 pub fn detect() -> Level {
     #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     {
-        if crate::cpu::x86v3_in_build() {
+        use crate::cpu::{self, x86v3_in_build, x86v4_in_build};
+        if x86v4_in_build() {
             return Level::Native(Native);
         }
-        if let Some(cpu) = X86V3::detect() {
-            return Level::X86V3(cpu);
+        // One load of the cache for both questions.
+        let has = cpu::levels();
+        if has & cpu::X86V4 != 0 {
+            // SAFETY: the CPU has the level, `cpu` just said so.
+            return Level::X86V4(unsafe { X86V4::new_unchecked() });
+        }
+        if x86v3_in_build() {
+            return Level::Native(Native);
+        }
+        if has & cpu::X86V3 != 0 {
+            // SAFETY: as above.
+            return Level::X86V3(unsafe { X86V3::new_unchecked() });
         }
     }
     Level::Portable(Portable)
 }
 
-/// Every level this CPU has, lowest first: for tests that want each path
+/// Every level this CPU has, lowest first, and [`Level::Native`] where
+/// the build proves a level of its own: for tests that want each path
 /// the machine can run.
 pub fn available() -> impl Iterator<Item = Level> {
     let top = detect();
     #[cfg(target_arch = "x86_64")]
-    let v3 = X86V3::detect().map(Level::X86V3);
+    let (v3, v4) = (
+        X86V3::detect().map(Level::X86V3),
+        X86V4::detect().map(Level::X86V4),
+    );
     #[cfg(not(target_arch = "x86_64"))]
-    let v3 = None;
+    let (v3, v4) = (None, None);
     [
         Some(Level::Portable(Portable)),
         v3,
+        v4,
         matches!(top, Level::Native(_)).then_some(top),
     ]
     .into_iter()
     .flatten()
+}
+
+/// Which batch kernels a call may run: the level's, and whatever the
+/// build proves on its own (a build with `+avx2` and no rest of
+/// x86-64-v3, as the Miri cells are, still runs the AVX2 kernels).
+#[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+#[derive(Clone, Copy)]
+pub(crate) struct Batch {
+    /// AVX2, with the OS saving `ymm`.
+    pub avx2: bool,
+    /// AVX-512 F, BW and VBMI, with the OS saving `zmm`.
+    pub vbmi: bool,
+    /// And GFNI.
+    pub vbmi_gfni: bool,
+}
+
+#[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+#[inline]
+pub(crate) fn batch() -> Batch {
+    let level = detect();
+    let v4 = matches!(level, Level::X86V4(_));
+    let v3 = v4 || matches!(level, Level::X86V3(_));
+    let vbmi = cfg!(all(
+        target_feature = "avx512f",
+        target_feature = "avx512bw",
+        target_feature = "avx512vbmi"
+    ));
+    Batch {
+        avx2: v3 || cfg!(target_feature = "avx2"),
+        vbmi: v4 || vbmi,
+        vbmi_gfni: v4 || (vbmi && cfg!(target_feature = "gfni")),
+    }
 }
 
 /// Detects the level once (or takes one) and runs the body with a token
@@ -433,6 +522,8 @@ macro_rules! dispatch {
             $crate::isa::Level::Portable(t) => $crate::isa::Isa::run(t, |$cpu| $body),
             #[cfg(target_arch = "x86_64")]
             $crate::isa::Level::X86V3(t) => $crate::isa::Isa::run(t, |$cpu| $body),
+            #[cfg(target_arch = "x86_64")]
+            $crate::isa::Level::X86V4(t) => $crate::isa::Isa::run(t, |$cpu| $body),
             $crate::isa::Level::Native(t) => $crate::isa::Isa::run(t, |$cpu| $body),
         }
     };
@@ -454,16 +545,6 @@ pub trait X86Level: Isa {
     /// The CPU has the level's features.
     #[doc(hidden)]
     unsafe fn assume() -> Self;
-}
-
-#[cfg(target_arch = "x86_64")]
-#[allow(unsafe_code)]
-impl X86Level for X86V3 {
-    const GFNI: bool = false;
-    unsafe fn assume() -> Self {
-        // SAFETY: the caller's.
-        unsafe { Self::new_unchecked() }
-    }
 }
 
 // `Native` is an x86 level with SSSE3 when the build says so.

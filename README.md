@@ -385,7 +385,7 @@ unbuilt (banded Myers over `Wide<N>`), sketched so you can.
 The batch conversions (`from_morton_in_place`, `to_morton_in_place`,
 `encode_columns`, `decode_columns`, the last two on `Morton2` and
 `Hilbert2` too) choose their kernel at run time on
-`x86_64`: AVX-512 VBMI (and GFNI), else AVX2, else the per-key form,
+`x86_64`: AVX-512 VBMI and GFNI (the `X86V4` level), else AVX2 (`X86V3`), else the per-key form,
 with no build flags and still `no_std`; the `portable` feature turns
 that off. The methods on words and lanes use what the build proves:
 build with

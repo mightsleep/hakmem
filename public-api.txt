@@ -498,6 +498,7 @@ pub enum hakmem::isa::Level
 pub hakmem::isa::Level::Native(hakmem::isa::Native)
 pub hakmem::isa::Level::Portable(hakmem::isa::Portable)
 pub hakmem::isa::Level::X86V3(hakmem::isa::X86V3)
+pub hakmem::isa::Level::X86V4(hakmem::isa::X86V4)
 impl core::clone::Clone for hakmem::isa::Level
 pub fn hakmem::isa::Level::clone(&self) -> hakmem::isa::Level
 impl core::cmp::Eq for hakmem::isa::Level
@@ -607,6 +608,39 @@ impl core::marker::Unpin for hakmem::isa::X86V3
 impl core::marker::UnsafeUnpin for hakmem::isa::X86V3
 impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::X86V3
 impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::X86V3
+pub struct hakmem::isa::X86V4(_)
+impl hakmem::isa::X86V4
+pub const hakmem::isa::X86V4::FEATURES: &str
+pub fn hakmem::isa::X86V4::detect() -> core::option::Option<Self>
+pub unsafe const fn hakmem::isa::X86V4::new_unchecked() -> Self
+impl core::clone::Clone for hakmem::isa::X86V4
+pub fn hakmem::isa::X86V4::clone(&self) -> hakmem::isa::X86V4
+impl core::cmp::Eq for hakmem::isa::X86V4
+impl core::cmp::PartialEq for hakmem::isa::X86V4
+pub fn hakmem::isa::X86V4::eq(&self, &hakmem::isa::X86V4) -> bool
+impl core::fmt::Debug for hakmem::isa::X86V4
+pub fn hakmem::isa::X86V4::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for hakmem::isa::X86V4
+pub fn hakmem::isa::X86V4::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for hakmem::isa::X86V4
+impl core::marker::StructuralPartialEq for hakmem::isa::X86V4
+impl hakmem::isa::Isa for hakmem::isa::X86V4
+pub type hakmem::isa::X86V4::U8x16 = hakmem::lanes::X86x16<hakmem::isa::X86V4>
+pub fn hakmem::isa::X86V4::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::X86V4::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::X86V4::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::X86V4::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::X86V4::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::X86V4::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl hakmem::isa::X86Level for hakmem::isa::X86V4
+pub const hakmem::isa::X86V4::GFNI: bool
+impl core::marker::Freeze for hakmem::isa::X86V4
+impl core::marker::Send for hakmem::isa::X86V4
+impl core::marker::Sync for hakmem::isa::X86V4
+impl core::marker::Unpin for hakmem::isa::X86V4
+impl core::marker::UnsafeUnpin for hakmem::isa::X86V4
+impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::X86V4
+impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::X86V4
 pub trait hakmem::isa::Isa: core::marker::Copy + core::cmp::Eq + core::hash::Hash + core::marker::Send + core::marker::Sync + core::fmt::Debug + 'static + hakmem::isa::sealed::Sealed
 pub type hakmem::isa::Isa::U8x16: hakmem::lanes::Lanes<Isa = Self, Bitmask = u16>
 pub fn hakmem::isa::Isa::pdep<W: hakmem::word::Word>(self, W, W) -> W
@@ -639,10 +673,20 @@ pub fn hakmem::isa::X86V3::run<R>(self, impl core::ops::function::FnOnce(Self) -
 pub fn hakmem::isa::X86V3::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
 pub fn hakmem::isa::X86V3::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::X86V3::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl hakmem::isa::Isa for hakmem::isa::X86V4
+pub type hakmem::isa::X86V4::U8x16 = hakmem::lanes::X86x16<hakmem::isa::X86V4>
+pub fn hakmem::isa::X86V4::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::X86V4::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::X86V4::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::X86V4::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::X86V4::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::X86V4::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 pub trait hakmem::isa::X86Level: hakmem::isa::Isa
 pub const hakmem::isa::X86Level::GFNI: bool
 impl hakmem::isa::X86Level for hakmem::isa::X86V3
 pub const hakmem::isa::X86V3::GFNI: bool
+impl hakmem::isa::X86Level for hakmem::isa::X86V4
+pub const hakmem::isa::X86V4::GFNI: bool
 pub fn hakmem::isa::available() -> impl core::iter::traits::iterator::Iterator<Item = hakmem::isa::Level>
 pub fn hakmem::isa::detect() -> hakmem::isa::Level
 pub mod hakmem::lanes

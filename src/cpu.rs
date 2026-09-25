@@ -1,60 +1,41 @@
-//! Run-time detection of the x86 features the batch kernels use, for
-//! builds that did not turn them on at compile time. `no_std`: CPUID and
-//! XGETBV are in `core::arch`, the cache is one atomic.
+//! Run-time detection of the x86 levels [`crate::isa`] hands out as
+//! tokens, and the batch kernels run on. `no_std`: CPUID and XGETBV are in
+//! `core::arch`, the cache is one atomic.
 //!
-//! Each question first asks the compiler: with the feature enabled at
+//! Each question first asks the compiler: with the features enabled at
 //! compile time the answer is a constant `true` and the detection is
 //! never built. Otherwise CPUID says what the processor has and XCR0
 //! what the operating system saves on a context switch; a processor with
 //! AVX-512 under an OS that does not save `zmm` has no AVX-512. The
 //! answer is computed once and cached. Under Miri, which has no CPUID,
 //! only the compile-time answer counts.
-//!
-//! Only whole batch kernels are chosen this way, once a call over
-//! thousands of keys. The per-word combinators keep their compile-time
-//! selection (design notes section 2.2).
 
 #![allow(unsafe_code)]
 // `unreachable_pub` wants `pub(super)` here and this lint wants `pub`;
 // the rustc lint is the one the crate chose.
 #![allow(clippy::redundant_pub_crate)]
-// With the `portable` feature the batch kernels do not ask, the tokens do.
-#![cfg_attr(feature = "portable", allow(dead_code))]
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
-const AVX2: u32 = 1 << 0;
-/// AVX-512 F, BW and VBMI, and an OS that saves `zmm`.
-const AVX512VBMI: u32 = 1 << 1;
-/// GFNI on top of [`AVX512VBMI`], for its 512-bit form.
-const AVX512GFNI: u32 = 1 << 2;
-/// x86-64-v3 and PCLMULQDQ, with the OS saving `ymm`: the `X86V3` token.
-const X86V3: u32 = 1 << 3;
+/// x86-64-v3 and PCLMULQDQ, with the OS saving `ymm`: `X86V3`.
+pub(super) const X86V3: u32 = 1 << 0;
+/// X86V3, x86-64-v4, VBMI and GFNI, with the OS saving `zmm`: `X86V4`.
+pub(super) const X86V4: u32 = 1 << 1;
 /// Set once the detection has run.
 const KNOWN: u32 = 1 << 31;
 
 static CACHE: AtomicU32 = AtomicU32::new(0);
 
-/// AVX2 with the OS saving `ymm`.
-#[inline]
-pub(super) fn avx2() -> bool {
-    cfg!(target_feature = "avx2") || detected(AVX2)
-}
-
-/// AVX-512 F, BW and VBMI with the OS saving `zmm`.
-#[inline]
-pub(super) fn avx512vbmi() -> bool {
-    cfg!(all(
-        target_feature = "avx512f",
-        target_feature = "avx512bw",
-        target_feature = "avx512vbmi"
-    )) || detected(AVX512VBMI)
-}
-
 /// Every feature of `isa::X86V3::FEATURES`, and the OS saving `ymm`.
 #[inline]
 pub(super) fn x86v3() -> bool {
     x86v3_in_build() || detected(X86V3)
+}
+
+/// Every feature of `isa::X86V4::FEATURES`, and the OS saving `zmm`.
+#[inline]
+pub(super) fn x86v4() -> bool {
+    x86v4_in_build() || detected(X86V4)
 }
 
 /// The build itself enables every feature of `isa::X86V3::FEATURES`.
@@ -79,26 +60,36 @@ pub(super) const fn x86v3_in_build() -> bool {
     ))
 }
 
-/// [`avx512vbmi`] and GFNI.
-#[inline]
-pub(super) fn avx512vbmi_gfni() -> bool {
-    cfg!(all(
-        target_feature = "avx512f",
-        target_feature = "avx512bw",
-        target_feature = "avx512vbmi",
-        target_feature = "gfni"
-    )) || detected(AVX512GFNI)
+/// The build itself enables every feature of `isa::X86V4::FEATURES`.
+pub(super) const fn x86v4_in_build() -> bool {
+    x86v3_in_build()
+        && cfg!(all(
+            target_feature = "avx512f",
+            target_feature = "avx512dq",
+            target_feature = "avx512cd",
+            target_feature = "avx512bw",
+            target_feature = "avx512vl",
+            target_feature = "avx512vbmi",
+            target_feature = "gfni"
+        ))
 }
 
+/// The levels the CPU has, as [`X86V3`] and [`X86V4`] bits: one load of
+/// the cache, and the detection the first time.
 #[inline]
-fn detected(feature: u32) -> bool {
+pub(super) fn levels() -> u32 {
     let mut bits = CACHE.load(Ordering::Relaxed);
     if bits & KNOWN == 0 {
         bits = detect() | KNOWN;
         // Racing threads compute the same bits; any store wins.
         CACHE.store(bits, Ordering::Relaxed);
     }
-    bits & feature != 0
+    bits
+}
+
+#[inline]
+fn detected(feature: u32) -> bool {
+    levels() & feature != 0
 }
 
 #[cfg(miri)]
@@ -132,9 +123,6 @@ fn detect() -> u32 {
     let zmm = ymm && xcr0 & 0b1110_0000 == 0b1110_0000;
     let bit = |word: u32, n: u32| word & (1 << n) != 0;
     let mut out = 0;
-    if ymm && bit(leaf7.ebx, 5) {
-        out |= AVX2;
-    }
     // x86-64-v3: leaf 1 ECX SSE3 0, PCLMULQDQ 1, SSSE3 9, FMA 12,
     // CMPXCHG16B 13, SSE4.1 19, SSE4.2 20, MOVBE 22, POPCNT 23, XSAVE 26,
     // AVX 28, F16C 29; leaf 7 EBX BMI1 3, AVX2 5, BMI2 8; LZCNT is bit 5
@@ -151,13 +139,14 @@ fn detect() -> u32 {
     {
         out |= X86V3;
     }
-    // F is EBX bit 16, BW bit 30, VBMI is ECX bit 1.
-    if zmm && bit(leaf7.ebx, 16) && bit(leaf7.ebx, 30) && bit(leaf7.ecx, 1) {
-        out |= AVX512VBMI;
-        // GFNI is ECX bit 8.
-        if bit(leaf7.ecx, 8) {
-            out |= AVX512GFNI;
-        }
+    // x86-64-v4 on top: leaf 7 EBX AVX512F 16, DQ 17, CD 28, BW 30, VL 31;
+    // ECX VBMI 1, GFNI 8.
+    if out & X86V3 != 0
+        && zmm
+        && [16, 17, 28, 30, 31].iter().all(|&n| bit(leaf7.ebx, n))
+        && [1, 8].iter().all(|&n| bit(leaf7.ecx, n))
+    {
+        out |= X86V4;
     }
     out
 }
