@@ -1,7 +1,12 @@
-# What a crate that calls hakmem ends up with: every function of a linked
-# binary, cut out of `llvm-objdump -d -C --no-leading-addr` output.
+# What a crate that calls hakmem ends up with: every hakmem function of a
+# linked binary and every function of the bench, cut out of objdump.
 #
-#   llvm-objdump ... bin | awk -v bench=hilbert -v dir=out -f outlined.awk
+#   llvm-objdump -d -l --disassemble-symbols=... bin | llvm-cxxfilt \
+#     | awk -v bench=hilbert -v dir=out -v got=got -f outlined.awk
+#
+# The pipeline hands objdump only those symbols (their names from nm),
+# which is a fifth of the time of the whole binary; so every function in
+# the input is one this script keeps.
 #
 # Appends to three files in `dir`:
 #   outlined  bench, then a hakmem function that survived as a function
@@ -25,9 +30,12 @@ BEGIN {
     }
 }
 
-/^<.*>:$/ {
+# `<16 hex digits> <name>:`
+/^[0-9a-f]+ <.*>:$/ {
   flush()
-  name = substr($0, 2, length($0) - 3)
+  name = $0
+  sub(/^[0-9a-f]+ </, "", name)
+  sub(/>:$/, "", name)
   sub(/ \(\.llvm\.[0-9]+\)$/, "", name)
   sub(/::h[0-9a-f]{16}$/, "", name)
   ours = index(name, "hakmem") > 0
@@ -37,9 +45,12 @@ BEGIN {
   next
 }
 name == "" { next }
-# Source lines from `-l` are `; file:line`. `int3` is the padding up to
-# the next function, not code.
-/^[ \t]+[a-z]/ && $1 != "int3" { n++ }
+# `  <hex>:<spaces>\t<mnemonic>...`; source lines from `-l` are `; ...`.
+# `int3` is the padding up to the next function, not code.
+/^ +[0-9a-f]+:/ {
+  split($0, t, "\t")
+  if (t[2] != "int3") n++
+}
 keep && match($0, /# 0x[0-9a-f]+ <[^>]*>$/) {
   s = substr($0, RSTART + 4)
   sub(/ .*/, "", s)

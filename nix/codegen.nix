@@ -117,9 +117,18 @@
                   # An empty map is a parser that lost objdump's format, not a
                   # binary without calls.
                   [ -s got ] || { echo "got.awk read nothing from $bench" >&2; exit 1; }
-                  llvm-objdump -d -l --no-show-raw-insn --no-leading-addr -C "$bin" \
-                    | awk -v bench="$bench" -v dir=$out -v got=got -f ${../codegen/outlined.awk}
-                  llvm-objdump -d --no-show-raw-insn -C "$bin" > dis
+                  # Only the functions anything reads: hakmem's and the bench's,
+                  # picked by name from nm and handed to objdump mangled (a
+                  # demangled list would split on the commas in generics),
+                  # through a response file, since one argument caps at 128 KiB.
+                  llvm-nm --defined-only "$bin" | awk '$2 ~ /^[Tt]$/ { print $3 }' > syms
+                  llvm-cxxfilt < syms | paste syms - \
+                    | awk -F'\t' -v b="$bench::" 'index($2, "hakmem") || index($2, b) { print $1 }' \
+                    | sort -u > picked
+                  [ -s picked ] || { echo "no hakmem or $bench function in $bench's symbols" >&2; exit 1; }
+                  { printf -- '--disassemble-symbols='; paste -sd, picked; } > picked.rsp
+                  llvm-objdump -d -l --no-show-raw-insn @picked.rsp "$bin" | llvm-cxxfilt > dis
+                  awk -v bench="$bench" -v dir=$out -v got=got -f ${../codegen/outlined.awk} dis
                   "$loops" --bench "$bench" --bin "$bin" --dis dis --got got --root "$PWD" \
                     --cpus znver5,x86-64-v3 --detail $out/loops --check >> $out/${system}-loops-${name}.txt
                 done

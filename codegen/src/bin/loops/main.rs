@@ -117,28 +117,14 @@ impl<'a> Text<'a> {
         }
     }
 
-    /// Every line, without its newline, walking the newline mask.
+    /// Every line, without its newline: the newline mask's positions.
     fn lines(&self) -> impl Iterator<Item = (usize, usize)> + '_ {
         let mut start = 0;
-        self.nl
-            .iter()
-            .enumerate()
-            .flat_map(move |(w, &m)| {
-                let mut bits = m;
-                std::iter::from_fn(move || {
-                    if bits == 0 {
-                        return None;
-                    }
-                    let end = w * 64 + bits.trailing_zeros() as usize;
-                    bits = bits.clear_lowest_set();
-                    Some(end)
-                })
-            })
-            .map(move |end| {
-                let line = (start, end);
-                start = end + 1;
-                line
-            })
+        self.nl.positions().map(move |end| {
+            let line = (start, end);
+            start = end + 1;
+            line
+        })
     }
 
     fn str(&self, from: usize, to: usize) -> &'a str {
@@ -299,11 +285,13 @@ impl Set {
         }
         s
     }
+    // Membership and walking are hakmem's `Words` over the slice; only
+    // the set algebra is here.
     fn has(&self, i: usize) -> bool {
-        self.0[i / 64].bit(i as u32 % 64)
+        self.0.bit(i)
     }
     fn insert(&mut self, i: usize) {
-        self.0[i / 64] |= 1 << (i % 64);
+        self.0.set_bit(i);
     }
     fn and(&mut self, o: &Self) {
         self.0.iter_mut().zip(&o.0).for_each(|(a, b)| *a &= b);
@@ -312,16 +300,7 @@ impl Set {
         self.0.iter().zip(&o.0).all(|(a, b)| a & !b == 0)
     }
     fn iter(&self) -> impl Iterator<Item = usize> + '_ {
-        self.0.iter().enumerate().flat_map(|(w, &bits)| {
-            let mut bits = bits;
-            std::iter::from_fn(move || {
-                (bits != 0).then(|| {
-                    let i = w * 64 + bits.trailing_zeros() as usize;
-                    bits = bits.clear_lowest_set();
-                    i
-                })
-            })
-        })
+        self.0.positions()
     }
 }
 
@@ -436,7 +415,40 @@ fn innermost_loops(f: &Func) -> Vec<Vec<usize>> {
 /// A frame of an inline stack: name and file, innermost first.
 type Stack = Vec<(String, String)>;
 
-fn symbolize(bin: &str, addrs: &[u64]) -> Vec<Stack> {
+/// Records of lines, a blank line between records, read like the listing:
+/// the newline mask, and a record ends where a newline has a newline
+/// after it, `nl & nl >> 1` with the next word's first bit carried in.
+/// Its popcount is the number of records before a line is looked at.
+fn records(level: Level, text: &str) -> Vec<Vec<&str>> {
+    let nl = level.newlines(text.as_bytes());
+    let ends: Vec<u64> = nl
+        .iter()
+        .enumerate()
+        .map(|(w, &m)| m & (m >> 1 | nl.get(w + 1).map_or(0, |n| n << 63)))
+        .collect();
+    let mut out = Vec::with_capacity(ends.count_ones() + 1);
+    let mut lines = Vec::new();
+    let mut ends = ends.positions().peekable();
+    let mut start = 0;
+    for end in nl.positions() {
+        if start < end {
+            lines.push(&text[start..end]);
+        }
+        start = end + 1;
+        if ends.next_if_eq(&end).is_some() && !lines.is_empty() {
+            out.push(std::mem::take(&mut lines));
+        }
+    }
+    if start < text.len() {
+        lines.push(&text[start..]);
+    }
+    if !lines.is_empty() {
+        out.push(lines);
+    }
+    out
+}
+
+fn symbolize(level: Level, bin: &str, addrs: &[u64]) -> Vec<Stack> {
     let mut child = Command::new("llvm-symbolizer")
         .args(["--obj", bin, "--inlining", "--demangle"])
         .stdin(Stdio::piped())
@@ -458,11 +470,9 @@ fn symbolize(bin: &str, addrs: &[u64]) -> Vec<Stack> {
         .unwrap();
     writer.join().unwrap().unwrap();
     child.wait().unwrap();
-    let stacks: Vec<Stack> = out
-        .split("\n\n")
-        .filter(|s| !s.trim().is_empty())
-        .map(|block| {
-            let lines: Vec<&str> = block.lines().collect();
+    let stacks: Vec<Stack> = records(level, &out)
+        .into_iter()
+        .map(|lines| {
             lines
                 .chunks(2)
                 .map(|f| (f[0].to_owned(), f.get(1).copied().unwrap_or("").to_owned()))
@@ -477,7 +487,36 @@ fn symbolize(bin: &str, addrs: &[u64]) -> Vec<Stack> {
     stacks
 }
 
-fn mca(cpu: &str, asm: &str) -> Option<f64> {
+/// A loop that stays in the summary, waiting for its cycles.
+struct Kept<'a> {
+    site: String,
+    insns: usize,
+    body: String,
+    full: String,
+    func: &'a str,
+    asm: String,
+}
+
+/// Cycles per iteration of every loop on `cpu`, from one llvm-mca: each
+/// loop a code region, which llvm-mca simulates on its own, with the same
+/// numbers as a run of its own and none of the start-up forty times over.
+/// A region llvm-mca cannot read fails the whole run, so then each loop
+/// goes alone and only that one is n/a.
+fn mca_all(cpu: &str, asms: &[&str]) -> Vec<Option<f64>> {
+    let mut input = String::new();
+    for (i, asm) in asms.iter().enumerate() {
+        let _ = write!(input, "# LLVM-MCA-BEGIN r{i}\n{asm}# LLVM-MCA-END r{i}\n");
+    }
+    if let Some(v) = mca(cpu, &input).filter(|v| v.len() == asms.len()) {
+        return v.into_iter().map(Some).collect();
+    }
+    asms.iter()
+        .map(|asm| mca(cpu, asm).and_then(|v| v.first().copied()))
+        .collect()
+}
+
+/// Every region's cycles per iteration, in order.
+fn mca(cpu: &str, input: &str) -> Option<Vec<f64>> {
     let mut child = Command::new("llvm-mca")
         .args([&format!("-mcpu={cpu}"), "-iterations=100", "-"])
         .stdin(Stdio::piped())
@@ -485,15 +524,21 @@ fn mca(cpu: &str, asm: &str) -> Option<f64> {
         .stderr(Stdio::null())
         .spawn()
         .ok()?;
-    child.stdin.take()?.write_all(asm.as_bytes()).ok()?;
+    child.stdin.take()?.write_all(input.as_bytes()).ok()?;
     let out = child.wait_with_output().ok()?;
+    if !out.status.success() {
+        return None;
+    }
     let text = String::from_utf8_lossy(&out.stdout);
-    let field = |k: &str| -> Option<f64> {
+    let field = |k: &str| -> Vec<f64> {
         text.lines()
-            .find_map(|l| l.strip_prefix(k))
-            .and_then(|v| v.trim().parse().ok())
+            .filter_map(|l| l.strip_prefix(k))
+            .filter_map(|v| v.trim().parse().ok())
+            .collect()
     };
-    Some(field("Total Cycles:")? / field("Iterations:")?)
+    let (cycles, iterations) = (field("Total Cycles:"), field("Iterations:"));
+    (cycles.len() == iterations.len())
+        .then(|| cycles.iter().zip(&iterations).map(|(c, i)| c / i).collect())
 }
 
 /// Instruction counts by inline path, hakmem frames only, outermost first.
@@ -749,7 +794,7 @@ fn main() {
     let stacks = if addrs.is_empty() {
         Vec::new()
     } else {
-        symbolize(&a.bin, &addrs)
+        symbolize(level, &a.bin, &addrs)
     };
     let src = format!("{}/src/", a.root);
     let benches = format!("{}/benches/", a.root);
@@ -757,6 +802,7 @@ fn main() {
     let mut summary = Vec::new();
     let mut detail = String::new();
     let mut next = 0;
+    let mut kept: Vec<Kept> = Vec::new();
     for (f, l) in &loops {
         let stacks = &stacks[next..next + l.len()];
         next += l.len();
@@ -821,12 +867,7 @@ fn main() {
             })
             .map(|x| format!("{} {}\n", x.mnem, x.ops))
             .collect();
-        let cycles: Vec<String> = a
-            .cpus
-            .iter()
-            .map(|c| mca(c, &asm).map_or_else(|| format!("{c} n/a"), |v| format!("{c} {v:.1}")))
-            .collect();
-        let mut s = format!("{site}  {} insns  {}\n", l.len(), cycles.join("  "));
+        let mut s = String::new();
         if !calls.is_empty() {
             let _ = writeln!(s, "       calls {}", calls.join(", "));
         }
@@ -837,22 +878,48 @@ fn main() {
         if other > 0 {
             let _ = writeln!(s, "{other:>5}  (not hakmem)");
         }
-        summary.push(s.clone());
-
-        let _ = writeln!(detail, "== {} {site}\n   in {}", a.bench, f.name);
-        detail.push_str(&s);
         let mut full = String::new();
         tree.print(&mut full, 0, usize::MAX);
-        let _ = writeln!(detail, "-- whole tree\n{full}-- instructions");
+        let _ = writeln!(full, "-- instructions");
         for (&i, st) in l.iter().zip(stacks) {
             let x = &f.insns[i];
             let from = st
                 .iter()
                 .find(|(_, file)| file.starts_with(&src))
                 .map_or_else(String::new, |(n, file)| format!("{n} {}", short(file)));
-            let _ = writeln!(detail, "  {:x}  {:<8} {:<48} {from}", x.addr, x.mnem, x.ops);
+            let _ = writeln!(full, "  {:x}  {:<8} {:<48} {from}", x.addr, x.mnem, x.ops);
         }
-        detail.push('\n');
+        kept.push(Kept {
+            site,
+            insns: l.len(),
+            body: s,
+            full,
+            func: f.name,
+            asm,
+        });
+    }
+    // llvm-mca once a CPU for every loop, a code region each; the CPUs
+    // side by side, since each run is simulation, not start-up.
+    let asms: Vec<&str> = kept.iter().map(|k| k.asm.as_str()).collect();
+    let cycles: Vec<Vec<Option<f64>>> = std::thread::scope(|s| {
+        let runs: Vec<_> = a
+            .cpus
+            .iter()
+            .map(|c| s.spawn(|| mca_all(c, &asms)))
+            .collect();
+        runs.into_iter().map(|r| r.join().unwrap()).collect()
+    });
+    for (j, k) in kept.iter().enumerate() {
+        let per_cpu: Vec<String> = a
+            .cpus
+            .iter()
+            .zip(&cycles)
+            .map(|(c, v)| v[j].map_or_else(|| format!("{c} n/a"), |v| format!("{c} {v:.1}")))
+            .collect();
+        let head = format!("{}  {} insns  {}\n", k.site, k.insns, per_cpu.join("  "));
+        summary.push(format!("{head}{}", k.body));
+        let _ = writeln!(detail, "== {} {}\n   in {}", a.bench, k.site, k.func);
+        let _ = write!(detail, "{head}{}-- whole tree\n{}\n", k.body, k.full);
     }
     let mut out = std::io::stdout().lock();
     for s in summary {
@@ -883,6 +950,24 @@ mod tests {
             ),
             "<isa::x86v2::X86V2 as isa::Isa>::run::trampoline"
         );
+    }
+
+    #[test]
+    fn records_split_on_blank_lines() {
+        // A blank line at every offset around the word boundary, where the
+        // second newline is the next word's bit 0.
+        for pad in 55..70 {
+            let first = "x".repeat(pad);
+            let text = format!("{first}\nb\n\nc\nd\n\ne\n");
+            for level in Level::all() {
+                assert_eq!(
+                    records(level, &text),
+                    vec![vec![first.as_str(), "b"], vec!["c", "d"], vec!["e"]],
+                    "{level:?}, pad {pad}"
+                );
+            }
+        }
+        assert_eq!(records(Level::detect(), "a\nb"), vec![vec!["a", "b"]]);
     }
 
     #[test]

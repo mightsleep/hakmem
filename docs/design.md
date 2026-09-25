@@ -1125,6 +1125,23 @@ The newline pass is at the memory's speed on every width; the full
 classification is where width pays, one extraction a block instead of
 four. The pass the tool makes now takes 2.2 ms.
 
+Which was never the time. For the `hilbert` bench the cell spent 2.5 s:
+1.27 in `objdump -d -l` of the whole binary for `outlined.awk`, 0.43
+in a second `objdump -d` for `loops`, 0.74 in 46 runs of llvm-mca, and
+0.06 in everything `loops` does itself. Now nm names the functions
+anything reads, hakmem's and the bench's, one objdump disassembles only
+those (369 of 4 686, through a response file, the mangled list being
+too long for one argument), and both readers take its output: 0.24 s.
+llvm-mca runs once a CPU with every loop as a code region, which it
+simulates alone with the numbers of a run of its own, the two CPUs side
+by side: 0.25 s for the whole of `loops`. 0.5 s in all, and every
+snapshot the same byte for byte. The tool's own bookkeeping is hakmem's
+too: the dominator sets are `Words` (`bit`, `set_bit`, `positions`),
+lines are the newline mask's `positions`, and llvm-symbolizer's
+records, split on blank lines, are `nl & nl >> 1` with the next word's
+first bit carried in, whose popcount counts the records before a line
+is read.
+
 ## Sources
 
 - Beeler, Gosper, Schroeppel. *HAKMEM*. MIT AI Memo 239, 1972.
