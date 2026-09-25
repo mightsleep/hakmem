@@ -2,7 +2,7 @@
 //! down, and the primitives inside compile to its instructions.
 //!
 //! A token is a zero-sized proof that the CPU has a set of features.
-//! [`Portable`] and [`Native`] exist everywhere; `X86V3` and `X86V4` (x86) only come out
+//! [`Portable`] and [`Native`] exist everywhere; `X86V2`, `X86V3` and `X86V4` (x86) only come out
 //! of [`detect`] (or an `unsafe` promise). [`Isa::run`] runs a closure
 //! compiled with the token's features, and [`dispatch!`](crate::dispatch)
 //! does the detection and the `run` in one go:
@@ -261,7 +261,7 @@ impl Isa for Native {
 macro_rules! x86_level {
     (
         $(#[$doc:meta])*
-        $module:ident, $name:ident, $features:literal, $detect:path, gfni = $gfni:literal
+        $module:ident, $name:ident, $features:literal, $detect:path, gfni = $gfni:literal, bmi2 = $bmi2:literal, clmul = $clmul:literal
     ) => {
         #[allow(unsafe_code)]
         mod $module {
@@ -307,7 +307,8 @@ macro_rules! x86_level {
 
             // SAFETY, for every method: the token exists, so the CPU has
             // the level's features (`detect` or the caller of
-            // `new_unchecked` said so).
+            // `new_unchecked` said so), and a leaf is called only where the
+            // level has its feature (`bmi2`, `clmul` below).
             impl Isa for $name {
                 type U8x16 = crate::lanes::X86x16<Self>;
                 #[inline]
@@ -323,37 +324,37 @@ macro_rules! x86_level {
                 #[inline(always)]
                 fn pext_u32(self, x: u32, mask: u32) -> u32 {
                     // SAFETY: see above.
-                    unsafe { bmi2::pext_u32(x, mask) }
+                    if $bmi2 { unsafe { bmi2::pext_u32(x, mask) } } else { crate::word::compress_broadword(x, mask) }
                 }
                 #[inline(always)]
                 fn pext_u64(self, x: u64, mask: u64) -> u64 {
                     // SAFETY: see above.
-                    unsafe { bmi2::pext_u64(x, mask) }
+                    if $bmi2 { unsafe { bmi2::pext_u64(x, mask) } } else { crate::word::compress_broadword(x, mask) }
                 }
                 #[inline(always)]
                 fn pdep_u32(self, x: u32, mask: u32) -> u32 {
                     // SAFETY: see above.
-                    unsafe { bmi2::pdep_u32(x, mask) }
+                    if $bmi2 { unsafe { bmi2::pdep_u32(x, mask) } } else { crate::word::expand_broadword(x, mask) }
                 }
                 #[inline(always)]
                 fn pdep_u64(self, x: u64, mask: u64) -> u64 {
                     // SAFETY: see above.
-                    unsafe { bmi2::pdep_u64(x, mask) }
+                    if $bmi2 { unsafe { bmi2::pdep_u64(x, mask) } } else { crate::word::expand_broadword(x, mask) }
                 }
                 #[inline(always)]
                 fn select_u64(self, x: u64, k: u32) -> u32 {
                     // SAFETY: see above.
-                    unsafe { bmi2::select_u64(x, k) }
+                    if $bmi2 { unsafe { bmi2::select_u64(x, k) } } else { crate::word::select_broadword64(x, k) }
                 }
                 #[inline(always)]
                 fn xor_scan_u64(self, x: u64) -> u64 {
                     // SAFETY: see above.
-                    unsafe { pclmulqdq::xor_scan_u64(x) }
+                    if $clmul { unsafe { pclmulqdq::xor_scan_u64(x) } } else { crate::word::xor_smear(x) }
                 }
                 #[inline(always)]
                 fn xor_scan_down_u64(self, x: u64) -> u64 {
                     // SAFETY: see above.
-                    unsafe { pclmulqdq::xor_scan_down_u64(x) }
+                    if $clmul { unsafe { pclmulqdq::xor_scan_down_u64(x) } } else { crate::word::xor_smear_down(x) }
                 }
             }
 
@@ -379,7 +380,7 @@ x86_level! {
     /// it, and the check asks anyway.
     x86v3, X86V3,
     "sse3,ssse3,sse4.1,sse4.2,popcnt,cmpxchg16b,avx,avx2,bmi1,bmi2,fma,lzcnt,movbe,f16c,xsave,pclmulqdq",
-    crate::cpu::x86v3, gfni = false
+    crate::cpu::x86v3, gfni = false, bmi2 = true, clmul = true
 }
 
 #[cfg(target_arch = "x86_64")]
@@ -391,7 +392,19 @@ x86_level! {
     /// of the lanes included).
     x86v4, X86V4,
     "sse3,ssse3,sse4.1,sse4.2,popcnt,cmpxchg16b,avx,avx2,bmi1,bmi2,fma,lzcnt,movbe,f16c,xsave,pclmulqdq,avx512f,avx512dq,avx512cd,avx512bw,avx512vl,avx512vbmi,gfni",
-    crate::cpu::x86v4, gfni = true
+    crate::cpu::x86v4, gfni = true, bmi2 = true, clmul = true
+}
+
+#[cfg(target_arch = "x86_64")]
+x86_level! {
+    /// x86-64-v2: Nehalem, Bulldozer, Silvermont and later.
+    ///
+    /// POPCNT for every count the compiler derives and PSHUFB for the
+    /// lanes; no BMI2 and no PCLMULQDQ, so PEXT, PDEP, select and the scans
+    /// stay broadword, and no batch kernel.
+    x86v2, X86V2,
+    "sse3,ssse3,sse4.1,sse4.2,popcnt,cmpxchg16b",
+    crate::cpu::x86v2, gfni = false, bmi2 = false, clmul = false
 }
 
 /// The levels, as one value to match on.
@@ -402,6 +415,9 @@ pub enum Level {
     /// `X86V3`, on x86.
     #[cfg(target_arch = "x86_64")]
     X86V3(X86V3),
+    /// `X86V2`, on x86.
+    #[cfg(target_arch = "x86_64")]
+    X86V2(X86V2),
     /// `X86V4`, on x86.
     #[cfg(target_arch = "x86_64")]
     X86V4(X86V4),
@@ -425,7 +441,7 @@ pub enum Level {
 pub fn detect() -> Level {
     #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
     {
-        use crate::cpu::{self, x86v3_in_build, x86v4_in_build};
+        use crate::cpu::{self, x86v2_in_build, x86v3_in_build, x86v4_in_build};
         if x86v4_in_build() {
             return Level::Native(Native);
         }
@@ -442,6 +458,13 @@ pub fn detect() -> Level {
             // SAFETY: as above.
             return Level::X86V3(unsafe { X86V3::new_unchecked() });
         }
+        if x86v2_in_build() {
+            return Level::Native(Native);
+        }
+        if has & cpu::X86V2 != 0 {
+            // SAFETY: as above.
+            return Level::X86V2(unsafe { X86V2::new_unchecked() });
+        }
     }
     Level::Portable(Portable)
 }
@@ -452,14 +475,16 @@ pub fn detect() -> Level {
 pub fn available() -> impl Iterator<Item = Level> {
     let top = detect();
     #[cfg(target_arch = "x86_64")]
-    let (v3, v4) = (
+    let (v2, v3, v4) = (
+        X86V2::detect().map(Level::X86V2),
         X86V3::detect().map(Level::X86V3),
         X86V4::detect().map(Level::X86V4),
     );
     #[cfg(not(target_arch = "x86_64"))]
-    let (v3, v4) = (None, None);
+    let (v2, v3, v4) = (None, None, None);
     [
         Some(Level::Portable(Portable)),
+        v2,
         v3,
         v4,
         matches!(top, Level::Native(_)).then_some(top),
@@ -525,6 +550,9 @@ macro_rules! dispatch {
             #[cfg(target_arch = "x86_64")]
             $crate::isa::Level::X86V4(t) => $crate::isa::Isa::run(t, |$cpu| $body),
             $crate::isa::Level::Native(t) => $crate::isa::Isa::run(t, |$cpu| $body),
+            // Last, so the closures of the other arms keep their numbers.
+            #[cfg(target_arch = "x86_64")]
+            $crate::isa::Level::X86V2(t) => $crate::isa::Isa::run(t, |$cpu| $body),
         }
     };
 }

@@ -8,6 +8,8 @@
 //! into functions and puts them in this file's order). The prefix is the
 //! build: `CHECK` holds in every cell, `BMI2` where the cell has
 //! `+bmi2,+pclmulqdq,+ssse3,+avx2`, `PORTABLE` in the build without flags.
+//! Prose here never puts a colon after one of those words: FileCheck
+//! reads that as a directive, wherever it is.
 //!
 //! The same functions, as counts of each mnemonic, are the snapshot next
 //! to this crate: a change in codegen is a diff in review, not a line on
@@ -136,3 +138,11 @@ pub fn cg_dispatch_reverse_bits(block: &[u8; 16]) -> u16 {
     }
     hakmem::dispatch!(|cpu| reversed(cpu, block))
 }
+
+// X86V2 has POPCNT and lacks BMI2, so the slice count under it is POPCNT, and
+// a PEXT under it would be an illegal instruction on the CPUs the level
+// is for, which a test on a newer machine cannot see. This can.
+// CHECK-LABEL: <hakmem::isa::x86v2::X86V2 as hakmem::isa::Isa>::run::trampoline::<usize, <[u64] as hakmem::slice::Words>::count_ones::{closure#4}>:
+// CHECK: popcnt
+// CHECK-LABEL: <hakmem::isa::x86v2::X86V2 as hakmem::isa::Isa>::run::trampoline::<u64, hakmem_codegen::cg_dispatch_gather::{closure#4}>:
+// CHECK-NOT: pext

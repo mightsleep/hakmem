@@ -21,10 +21,18 @@ use core::sync::atomic::{AtomicU32, Ordering};
 pub(super) const X86V3: u32 = 1 << 0;
 /// X86V3, x86-64-v4, VBMI and GFNI, with the OS saving `zmm`: `X86V4`.
 pub(super) const X86V4: u32 = 1 << 1;
+/// x86-64-v2: `X86V2`. The OS saves SSE state on every `x86_64`.
+pub(super) const X86V2: u32 = 1 << 2;
 /// Set once the detection has run.
 const KNOWN: u32 = 1 << 31;
 
 static CACHE: AtomicU32 = AtomicU32::new(0);
+
+/// Every feature of `isa::X86V2::FEATURES`.
+#[inline]
+pub(super) fn x86v2() -> bool {
+    x86v2_in_build() || detected(X86V2)
+}
 
 /// Every feature of `isa::X86V3::FEATURES`, and the OS saving `ymm`.
 #[inline]
@@ -36,6 +44,18 @@ pub(super) fn x86v3() -> bool {
 #[inline]
 pub(super) fn x86v4() -> bool {
     x86v4_in_build() || detected(X86V4)
+}
+
+/// The build itself enables every feature of `isa::X86V2::FEATURES`.
+pub(super) const fn x86v2_in_build() -> bool {
+    cfg!(all(
+        target_feature = "sse3",
+        target_feature = "ssse3",
+        target_feature = "sse4.1",
+        target_feature = "sse4.2",
+        target_feature = "popcnt",
+        target_feature = "cmpxchg16b"
+    ))
 }
 
 /// The build itself enables every feature of `isa::X86V3::FEATURES`.
@@ -74,7 +94,7 @@ pub(super) const fn x86v4_in_build() -> bool {
         ))
 }
 
-/// The levels the CPU has, as [`X86V3`] and [`X86V4`] bits: one load of
+/// The levels the CPU has, as [`X86V2`], [`X86V3`] and [`X86V4`] bits: one load of
 /// the cache, and the detection the first time.
 #[inline]
 pub(super) fn levels() -> u32 {
@@ -106,23 +126,31 @@ fn detect() -> u32 {
 
     // SAFETY: CPUID exists on every x86_64 processor.
     let max_leaf = unsafe { __cpuid(0) }.eax;
-    if max_leaf < 7 {
+    if max_leaf < 1 {
         return 0;
     }
-    // SAFETY: as above; leaves 1 and 7 exist, checked just now.
-    let (leaf1, leaf7) = unsafe { (__cpuid(1), __cpuid_count(7, 0)) };
+    // SAFETY: as above; leaf 1 exists, checked just now.
+    let leaf1 = unsafe { __cpuid(1) };
+    let bit = |word: u32, n: u32| word & (1 << n) != 0;
+    let mut out = 0;
+    // x86-64-v2: leaf 1 ECX SSE3 0, SSSE3 9, CMPXCHG16B 13, SSE4.1 19,
+    // SSE4.2 20, POPCNT 23. SSE state needs no XCR0, which Nehalem, a
+    // v2 CPU, would not have.
+    if [0, 9, 13, 19, 20, 23].iter().all(|&n| bit(leaf1.ecx, n)) {
+        out |= X86V2;
+    }
     // OSXSAVE: the OS enabled XGETBV and manages the extended state.
-    if leaf1.ecx & (1 << 27) == 0 {
-        return 0;
+    if max_leaf < 7 || !bit(leaf1.ecx, 27) {
+        return out;
     }
+    // SAFETY: as above; leaf 7 exists, checked just now.
+    let leaf7 = unsafe { __cpuid_count(7, 0) };
     // SAFETY: OSXSAVE is set, so XGETBV exists and XCR0 is readable.
     let xcr0 = unsafe { _xgetbv(0) };
     // SSE and AVX state; then opmask, the upper halves of zmm0..15 and
     // zmm16..31.
     let ymm = xcr0 & 0b110 == 0b110;
     let zmm = ymm && xcr0 & 0b1110_0000 == 0b1110_0000;
-    let bit = |word: u32, n: u32| word & (1 << n) != 0;
-    let mut out = 0;
     // x86-64-v3: leaf 1 ECX SSE3 0, PCLMULQDQ 1, SSSE3 9, FMA 12,
     // CMPXCHG16B 13, SSE4.1 19, SSE4.2 20, MOVBE 22, POPCNT 23, XSAVE 26,
     // AVX 28, F16C 29; leaf 7 EBX BMI1 3, AVX2 5, BMI2 8; LZCNT is bit 5

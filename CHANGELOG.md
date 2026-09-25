@@ -207,13 +207,14 @@ A caller that dispatched the usual way, a loop under
 `#[target_feature]` picked after a CPUID check, got the portable
 primitives anyway, since `cfg` is decided once per crate: 291
 instructions and no PEXT for a `compact`. A token (`Portable`,
-`Native`, `X86V3` for x86-64-v3 with PCLMULQDQ, `X86V4` for x86-64-v4
-with VBMI and GFNI) is a zero-sized proof that the CPU has its
-features; `dispatch!` detects once and runs a body compiled for the
-level it found, and `cpu.pext(x, m)` in it is a PEXT in a build
-without flags. `detect` takes the higher of the build and the CPU, so
-a build that already proves the level keeps `Native` and the dispatch
-folds away; `available` lists every level the machine can run.
+`Native`, `X86V2` for x86-64-v2, `X86V3` for x86-64-v3 with PCLMULQDQ,
+`X86V4` for x86-64-v4 with VBMI and GFNI) is a zero-sized proof that
+the CPU has its features; `dispatch!` detects once and runs a body
+compiled for the level it found, and `cpu.pext(x, m)` in it is a PEXT
+in a build without flags. `detect` takes the higher of the build and
+the CPU, so a build that already proves the level keeps `Native` and
+the dispatch folds away; `available` lists every level the machine
+can run.
 `Word` routes its five hardware primitives through `_in(…, isa)`
 forms, the plain methods being `Native`; `hakmem::x86` has the leaves,
 safe `#[target_feature]` functions with exactly the features they

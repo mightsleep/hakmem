@@ -821,6 +821,8 @@ called where the features are already proven (fearless_simd #293).
 - How `Word` carriers route to leaves: `u32` and `u64` directly,
   `u128` and `Wide<N>` by limbs, `u8` and `u16` widened.
 - Zen 1 and 2 as a level of their own, or a flag in `detect()`.
+- An aarch64 level with PMULL for the scans (11.11), and how a
+  `no_std` crate learns it is there.
 - `Isa` sealed (hakmem's levels only) or open to user levels. Sealed
   first; opening it later breaks nothing.
 - Where slices stop detecting. Measured in 11.11: nowhere, the check
@@ -926,6 +928,26 @@ does not, then the same for v3. The first cut read the cache once per
 question and asked twice per call; the `bmi2` snapshot showed three
 extra calls in `Hilbert3::from_morton_in_place`, and one read of both
 levels took them out and ten instructions more than the old code had.
+
+`X86V2` is the macro once more, with BMI2 and PCLMULQDQ off: x86-64-v2
+has POPCNT and PSHUFB and neither of those, so its primitives stay
+broadword and it runs no batch kernel. What it buys is every count the
+compiler derives (`Words`, `Rank9`) and the SSSE3 lanes, on Nehalem to
+Ivy Bridge and the Atoms. Its detection comes before the XSAVE check,
+since Nehalem has none. The one mistake it could make, a PEXT under a
+v2 token, would run on every machine this is tested on and fault on
+the ones it is for; the codegen cell asserts there is no PEXT under it,
+which is the only place that can see it. FileCheck also taught that
+a prefix and a colon in a comment's prose are a directive.
+
+`Neon` stays out. NEON is in the baseline of every aarch64 target that
+has it, so `Native` proves it already; where it is off
+(`aarch64-unknown-none-softfloat`) there is no operating system to ask,
+and the token could only come from `unsafe`. The aarch64 level worth
+having is a different one: PMULL (the `aes` feature) is a carry-less
+multiply, which would give `xor_scan` there what PCLMULQDQ gives it on
+x86, and asking for it needs `getauxval`, so `std`, or a caller who
+knows.
 
 ## Sources
 
