@@ -8,7 +8,7 @@ on:
 # the version in Cargo.toml went up enough for what changed. Outside the
 # nix matrix: it needs the registry for the baseline, and it is not in the
 # binary cache, so a nix check would build it from source every week.
-# The action downloads it built. `public-api.txt` (a nix check) sees every
+# The action downloads it built. `public-api/` (a nix check) sees every
 # change; this one says which of them break.
 jobs:
   semver:

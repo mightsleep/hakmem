@@ -1,7 +1,7 @@
 # What the compiler makes of the kernels: codegen/src/lib.rs says which
 # instructions a build must (or must not) contain, FileCheck holds the asm
 # to it, and the count of each mnemonic per function is checked in next to
-# it, like public-api.txt. After a deliberate change:
+# it, like public-api/. After a deliberate change:
 #
 #   nix build .#codegen-bmi2 && cp result/x86_64-linux-bmi2.txt codegen/
 #

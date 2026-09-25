@@ -194,8 +194,9 @@ the two chain block by block alike; `myers::Search::occurrences`, one
 walking back with the pattern reversed (the merge was the part the
 example got wrong first); and `alloc` on by default.
 
-The public API is checked in as `public-api.txt` and a nix check fails
-when the crate says otherwise, so a change to it is in the diff of the
+The public API is checked in under `public-api/`, one file per target
+(the instruction-set tokens differ by architecture), and a nix check
+fails when the crate says otherwise, so a change to it is in the diff of the
 commit that makes it; cargo-semver-checks runs against the last release
 in its own workflow. Methods answer to their instruction names in the
 docs search (`pext`, `pdep`, `popcnt`, `movemask`, `pshufb`, `z-order`),

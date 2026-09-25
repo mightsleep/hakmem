@@ -28,7 +28,7 @@
       hakmem-clippy-bmi2-default = "clippy, +bmi2";
       hakmem-clippy-bmi2-portable-feature = "clippy, +bmi2 with feature portable";
       hakmem-doc = "rustdoc, warnings as errors";
-      hakmem-public-api = "public API matches public-api.txt";
+      hakmem-public-api = "public API matches public-api/, x86_64 and aarch64";
       hakmem-codegen-bmi2 = "codegen, +bmi2,+pclmulqdq,+ssse3,+avx2: claims and instruction counts";
       hakmem-codegen-portable = "codegen, no flags: claims and instruction counts";
       hakmem-none = "bare metal and kernels: the none targets build, and a +bmi2 kernel keeps PEXT";

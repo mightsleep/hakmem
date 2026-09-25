@@ -1318,7 +1318,7 @@ mod swar {
     /// ([`Portable`], and [`Native`](crate::isa::Native) in a build without
     /// SSSE3 or NEON).
     // One field, as on NEON: the public API may not depend on how many
-    // halves a target keeps (public-api.txt is diffed on both).
+    // halves a target keeps (public-api/ has a file for each).
     #[derive(Clone, Copy)]
     pub struct Swar16<I = Portable>([U8x8; 2], PhantomData<I>);
 
