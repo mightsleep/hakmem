@@ -119,6 +119,7 @@ pub trait Word:
     /// Clears the lowest set bit (BLSR); identity on zero.
     #[must_use]
     #[doc(alias("blsr"))]
+    #[inline]
     fn clear_lowest_set(self) -> Self {
         self.and(self.wrapping_sub(Self::ONE))
     }
@@ -128,6 +129,7 @@ pub trait Word:
     /// preserving order. BMI2: one instruction; portable:
     /// [`compress_broadword`].
     #[must_use]
+    #[inline]
     fn pext(self, mask: Self) -> Self {
         self.pext_in(mask, Native)
     }
@@ -135,6 +137,7 @@ pub trait Word:
     /// bits of `self` to the set positions of `mask`, preserving order.
     /// BMI2: one instruction; portable: [`expand_broadword`].
     #[must_use]
+    #[inline]
     fn pdep(self, mask: Self) -> Self {
         self.pdep_in(mask, Native)
     }
@@ -145,6 +148,7 @@ pub trait Word:
     /// steps, so a carrier overrides it. BMI2: `trailing_zeros(pdep(1 << k,
     /// self))`; portable: Vigna's broadword select.
     #[must_use]
+    #[inline]
     fn select_lowest(self, k: u32) -> u32 {
         self.select_lowest_in(k, Native)
     }
@@ -153,6 +157,7 @@ pub trait Word:
     /// PCLMULQDQ: carry-less multiply by all-ones; portable: log-depth
     /// smear.
     #[must_use]
+    #[inline]
     fn xor_scan(self) -> Self {
         self.xor_scan_in(Native)
     }
@@ -162,6 +167,7 @@ pub trait Word:
     /// carry-less multiply by all-ones is the exclusive suffix parity,
     /// one XOR from the inclusive; portable: log-depth smear downward.
     #[must_use]
+    #[inline]
     fn xor_scan_down(self) -> Self {
         self.xor_scan_down_in(Native)
     }
@@ -171,12 +177,14 @@ pub trait Word:
     /// provided ones are the portable definitions, which is what an
     /// `isa` without the instruction would use anyway.
     #[must_use]
+    #[inline]
     fn pext_in<I: Isa>(self, mask: Self, isa: I) -> Self {
         let _ = isa;
         compress_broadword(self, mask)
     }
     /// [`pdep`](Word::pdep) with the instructions of `isa`.
     #[must_use]
+    #[inline]
     fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
         let _ = isa;
         expand_broadword(self, mask)
@@ -184,6 +192,7 @@ pub trait Word:
     /// [`select_lowest`](Word::select_lowest) with the instructions of
     /// `isa`. The provided loop takes `k` steps, so a carrier overrides it.
     #[must_use]
+    #[inline]
     fn select_lowest_in<I: Isa>(self, k: u32, isa: I) -> u32 {
         let _ = isa;
         let mut x = self;
@@ -194,6 +203,7 @@ pub trait Word:
     }
     /// [`xor_scan`](Word::xor_scan) with the instructions of `isa`.
     #[must_use]
+    #[inline]
     fn xor_scan_in<I: Isa>(self, isa: I) -> Self {
         let _ = isa;
         xor_smear(self)
@@ -201,6 +211,7 @@ pub trait Word:
     /// [`xor_scan_down`](Word::xor_scan_down) with the instructions of
     /// `isa`.
     #[must_use]
+    #[inline]
     fn xor_scan_down_in<I: Isa>(self, isa: I) -> Self {
         let _ = isa;
         xor_smear_down(self)
@@ -208,6 +219,7 @@ pub trait Word:
 
     /// Mask with the `n` lowest bits set, `n <= BITS`.
     #[must_use]
+    #[inline]
     fn low_ones(n: u32) -> Self {
         if n >= Self::BITS {
             Self::ONES

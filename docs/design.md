@@ -828,6 +828,8 @@ called where the features are already proven (fearless_simd #293).
   first; opening it later breaks nothing.
 - Where slices stop detecting. Measured in 11.11: nowhere, the check
   is lost in one word.
+- A codegen cell that sees what a caller's crate makes of the
+  generics (11.11): one codegen unit inlines what sixteen do not.
 
 ### 11.11 What the prototype changed
 
@@ -970,6 +972,25 @@ The `hakmem-none` check builds the three bare-metal targets, since
 nothing on a host would notice them breaking, and wants a PEXT in the
 `+bmi2` kernel build; its first version grepped for `pext` as a word
 and found none, AT&T syntax spelling it `pextq`.
+
+Routing `Word` through the token cost the 2D Hilbert decode eight times
+its speed in a build without flags, 25 µs for 1024 points where the
+README said 3.0, and no check noticed: the tracked benches build with
+`-C target-cpu=native`, where PEXT is one instruction however it
+inlines. `u64` had its own `#[inline] fn pext`; the routing made `pext`
+a provided method of the trait, forwarding to `pext_in(mask, Native)`,
+and the attribute stayed behind with the deleted impl. In the bench
+crate LLVM kept the forwarder out of line, so the Morton decode's
+constant mask never reached `compress_broadword`, and the shift ladder
+it folds to became the whole parallel-suffix compress, twice a point. `perf` found it (88 % in
+`<u64 as Word>::pext`); every provided method of `Word` is `#[inline]`
+now. Bisecting the rest of the gap found the same bug in an older
+shape: the batch conversions call `Hilbert2::from_morton` for their
+tails, a second caller made LLVM outline it, and the 2D encode lost 10 %
+and its lead over `fast_hilbert`. The per-key cores are `#[inline]` too.
+The codegen cell saw neither: it compiles one codegen unit, which
+inlines what the sixteen of a release build do not, and its wrappers
+each have one caller. Its snapshots did not move when the fix went in.
 
 ## Sources
 

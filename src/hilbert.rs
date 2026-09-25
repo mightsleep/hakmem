@@ -148,6 +148,7 @@ impl<W: Word> Hilbert2<W> {
     /// per word pair per round, and the frame at a level is the
     /// translation of the product above it, the top frame being zero.
     /// rawrunprotected's construction (2016), in the dilated layout.
+    #[inline]
     #[must_use]
     pub fn from_morton(morton: Morton2<W>) -> Self {
         let code = morton.code();
@@ -196,6 +197,7 @@ impl<W: Word> Hilbert2<W> {
     /// parity of `¬(s_hi ^ s_lo)` and `flip` the parity of
     /// `s_hi & s_lo` over the levels above, two suffix XORs. Then
     /// `x = s_hi ^ swap·s_lo ^ flip` and `y = x ^ s_lo`.
+    #[inline]
     #[must_use]
     pub fn to_morton(self) -> Morton2<W> {
         let lanes = Dilated::<W, 2>::mask();

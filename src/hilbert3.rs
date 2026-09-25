@@ -203,6 +203,7 @@ impl<W: Word> Hilbert3<W> {
     /// window with the window `s` levels above it, outer: `n_c = n ^ n'
     /// ^ n·n'`, `t_c = t ^ t' ^ n'·t`. The frame at a level is the
     /// product of the maps above it, the top frame being the identity.
+    #[inline]
     #[must_use]
     pub fn to_morton(self) -> Morton3<W> {
         let lane = Self::lane();
@@ -246,6 +247,7 @@ impl<W: Word> Hilbert3<W> {
     /// the curve is checked against rawrunprotected's published tables
     /// (`tests/hilbert3.rs`), whose state numbering needn't match ours. The machine
     /// itself is `laws::reference::hilbert3_index_machine`.
+    #[inline]
     #[must_use]
     pub fn from_morton(m: Morton3<W>) -> Self {
         let code = m.code();
