@@ -68,6 +68,10 @@ such as the stride of a dilated integer.
 
 ### 2.2 Selection at compile time per word, at run time per batch
 
+This is the rule as built. Section 11 proposes the next one: the same
+two granularities, with the instruction set a value the caller can
+hold, pass and choose.
+
 For an operation of one to three cycles, run-time dispatch costs more
 than the operation. There is no branch per combinator on a CPUID
 result:
@@ -626,6 +630,186 @@ What is and is not a breaking change:
   coarser), or the Hilbert counts at `s` and `s − 1` sharing their
   path (a third of the time at 16 ranges). Open, to come back to.
 
+## 11. Instruction sets as values (proposed)
+
+Not built. Section 2.2 describes the crate as it is; this is where the
+API is going, written down before the code so the code can disagree
+with it in public.
+
+### 11.1 What 2.2 gets wrong
+
+The usual way to dispatch at run time in Rust is to compile a hot loop
+under `#[target_feature]` and pick the copy after a CPUID check. In a
+build without `-C target-feature`, a user function marked
+`#[target_feature(enable = "bmi2,popcnt")]` that calls `x.compact(m)`
+compiles to 291 instructions and no PEXT. `cfg(target_feature)` is
+evaluated once for the whole crate, and the caller's attribute never
+reaches it. The idiomatic dispatch gets the portable path.
+
+The same function gets POPCNT for `Words::rank` and TZCNT and BLSR for
+`positions`: plain Rust follows the features of whatever it inlines
+into. The damage is confined to where hakmem chooses by `cfg`: the
+five primitives of section 5, and `U8x16`, whose representation
+changes with the build. sux and vers-vecs choose the same way and
+say so in their documentation ("enable BMI2 and popcnt").
+
+Three more things are hidden that a library of instructions should
+hand over. The batch kernels choose through `cpu.rs`, and nobody can
+ask what was chosen or choose instead. The `portable` feature switches
+the whole dependency graph at once. And a test run sees one path per
+build, so the CI matrix multiplies builds to see the rest.
+
+### 11.2 Constraints
+
+- `no_std`, no dependencies, stable Rust. Safe `#[target_feature]`
+  functions are stable since 1.86; the MSRV (1.89) already covers them.
+- No dispatch per word. A predicted branch and a call around a
+  three-cycle instruction lose to the portable code they replace. The
+  choice is made at run time only where one call covers a slice or a
+  batch, and there it is free next to the kernel.
+- `x.select(k)` stays what it is. Nothing below is required reading
+  for someone who wants a select.
+
+### 11.3 Three layers, one implementation
+
+1. **Native.** The instruction set the build proves, as today. The
+   default for methods on a word and for external iterators.
+2. **Tokens.** A zero-sized value per instruction-set level, `I: Isa`.
+   The caller dispatches once at the top of a hot loop and passes the
+   token down; primitives are methods on it and carriers are its
+   associated types. Methods on slices and batches dispatch
+   internally once per call and have an `_in(isa, ..)` form for code
+   that has already chosen.
+3. **Leaves.** `hakmem::x86::bmi2::pdep` and its kind: safe
+   `#[target_feature]` functions tagged with exactly the features they
+   use, for code under somebody else's dispatch (a `multiversion`
+   clone, pulp, fearless_simd, a hand-written CPUID check). LLVM
+   inlines such a function only into a caller whose features include
+   its own, so a leaf tagged with all of x86-64-v3 would stay a call
+   inside a clone that lacks F16C. Tagged `bmi2`, it inlines into
+   anything that has BMI2.
+
+Tokens call leaves and Native is the token of its level, so each path
+has one implementation.
+
+### 11.4 The trait
+
+```rust
+pub trait Isa: Copy + Send + Sync + core::fmt::Debug + 'static {
+    type U8x16: Lanes<Isa = Self, Bitmask = u16>;
+    fn pext<W: Word>(self, x: W, mask: W) -> W;
+    fn pdep<W: Word>(self, x: W, mask: W) -> W;
+    fn select_lowest<W: Word>(self, x: W, k: u32) -> u32;
+    fn xor_scan<W: Word>(self, x: W) -> W;
+    fn xor_scan_down<W: Word>(self, x: W) -> W;
+    /// `f` compiled with this level's target features.
+    fn run<R>(self, f: impl FnOnce(Self) -> R) -> R;
+}
+
+hakmem::isa::dispatch!(|cpu| stage1(cpu, input, &mut out));
+```
+
+`run` is a trampoline: an inner function under the level's
+`#[target_feature]` that calls the closure. Measured on a two-crate
+test, the closure and everything it inlines get the instructions: a
+PEXT loop through a token inside `run` compiles to nine unrolled PEXT,
+and `iter().map(..).fold(..)` inside it keeps them. `dispatch!` is a
+`macro_rules!` over `isa::detect()` that repeats the body once per
+level, which is the price in code size and compile time. No procedural
+macro: that would be the crate's first dependency.
+
+### 11.5 Levels, not features
+
+A token is a level: the psABI levels plus the extensions hakmem uses,
+the way Google Highway adds AES and CLMUL to its AVX2 target.
+PCLMULQDQ, GFNI and VBMI are in no psABI level (LLVM's `X86.td`).
+
+| token | features | primitives | `U8x16` | batch kernels |
+|---|---|---|---|---|
+| `Portable` | none | broadword | two SWAR halves | per key |
+| `X86V2` | x86-64-v2 (POPCNT, SSE4.2 and so SSSE3) | broadword | SSSE3 | per key |
+| `X86V3` | x86-64-v3 and PCLMULQDQ | PEXT, PDEP, CLMUL | SSSE3 | AVX2 |
+| `X86V4` | x86-64-v4, VBMI, GFNI | as `X86V3` | SSSE3, GFNI byte maps | VBMI |
+| `Neon` | the aarch64 baseline | broadword | NEON | NEON |
+
+Levels, because every added feature doubles the combinations a
+dispatch has to monomorphise, and pulp, fearless_simd, multiversion
+and Highway all settled on levels for that reason. Exact features stay
+where they matter, on the leaves. `Native` is an alias for the
+highest level the build proves; with the `portable` feature it is
+`Portable`, so 0.2's behaviour is one alias away.
+
+### 11.6 Carriers as associated types
+
+`U8x16` becomes `I::U8x16`: `Swar16` for `Portable`, `X86x16<L>` for
+the x86 levels, `Neon16`. `X86x16<L>` holds the register and the level
+token; the byte maps pick GFNI when `L` has it, by an associated
+constant, so the choice folds at compile time.
+
+A value of an SSSE3 carrier is a proof that the CPU has SSSE3: its
+methods are `#[inline(always)]` wrappers over the intrinsics and are
+sound because the value exists. So constructors take the token:
+`Lanes` gains `type Isa` and `splat`, `load` and `zero` take it,
+`U8x16::splat(Native, b'"')` being the spelling for the plain user.
+A constructor without one would let `X86x16::splat` run on a CPU
+without SSSE3. Wider carriers (`U8x32` for AVX2, `U8x64` for AVX-512)
+fit later as more associated types of the levels that have them.
+
+### 11.7 Where tokens come from
+
+`isa::detect()` (the CPUID and XCR0 check `cpu.rs` does now, cached,
+`no_std`; under Miri the compile-time answer), `Native` and `Portable`
+(always), `unsafe fn new_unchecked()`, and a safe
+`#[target_feature(enable = "..")] fn assume()` that can only be
+called where the features are already proven (fearless_simd #293).
+`isa::available()` lists every level the CPU has.
+
+### 11.8 Where it breaks
+
+- **The generic cliff.** Code generic over `I: Isa` has to inline
+  into the trampoline. A helper marked `#[inline(never)]`, or one LLVM
+  finds too big, is compiled without the level's features, and every
+  primitive in it becomes a call: measured, one `call _pext_u64` a
+  word. Trait methods cannot be safe `#[target_feature]` functions, so
+  for generic code the compiler cannot catch it; for leaves on a
+  concrete path it can, since calling one outside a matching context
+  needs `unsafe`. fearless_simd reports the same trap (#338, #380).
+  The guard is the codegen check: a `dispatch!` body whose asm must
+  hold instructions, not calls.
+- **External iterators.** `next()` belongs to the caller, so
+  `positions()` stays Native. Internal iteration
+  (`for_each_position(|p| ..)`) and `positions_into(&mut buf)`
+  dispatch once, with the closure monomorphised inside `run`.
+- **Structures queried per word.** A `Rank9` is built once and asked
+  a million times, and a query is one select in a word: the level is
+  a type parameter chosen at construction, `Rank9<'a, I = Native>`.
+- **Zen 1 and Zen 2.** They report BMI2 and run PDEP and PEXT in
+  microcode, about 18 cycles. `detect()` cannot see that from the
+  feature bits; it can from the family (AMD 17h), which is what the
+  `portable` feature is for today.
+
+### 11.9 What it buys besides speed
+
+- `for level in isa::available()` runs every path the machine has in
+  one `cargo test`. On the Zen 5 this is written on that is
+  `Portable`, `X86V2`, `X86V3` and `X86V4` in one run, where today it
+  takes one build per `RUSTFLAGS`.
+- The laws take a level, so a backend is checked against `Portable`
+  inside one binary.
+- The codegen checks see every level in every build, since the level
+  code is compiled regardless of `RUSTFLAGS`.
+
+### 11.10 Open
+
+- How `Word` carriers route to leaves: `u32` and `u64` directly,
+  `u128` and `Wide<N>` by limbs, `u8` and `u16` widened.
+- Zen 1 and 2 as a level of their own, or a flag in `detect()`.
+- `Isa` sealed (hakmem's levels only) or open to user levels. Sealed
+  first; opening it later breaks nothing.
+- Where slices stop detecting. A check costs one relaxed load and a
+  predicted branch per call, nothing next to a thousand words and
+  something next to two; the cut-off is a measurement, not a guess.
+
 ## Sources
 
 - Beeler, Gosper, Schroeppel. *HAKMEM*. MIT AI Memo 239, 1972.
@@ -658,6 +842,13 @@ What is and is not a breaking change:
 - Isenberg et al. *Chess Programming Wiki*: *Kindergarten Bitboards*,
   *Traversing Subsets of a Set*, *Obstruction Difference*.
   <https://www.chessprogramming.org/>
+- Section 11, dispatch: pulp, <https://github.com/sarah-quinones/pulp>;
+  fearless_simd, <https://github.com/linebender/fearless_simd>, and
+  Shnatsel, *Safe SIMD in Rust, even on the inside*, 2026,
+  <https://shnatsel.github.io/safe-simd-in-rust-even-on-the-inside/>;
+  multiversion, <https://github.com/calebzulawski/multiversion>; Google
+  Highway, <https://github.com/google/highway>; safe
+  `#[target_feature]`, Rust 1.86 release notes, 2025.
 - Langdale, Lemire. *Parsing Gigabytes of JSON per Second*. The VLDB
   Journal, 2019.
 - Kogge, Stone. *A Parallel Algorithm for the Efficient Solution of a
