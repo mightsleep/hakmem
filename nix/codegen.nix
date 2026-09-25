@@ -52,9 +52,14 @@
         touch $out
       '';
     bmi2 = cell "bmi2" "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx2";
+    # No flags: what a dependency gets by default, and where the tokens
+    # have to earn their keep.
+    portable = cell "portable" "";
   in
     lib.optionalAttrs (system == "x86_64-linux") {
       packages.codegen-bmi2 = bmi2;
       checks.hakmem-codegen-bmi2 = check "bmi2" "CHECK,BMI2" bmi2;
+      packages.codegen-portable = portable;
+      checks.hakmem-codegen-portable = check "portable" "CHECK,PORTABLE" portable;
     };
 }

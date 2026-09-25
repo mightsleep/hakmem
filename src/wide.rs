@@ -13,6 +13,7 @@
 //! smallest instance of the carrier-over-carrier idea from the design
 //! doc: a "word" need not be one register.
 
+use crate::isa::Isa;
 use crate::word::Word;
 
 /// `N` little-endian limbs of 64 bits: limb 0 holds bits `0..64`.
@@ -263,12 +264,12 @@ impl<const N: usize> Word for Wide<N> {
     }
 
     #[inline]
-    fn select_lowest(self, mut k: u32) -> u32 {
+    fn select_lowest_in<I: Isa>(self, mut k: u32, isa: I) -> u32 {
         let mut base = 0;
         for limb in self.0 {
             let n = limb.count_ones();
             if k < n {
-                return base + limb.select_lowest(k);
+                return base + limb.select_lowest_in(k, isa);
             }
             k -= n;
             base += 64;
@@ -279,22 +280,22 @@ impl<const N: usize> Word for Wide<N> {
     /// Per-limb prefix XOR, with the parity of all lower limbs folded
     /// into every bit of the limb above.
     #[inline]
-    fn xor_scan(self) -> Self {
+    fn xor_scan_in<I: Isa>(self, isa: I) -> Self {
         let mut out = [0; N];
         let mut parity = 0u64;
         for (o, limb) in out.iter_mut().zip(self.0) {
-            *o = limb.xor_scan() ^ parity;
+            *o = limb.xor_scan_in(isa) ^ parity;
             parity ^= 0u64.wrapping_sub(u64::from(limb.count_ones() & 1));
         }
         Self(out)
     }
 
     #[inline]
-    fn xor_scan_down(self) -> Self {
+    fn xor_scan_down_in<I: Isa>(self, isa: I) -> Self {
         let mut out = [0; N];
         let mut parity = 0u64;
         for (o, limb) in out.iter_mut().zip(self.0).rev() {
-            *o = limb.xor_scan_down() ^ parity;
+            *o = limb.xor_scan_down_in(isa) ^ parity;
             parity ^= 0u64.wrapping_sub(u64::from(limb.count_ones() & 1));
         }
         Self(out)

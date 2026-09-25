@@ -7,7 +7,7 @@
 //! directives over that function alone (`nix/codegen.nix` cuts the asm
 //! into functions and puts them in this file's order). The prefix is the
 //! build: `CHECK` holds in every cell, `BMI2` where the cell has
-//! `+bmi2,+pclmulqdq,+ssse3,+avx2`.
+//! `+bmi2,+pclmulqdq,+ssse3,+avx2`, `PORTABLE` in the build without flags.
 //!
 //! The same functions, as counts of each mnemonic, are the snapshot next
 //! to this crate: a change in codegen is a diff in review, not a line on
@@ -18,6 +18,7 @@ use hakmem::{Bits, Hilbert2};
 
 // CHECK-LABEL: cg_compact_u64:
 // BMI2: pext
+// PORTABLE-NOT: pext
 // CHECK-NOT: call
 #[unsafe(no_mangle)]
 pub fn cg_compact_u64(x: u64, mask: u64) -> u64 {
@@ -80,3 +81,15 @@ pub fn cg_quote_mask(block: &[u8; 16]) -> u16 {
 // CHECK-NOT: {{call.*mem(cpy|set|move)}}
 // BMI2: vpshufb
 // CHECK-NOT: {{call.*mem(cpy|set|move)}}
+
+// The token path, the point of `hakmem::isa`: in a build without flags,
+// `dispatch!` runs the body under x86-64-v3 and the primitive in it is
+// the instruction, inlined, where `x.compact(m)` above is broadword.
+// CHECK-LABEL: <hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<u64, hakmem_codegen::cg_dispatch_gather::{closure#1}>:
+// CHECK: pext
+// CHECK-NOT: call
+#[unsafe(no_mangle)]
+pub fn cg_dispatch_gather(xs: &[u64], mask: u64) -> u64 {
+    use hakmem::isa::Isa;
+    hakmem::dispatch!(|cpu| xs.iter().fold(0, |a, &x| a ^ cpu.pext(x, mask)))
+}

@@ -10,13 +10,14 @@ pub mod affine;
 pub mod bits;
 pub mod cookbook;
 mod cover;
-#[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+#[cfg(target_arch = "x86_64")]
 mod cpu;
 pub mod curve;
 pub mod dilated;
 pub mod grid;
 pub mod hilbert;
 pub mod hilbert3;
+pub mod isa;
 pub mod lanes;
 pub mod laws;
 pub mod myers;
@@ -26,6 +27,8 @@ pub mod set;
 pub mod slice;
 pub mod wide;
 pub mod word;
+#[cfg(target_arch = "x86_64")]
+pub mod x86;
 
 /// Everything most code needs, one `use` away.
 ///

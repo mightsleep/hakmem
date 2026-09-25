@@ -735,9 +735,9 @@ PCLMULQDQ, GFNI and VBMI are in no psABI level (LLVM's `X86.td`).
 Levels, because every added feature doubles the combinations a
 dispatch has to monomorphise, and pulp, fearless_simd, multiversion
 and Highway all settled on levels for that reason. Exact features stay
-where they matter, on the leaves. `Native` is an alias for the
-highest level the build proves; with the `portable` feature it is
-`Portable`, so 0.2's behaviour is one alias away.
+where they matter, on the leaves. `Native` is not a level: it is its
+own token, choosing primitive by primitive what the build proves, which
+is what 0.2 does (section 11.11 says why).
 
 ### 11.6 Carriers as associated types
 
@@ -809,6 +809,30 @@ called where the features are already proven (fearless_simd #293).
 - Where slices stop detecting. A check costs one relaxed load and a
   predicted branch per call, nothing next to a thousand words and
   something next to two; the cut-off is a measurement, not a guess.
+
+### 11.11 What the prototype changed
+
+The first cut (`isa.rs`, `x86.rs`, the `_in` methods on `Word`, the
+`X86V3` token) disagreed with the text above twice, and the text lost.
+
+- `Native` was going to be an alias for the highest level the build
+  proves. Builds are not levels: `+bmi2,+pclmulqdq,+ssse3,+avx2`, the
+  test matrix's cell, lacks BMI1, LZCNT, FMA and more of x86-64-v3, so
+  the alias would have been `Portable` and PEXT would have gone
+  broadword in a build that asked for BMI2. `Native` stayed a token of
+  its own with a `cfg` per primitive.
+- A target feature enabled for the whole build does not make a call to
+  a `#[target_feature]` function safe; rustc wants the feature on the
+  calling function and says so (E0133). `Native` calls the leaves in
+  `unsafe` with the `cfg` as the proof, and a user who builds with
+  `-C target-cpu` and calls a leaf from a plain function does the same.
+
+Measured, in a build without flags: a `dispatch!` body folding `pext`
+over a slice is five PEXT and no call (codegen cell `portable`), where
+`x.compact(m)` is a jump to the broadword definition. `tests/isa.rs`
+checks `Portable` and `X86V3` in one run. Routing the plain methods
+through `Native` cost one register move in
+`Hilbert3::from_morton_in_place`, which the `bmi2` snapshot showed.
 
 ## Sources
 

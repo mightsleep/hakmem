@@ -493,6 +493,144 @@ impl<W> core::marker::Unpin for hakmem::hilbert3::Hilbert3<W> where W: core::mar
 impl<W> core::marker::UnsafeUnpin for hakmem::hilbert3::Hilbert3<W> where W: core::marker::UnsafeUnpin
 impl<W> core::panic::unwind_safe::RefUnwindSafe for hakmem::hilbert3::Hilbert3<W> where W: core::panic::unwind_safe::RefUnwindSafe
 impl<W> core::panic::unwind_safe::UnwindSafe for hakmem::hilbert3::Hilbert3<W> where W: core::panic::unwind_safe::UnwindSafe
+pub mod hakmem::isa
+pub enum hakmem::isa::Level
+pub hakmem::isa::Level::Portable(hakmem::isa::Portable)
+pub hakmem::isa::Level::X86V3(hakmem::isa::X86V3)
+impl core::clone::Clone for hakmem::isa::Level
+pub fn hakmem::isa::Level::clone(&self) -> hakmem::isa::Level
+impl core::cmp::Eq for hakmem::isa::Level
+impl core::cmp::PartialEq for hakmem::isa::Level
+pub fn hakmem::isa::Level::eq(&self, &hakmem::isa::Level) -> bool
+impl core::fmt::Debug for hakmem::isa::Level
+pub fn hakmem::isa::Level::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for hakmem::isa::Level
+pub fn hakmem::isa::Level::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for hakmem::isa::Level
+impl core::marker::StructuralPartialEq for hakmem::isa::Level
+impl core::marker::Freeze for hakmem::isa::Level
+impl core::marker::Send for hakmem::isa::Level
+impl core::marker::Sync for hakmem::isa::Level
+impl core::marker::Unpin for hakmem::isa::Level
+impl core::marker::UnsafeUnpin for hakmem::isa::Level
+impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::Level
+impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::Level
+pub struct hakmem::isa::Native
+impl core::clone::Clone for hakmem::isa::Native
+pub fn hakmem::isa::Native::clone(&self) -> hakmem::isa::Native
+impl core::cmp::Eq for hakmem::isa::Native
+impl core::cmp::PartialEq for hakmem::isa::Native
+pub fn hakmem::isa::Native::eq(&self, &hakmem::isa::Native) -> bool
+impl core::default::Default for hakmem::isa::Native
+pub fn hakmem::isa::Native::default() -> hakmem::isa::Native
+impl core::fmt::Debug for hakmem::isa::Native
+pub fn hakmem::isa::Native::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for hakmem::isa::Native
+pub fn hakmem::isa::Native::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for hakmem::isa::Native
+impl core::marker::StructuralPartialEq for hakmem::isa::Native
+impl hakmem::isa::Isa for hakmem::isa::Native
+pub fn hakmem::isa::Native::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Native::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Native::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::Native::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Native::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Native::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl core::marker::Freeze for hakmem::isa::Native
+impl core::marker::Send for hakmem::isa::Native
+impl core::marker::Sync for hakmem::isa::Native
+impl core::marker::Unpin for hakmem::isa::Native
+impl core::marker::UnsafeUnpin for hakmem::isa::Native
+impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::Native
+impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::Native
+pub struct hakmem::isa::Portable
+impl core::clone::Clone for hakmem::isa::Portable
+pub fn hakmem::isa::Portable::clone(&self) -> hakmem::isa::Portable
+impl core::cmp::Eq for hakmem::isa::Portable
+impl core::cmp::PartialEq for hakmem::isa::Portable
+pub fn hakmem::isa::Portable::eq(&self, &hakmem::isa::Portable) -> bool
+impl core::default::Default for hakmem::isa::Portable
+pub fn hakmem::isa::Portable::default() -> hakmem::isa::Portable
+impl core::fmt::Debug for hakmem::isa::Portable
+pub fn hakmem::isa::Portable::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for hakmem::isa::Portable
+pub fn hakmem::isa::Portable::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for hakmem::isa::Portable
+impl core::marker::StructuralPartialEq for hakmem::isa::Portable
+impl hakmem::isa::Isa for hakmem::isa::Portable
+pub fn hakmem::isa::Portable::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Portable::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Portable::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::Portable::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Portable::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Portable::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl core::marker::Freeze for hakmem::isa::Portable
+impl core::marker::Send for hakmem::isa::Portable
+impl core::marker::Sync for hakmem::isa::Portable
+impl core::marker::Unpin for hakmem::isa::Portable
+impl core::marker::UnsafeUnpin for hakmem::isa::Portable
+impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::Portable
+impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::Portable
+pub struct hakmem::isa::X86V3(_)
+impl hakmem::isa::X86V3
+pub const hakmem::isa::X86V3::FEATURES: &str
+pub fn hakmem::isa::X86V3::detect() -> core::option::Option<Self>
+pub unsafe const fn hakmem::isa::X86V3::new_unchecked() -> Self
+impl core::clone::Clone for hakmem::isa::X86V3
+pub fn hakmem::isa::X86V3::clone(&self) -> hakmem::isa::X86V3
+impl core::cmp::Eq for hakmem::isa::X86V3
+impl core::cmp::PartialEq for hakmem::isa::X86V3
+pub fn hakmem::isa::X86V3::eq(&self, &hakmem::isa::X86V3) -> bool
+impl core::fmt::Debug for hakmem::isa::X86V3
+pub fn hakmem::isa::X86V3::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl core::hash::Hash for hakmem::isa::X86V3
+pub fn hakmem::isa::X86V3::hash<__H: core::hash::Hasher>(&self, &mut __H)
+impl core::marker::Copy for hakmem::isa::X86V3
+impl core::marker::StructuralPartialEq for hakmem::isa::X86V3
+impl hakmem::isa::Isa for hakmem::isa::X86V3
+pub fn hakmem::isa::X86V3::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::X86V3::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::X86V3::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::X86V3::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::X86V3::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::X86V3::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl core::marker::Freeze for hakmem::isa::X86V3
+impl core::marker::Send for hakmem::isa::X86V3
+impl core::marker::Sync for hakmem::isa::X86V3
+impl core::marker::Unpin for hakmem::isa::X86V3
+impl core::marker::UnsafeUnpin for hakmem::isa::X86V3
+impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::X86V3
+impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::X86V3
+pub trait hakmem::isa::Isa: core::marker::Copy + core::marker::Send + core::marker::Sync + core::fmt::Debug + 'static + hakmem::isa::sealed::Sealed
+pub fn hakmem::isa::Isa::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Isa::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Isa::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::Isa::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Isa::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Isa::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl hakmem::isa::Isa for hakmem::isa::Native
+pub fn hakmem::isa::Native::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Native::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Native::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::Native::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Native::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Native::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl hakmem::isa::Isa for hakmem::isa::Portable
+pub fn hakmem::isa::Portable::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Portable::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::Portable::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::Portable::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Portable::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::Portable::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+impl hakmem::isa::Isa for hakmem::isa::X86V3
+pub fn hakmem::isa::X86V3::pdep<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::X86V3::pext<W: hakmem::word::Word>(self, W, W) -> W
+pub fn hakmem::isa::X86V3::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
+pub fn hakmem::isa::X86V3::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::X86V3::xor_scan<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::X86V3::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
+pub fn hakmem::isa::available() -> impl core::iter::traits::iterator::Iterator<Item = hakmem::isa::Level>
+pub fn hakmem::isa::detect() -> hakmem::isa::Level
 pub mod hakmem::lanes
 pub struct hakmem::lanes::U8x16(_)
 impl hakmem::lanes::U8x16
@@ -1298,8 +1436,11 @@ pub fn hakmem::wide::Wide<N>::not(self) -> Self
 pub fn hakmem::wide::Wide<N>::or(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::parity(self) -> bool
 pub fn hakmem::wide::Wide<N>::pdep(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::pext(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::select_lowest(self, u32) -> u32
+pub fn hakmem::wide::Wide<N>::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::wide::Wide<N>::shl(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
@@ -1311,6 +1452,8 @@ pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
@@ -1614,8 +1757,11 @@ pub fn hakmem::prelude::Word::not(self) -> Self
 pub fn hakmem::prelude::Word::or(self, Self) -> Self
 pub fn hakmem::prelude::Word::parity(self) -> bool
 pub fn hakmem::prelude::Word::pdep(self, Self) -> Self
+pub fn hakmem::prelude::Word::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::prelude::Word::pext(self, Self) -> Self
+pub fn hakmem::prelude::Word::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::prelude::Word::select_lowest(self, u32) -> u32
+pub fn hakmem::prelude::Word::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::prelude::Word::shl(self, u32) -> Self
 pub fn hakmem::prelude::Word::shr(self, u32) -> Self
 pub fn hakmem::prelude::Word::splat_byte(u8) -> Self
@@ -1627,6 +1773,8 @@ pub fn hakmem::prelude::Word::wrapping_sub(self, Self) -> Self
 pub fn hakmem::prelude::Word::xor(self, Self) -> Self
 pub fn hakmem::prelude::Word::xor_scan(self) -> Self
 pub fn hakmem::prelude::Word::xor_scan_down(self) -> Self
+pub fn hakmem::prelude::Word::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::prelude::Word::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u128
 pub const u128::BITS: u32
 pub const u128::ONE: Self
@@ -1645,8 +1793,11 @@ pub fn u128::not(self) -> Self
 pub fn u128::or(self, Self) -> Self
 pub fn u128::parity(self) -> bool
 pub fn u128::pdep(self, Self) -> Self
+pub fn u128::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u128::pext(self, Self) -> Self
+pub fn u128::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u128::select_lowest(self, u32) -> u32
+pub fn u128::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u128::shl(self, u32) -> Self
 pub fn u128::shr(self, u32) -> Self
 pub fn u128::splat_byte(u8) -> Self
@@ -1658,6 +1809,8 @@ pub fn u128::wrapping_sub(self, Self) -> Self
 pub fn u128::xor(self, Self) -> Self
 pub fn u128::xor_scan(self) -> Self
 pub fn u128::xor_scan_down(self) -> Self
+pub fn u128::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u128::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u16
 pub const u16::BITS: u32
 pub const u16::ONE: Self
@@ -1676,8 +1829,11 @@ pub fn u16::not(self) -> Self
 pub fn u16::or(self, Self) -> Self
 pub fn u16::parity(self) -> bool
 pub fn u16::pdep(self, Self) -> Self
+pub fn u16::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u16::pext(self, Self) -> Self
+pub fn u16::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u16::select_lowest(self, u32) -> u32
+pub fn u16::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u16::shl(self, u32) -> Self
 pub fn u16::shr(self, u32) -> Self
 pub fn u16::splat_byte(u8) -> Self
@@ -1689,6 +1845,8 @@ pub fn u16::wrapping_sub(self, Self) -> Self
 pub fn u16::xor(self, Self) -> Self
 pub fn u16::xor_scan(self) -> Self
 pub fn u16::xor_scan_down(self) -> Self
+pub fn u16::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u16::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u32
 pub const u32::BITS: u32
 pub const u32::ONE: Self
@@ -1707,8 +1865,11 @@ pub fn u32::not(self) -> Self
 pub fn u32::or(self, Self) -> Self
 pub fn u32::parity(self) -> bool
 pub fn u32::pdep(self, Self) -> Self
+pub fn u32::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u32::pext(self, Self) -> Self
+pub fn u32::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u32::select_lowest(self, u32) -> u32
+pub fn u32::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u32::shl(self, u32) -> Self
 pub fn u32::shr(self, u32) -> Self
 pub fn u32::splat_byte(u8) -> Self
@@ -1720,6 +1881,8 @@ pub fn u32::wrapping_sub(self, Self) -> Self
 pub fn u32::xor(self, Self) -> Self
 pub fn u32::xor_scan(self) -> Self
 pub fn u32::xor_scan_down(self) -> Self
+pub fn u32::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u32::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u64
 pub const u64::BITS: u32
 pub const u64::ONE: Self
@@ -1738,8 +1901,11 @@ pub fn u64::not(self) -> Self
 pub fn u64::or(self, Self) -> Self
 pub fn u64::parity(self) -> bool
 pub fn u64::pdep(self, Self) -> Self
+pub fn u64::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u64::pext(self, Self) -> Self
+pub fn u64::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u64::select_lowest(self, u32) -> u32
+pub fn u64::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u64::shl(self, u32) -> Self
 pub fn u64::shr(self, u32) -> Self
 pub fn u64::splat_byte(u8) -> Self
@@ -1751,6 +1917,8 @@ pub fn u64::wrapping_sub(self, Self) -> Self
 pub fn u64::xor(self, Self) -> Self
 pub fn u64::xor_scan(self) -> Self
 pub fn u64::xor_scan_down(self) -> Self
+pub fn u64::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u64::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u8
 pub const u8::BITS: u32
 pub const u8::ONE: Self
@@ -1769,8 +1937,11 @@ pub fn u8::not(self) -> Self
 pub fn u8::or(self, Self) -> Self
 pub fn u8::parity(self) -> bool
 pub fn u8::pdep(self, Self) -> Self
+pub fn u8::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u8::pext(self, Self) -> Self
+pub fn u8::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u8::select_lowest(self, u32) -> u32
+pub fn u8::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u8::shl(self, u32) -> Self
 pub fn u8::shr(self, u32) -> Self
 pub fn u8::splat_byte(u8) -> Self
@@ -1782,6 +1953,8 @@ pub fn u8::wrapping_sub(self, Self) -> Self
 pub fn u8::xor(self, Self) -> Self
 pub fn u8::xor_scan(self) -> Self
 pub fn u8::xor_scan_down(self) -> Self
+pub fn u8::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u8::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
@@ -1800,8 +1973,11 @@ pub fn hakmem::wide::Wide<N>::not(self) -> Self
 pub fn hakmem::wide::Wide<N>::or(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::parity(self) -> bool
 pub fn hakmem::wide::Wide<N>::pdep(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::pext(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::select_lowest(self, u32) -> u32
+pub fn hakmem::wide::Wide<N>::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::wide::Wide<N>::shl(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
@@ -1813,6 +1989,8 @@ pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub trait hakmem::prelude::Words
 pub type hakmem::prelude::Words::Word: hakmem::word::Word
 pub fn hakmem::prelude::Words::bit(&self, usize) -> bool
@@ -1993,8 +2171,11 @@ pub fn hakmem::wide::Wide<N>::not(self) -> Self
 pub fn hakmem::wide::Wide<N>::or(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::parity(self) -> bool
 pub fn hakmem::wide::Wide<N>::pdep(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::pext(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::select_lowest(self, u32) -> u32
+pub fn hakmem::wide::Wide<N>::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::wide::Wide<N>::shl(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
@@ -2006,6 +2187,8 @@ pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
@@ -2032,8 +2215,11 @@ pub fn hakmem::word::Word::not(self) -> Self
 pub fn hakmem::word::Word::or(self, Self) -> Self
 pub fn hakmem::word::Word::parity(self) -> bool
 pub fn hakmem::word::Word::pdep(self, Self) -> Self
+pub fn hakmem::word::Word::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::word::Word::pext(self, Self) -> Self
+pub fn hakmem::word::Word::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::word::Word::select_lowest(self, u32) -> u32
+pub fn hakmem::word::Word::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::word::Word::shl(self, u32) -> Self
 pub fn hakmem::word::Word::shr(self, u32) -> Self
 pub fn hakmem::word::Word::splat_byte(u8) -> Self
@@ -2045,6 +2231,8 @@ pub fn hakmem::word::Word::wrapping_sub(self, Self) -> Self
 pub fn hakmem::word::Word::xor(self, Self) -> Self
 pub fn hakmem::word::Word::xor_scan(self) -> Self
 pub fn hakmem::word::Word::xor_scan_down(self) -> Self
+pub fn hakmem::word::Word::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::word::Word::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u128
 pub const u128::BITS: u32
 pub const u128::ONE: Self
@@ -2063,8 +2251,11 @@ pub fn u128::not(self) -> Self
 pub fn u128::or(self, Self) -> Self
 pub fn u128::parity(self) -> bool
 pub fn u128::pdep(self, Self) -> Self
+pub fn u128::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u128::pext(self, Self) -> Self
+pub fn u128::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u128::select_lowest(self, u32) -> u32
+pub fn u128::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u128::shl(self, u32) -> Self
 pub fn u128::shr(self, u32) -> Self
 pub fn u128::splat_byte(u8) -> Self
@@ -2076,6 +2267,8 @@ pub fn u128::wrapping_sub(self, Self) -> Self
 pub fn u128::xor(self, Self) -> Self
 pub fn u128::xor_scan(self) -> Self
 pub fn u128::xor_scan_down(self) -> Self
+pub fn u128::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u128::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u16
 pub const u16::BITS: u32
 pub const u16::ONE: Self
@@ -2094,8 +2287,11 @@ pub fn u16::not(self) -> Self
 pub fn u16::or(self, Self) -> Self
 pub fn u16::parity(self) -> bool
 pub fn u16::pdep(self, Self) -> Self
+pub fn u16::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u16::pext(self, Self) -> Self
+pub fn u16::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u16::select_lowest(self, u32) -> u32
+pub fn u16::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u16::shl(self, u32) -> Self
 pub fn u16::shr(self, u32) -> Self
 pub fn u16::splat_byte(u8) -> Self
@@ -2107,6 +2303,8 @@ pub fn u16::wrapping_sub(self, Self) -> Self
 pub fn u16::xor(self, Self) -> Self
 pub fn u16::xor_scan(self) -> Self
 pub fn u16::xor_scan_down(self) -> Self
+pub fn u16::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u16::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u32
 pub const u32::BITS: u32
 pub const u32::ONE: Self
@@ -2125,8 +2323,11 @@ pub fn u32::not(self) -> Self
 pub fn u32::or(self, Self) -> Self
 pub fn u32::parity(self) -> bool
 pub fn u32::pdep(self, Self) -> Self
+pub fn u32::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u32::pext(self, Self) -> Self
+pub fn u32::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u32::select_lowest(self, u32) -> u32
+pub fn u32::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u32::shl(self, u32) -> Self
 pub fn u32::shr(self, u32) -> Self
 pub fn u32::splat_byte(u8) -> Self
@@ -2138,6 +2339,8 @@ pub fn u32::wrapping_sub(self, Self) -> Self
 pub fn u32::xor(self, Self) -> Self
 pub fn u32::xor_scan(self) -> Self
 pub fn u32::xor_scan_down(self) -> Self
+pub fn u32::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u32::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u64
 pub const u64::BITS: u32
 pub const u64::ONE: Self
@@ -2156,8 +2359,11 @@ pub fn u64::not(self) -> Self
 pub fn u64::or(self, Self) -> Self
 pub fn u64::parity(self) -> bool
 pub fn u64::pdep(self, Self) -> Self
+pub fn u64::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u64::pext(self, Self) -> Self
+pub fn u64::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u64::select_lowest(self, u32) -> u32
+pub fn u64::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u64::shl(self, u32) -> Self
 pub fn u64::shr(self, u32) -> Self
 pub fn u64::splat_byte(u8) -> Self
@@ -2169,6 +2375,8 @@ pub fn u64::wrapping_sub(self, Self) -> Self
 pub fn u64::xor(self, Self) -> Self
 pub fn u64::xor_scan(self) -> Self
 pub fn u64::xor_scan_down(self) -> Self
+pub fn u64::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u64::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u8
 pub const u8::BITS: u32
 pub const u8::ONE: Self
@@ -2187,8 +2395,11 @@ pub fn u8::not(self) -> Self
 pub fn u8::or(self, Self) -> Self
 pub fn u8::parity(self) -> bool
 pub fn u8::pdep(self, Self) -> Self
+pub fn u8::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u8::pext(self, Self) -> Self
+pub fn u8::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u8::select_lowest(self, u32) -> u32
+pub fn u8::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u8::shl(self, u32) -> Self
 pub fn u8::shr(self, u32) -> Self
 pub fn u8::splat_byte(u8) -> Self
@@ -2200,6 +2411,8 @@ pub fn u8::wrapping_sub(self, Self) -> Self
 pub fn u8::xor(self, Self) -> Self
 pub fn u8::xor_scan(self) -> Self
 pub fn u8::xor_scan_down(self) -> Self
+pub fn u8::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u8::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
@@ -2218,8 +2431,11 @@ pub fn hakmem::wide::Wide<N>::not(self) -> Self
 pub fn hakmem::wide::Wide<N>::or(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::parity(self) -> bool
 pub fn hakmem::wide::Wide<N>::pdep(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::pext(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::select_lowest(self, u32) -> u32
+pub fn hakmem::wide::Wide<N>::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::wide::Wide<N>::shl(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
@@ -2231,9 +2447,22 @@ pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::word::compress_broadword<W: hakmem::word::Word>(W, W) -> W
 pub fn hakmem::word::expand_broadword<W: hakmem::word::Word>(W, W) -> W
 pub fn hakmem::word::select_broadword64(u64, u32) -> u32
+pub mod hakmem::x86
+pub mod hakmem::x86::bmi2
+pub fn hakmem::x86::bmi2::pdep_u32(u32, u32) -> u32
+pub fn hakmem::x86::bmi2::pdep_u64(u64, u64) -> u64
+pub fn hakmem::x86::bmi2::pext_u32(u32, u32) -> u32
+pub fn hakmem::x86::bmi2::pext_u64(u64, u64) -> u64
+pub fn hakmem::x86::bmi2::select_u64(u64, u32) -> u32
+pub mod hakmem::x86::pclmulqdq
+pub fn hakmem::x86::pclmulqdq::xor_scan_down_u64(u64) -> u64
+pub fn hakmem::x86::pclmulqdq::xor_scan_u64(u64) -> u64
+pub macro hakmem::dispatch!
 pub struct hakmem::Dilated<W: hakmem::word::Word, const D: u32>(_)
 impl<W: hakmem::word::Word, const D: u32> hakmem::dilated::Dilated<W, D>
 pub const fn hakmem::dilated::Dilated<W, D>::bits(self) -> W
@@ -2571,8 +2800,11 @@ pub fn hakmem::wide::Wide<N>::not(self) -> Self
 pub fn hakmem::wide::Wide<N>::or(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::parity(self) -> bool
 pub fn hakmem::wide::Wide<N>::pdep(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::pext(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::select_lowest(self, u32) -> u32
+pub fn hakmem::wide::Wide<N>::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::wide::Wide<N>::shl(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
@@ -2584,6 +2816,8 @@ pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
@@ -2887,8 +3121,11 @@ pub fn hakmem::Word::not(self) -> Self
 pub fn hakmem::Word::or(self, Self) -> Self
 pub fn hakmem::Word::parity(self) -> bool
 pub fn hakmem::Word::pdep(self, Self) -> Self
+pub fn hakmem::Word::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::Word::pext(self, Self) -> Self
+pub fn hakmem::Word::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::Word::select_lowest(self, u32) -> u32
+pub fn hakmem::Word::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::Word::shl(self, u32) -> Self
 pub fn hakmem::Word::shr(self, u32) -> Self
 pub fn hakmem::Word::splat_byte(u8) -> Self
@@ -2900,6 +3137,8 @@ pub fn hakmem::Word::wrapping_sub(self, Self) -> Self
 pub fn hakmem::Word::xor(self, Self) -> Self
 pub fn hakmem::Word::xor_scan(self) -> Self
 pub fn hakmem::Word::xor_scan_down(self) -> Self
+pub fn hakmem::Word::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::Word::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u128
 pub const u128::BITS: u32
 pub const u128::ONE: Self
@@ -2918,8 +3157,11 @@ pub fn u128::not(self) -> Self
 pub fn u128::or(self, Self) -> Self
 pub fn u128::parity(self) -> bool
 pub fn u128::pdep(self, Self) -> Self
+pub fn u128::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u128::pext(self, Self) -> Self
+pub fn u128::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u128::select_lowest(self, u32) -> u32
+pub fn u128::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u128::shl(self, u32) -> Self
 pub fn u128::shr(self, u32) -> Self
 pub fn u128::splat_byte(u8) -> Self
@@ -2931,6 +3173,8 @@ pub fn u128::wrapping_sub(self, Self) -> Self
 pub fn u128::xor(self, Self) -> Self
 pub fn u128::xor_scan(self) -> Self
 pub fn u128::xor_scan_down(self) -> Self
+pub fn u128::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u128::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u16
 pub const u16::BITS: u32
 pub const u16::ONE: Self
@@ -2949,8 +3193,11 @@ pub fn u16::not(self) -> Self
 pub fn u16::or(self, Self) -> Self
 pub fn u16::parity(self) -> bool
 pub fn u16::pdep(self, Self) -> Self
+pub fn u16::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u16::pext(self, Self) -> Self
+pub fn u16::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u16::select_lowest(self, u32) -> u32
+pub fn u16::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u16::shl(self, u32) -> Self
 pub fn u16::shr(self, u32) -> Self
 pub fn u16::splat_byte(u8) -> Self
@@ -2962,6 +3209,8 @@ pub fn u16::wrapping_sub(self, Self) -> Self
 pub fn u16::xor(self, Self) -> Self
 pub fn u16::xor_scan(self) -> Self
 pub fn u16::xor_scan_down(self) -> Self
+pub fn u16::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u16::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u32
 pub const u32::BITS: u32
 pub const u32::ONE: Self
@@ -2980,8 +3229,11 @@ pub fn u32::not(self) -> Self
 pub fn u32::or(self, Self) -> Self
 pub fn u32::parity(self) -> bool
 pub fn u32::pdep(self, Self) -> Self
+pub fn u32::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u32::pext(self, Self) -> Self
+pub fn u32::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u32::select_lowest(self, u32) -> u32
+pub fn u32::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u32::shl(self, u32) -> Self
 pub fn u32::shr(self, u32) -> Self
 pub fn u32::splat_byte(u8) -> Self
@@ -2993,6 +3245,8 @@ pub fn u32::wrapping_sub(self, Self) -> Self
 pub fn u32::xor(self, Self) -> Self
 pub fn u32::xor_scan(self) -> Self
 pub fn u32::xor_scan_down(self) -> Self
+pub fn u32::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u32::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u64
 pub const u64::BITS: u32
 pub const u64::ONE: Self
@@ -3011,8 +3265,11 @@ pub fn u64::not(self) -> Self
 pub fn u64::or(self, Self) -> Self
 pub fn u64::parity(self) -> bool
 pub fn u64::pdep(self, Self) -> Self
+pub fn u64::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u64::pext(self, Self) -> Self
+pub fn u64::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u64::select_lowest(self, u32) -> u32
+pub fn u64::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u64::shl(self, u32) -> Self
 pub fn u64::shr(self, u32) -> Self
 pub fn u64::splat_byte(u8) -> Self
@@ -3024,6 +3281,8 @@ pub fn u64::wrapping_sub(self, Self) -> Self
 pub fn u64::xor(self, Self) -> Self
 pub fn u64::xor_scan(self) -> Self
 pub fn u64::xor_scan_down(self) -> Self
+pub fn u64::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u64::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl hakmem::word::Word for u8
 pub const u8::BITS: u32
 pub const u8::ONE: Self
@@ -3042,8 +3301,11 @@ pub fn u8::not(self) -> Self
 pub fn u8::or(self, Self) -> Self
 pub fn u8::parity(self) -> bool
 pub fn u8::pdep(self, Self) -> Self
+pub fn u8::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u8::pext(self, Self) -> Self
+pub fn u8::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn u8::select_lowest(self, u32) -> u32
+pub fn u8::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn u8::shl(self, u32) -> Self
 pub fn u8::shr(self, u32) -> Self
 pub fn u8::splat_byte(u8) -> Self
@@ -3055,6 +3317,8 @@ pub fn u8::wrapping_sub(self, Self) -> Self
 pub fn u8::xor(self, Self) -> Self
 pub fn u8::xor_scan(self) -> Self
 pub fn u8::xor_scan_down(self) -> Self
+pub fn u8::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn u8::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
@@ -3073,8 +3337,11 @@ pub fn hakmem::wide::Wide<N>::not(self) -> Self
 pub fn hakmem::wide::Wide<N>::or(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::parity(self) -> bool
 pub fn hakmem::wide::Wide<N>::pdep(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pdep_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::pext(self, Self) -> Self
+pub fn hakmem::wide::Wide<N>::pext_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
 pub fn hakmem::wide::Wide<N>::select_lowest(self, u32) -> u32
+pub fn hakmem::wide::Wide<N>::select_lowest_in<I: hakmem::isa::Isa>(self, u32, I) -> u32
 pub fn hakmem::wide::Wide<N>::shl(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
@@ -3086,6 +3353,8 @@ pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan(self) -> Self
 pub fn hakmem::wide::Wide<N>::xor_scan_down(self) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> Self
+pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub trait hakmem::Words
 pub type hakmem::Words::Word: hakmem::word::Word
 pub fn hakmem::Words::bit(&self, usize) -> bool

@@ -18,6 +18,8 @@
 // `unreachable_pub` wants `pub(super)` here and this lint wants `pub`;
 // the rustc lint is the one the crate chose.
 #![allow(clippy::redundant_pub_crate)]
+// With the `portable` feature the batch kernels do not ask, the tokens do.
+#![cfg_attr(feature = "portable", allow(dead_code))]
 
 use core::sync::atomic::{AtomicU32, Ordering};
 
@@ -26,6 +28,8 @@ const AVX2: u32 = 1 << 0;
 const AVX512VBMI: u32 = 1 << 1;
 /// GFNI on top of [`AVX512VBMI`], for its 512-bit form.
 const AVX512GFNI: u32 = 1 << 2;
+/// x86-64-v3 and PCLMULQDQ, with the OS saving `ymm`: the `X86V3` token.
+const X86V3: u32 = 1 << 3;
 /// Set once the detection has run.
 const KNOWN: u32 = 1 << 31;
 
@@ -45,6 +49,29 @@ pub(super) fn avx512vbmi() -> bool {
         target_feature = "avx512bw",
         target_feature = "avx512vbmi"
     )) || detected(AVX512VBMI)
+}
+
+/// Every feature of `isa::X86V3::FEATURES`, and the OS saving `ymm`.
+#[inline]
+pub(super) fn x86v3() -> bool {
+    cfg!(all(
+        target_feature = "sse3",
+        target_feature = "ssse3",
+        target_feature = "sse4.1",
+        target_feature = "sse4.2",
+        target_feature = "popcnt",
+        target_feature = "cmpxchg16b",
+        target_feature = "avx",
+        target_feature = "avx2",
+        target_feature = "bmi1",
+        target_feature = "bmi2",
+        target_feature = "fma",
+        target_feature = "lzcnt",
+        target_feature = "movbe",
+        target_feature = "f16c",
+        target_feature = "xsave",
+        target_feature = "pclmulqdq"
+    )) || detected(X86V3)
 }
 
 /// [`avx512vbmi`] and GFNI.
@@ -102,6 +129,22 @@ fn detect() -> u32 {
     let mut out = 0;
     if ymm && bit(leaf7.ebx, 5) {
         out |= AVX2;
+    }
+    // x86-64-v3: leaf 1 ECX SSE3 0, PCLMULQDQ 1, SSSE3 9, FMA 12,
+    // CMPXCHG16B 13, SSE4.1 19, SSE4.2 20, MOVBE 22, POPCNT 23, XSAVE 26,
+    // AVX 28, F16C 29; leaf 7 EBX BMI1 3, AVX2 5, BMI2 8; LZCNT is bit 5
+    // of ECX in leaf 0x8000_0001.
+    let v3_leaf1 = [0, 1, 9, 12, 13, 19, 20, 22, 23, 26, 28, 29];
+    // SAFETY: CPUID exists on every x86_64 processor; the extended leaf
+    // is asked for only if the processor reports it.
+    let lzcnt = unsafe { __cpuid(0x8000_0000) }.eax >= 0x8000_0001
+        && bit(unsafe { __cpuid(0x8000_0001) }.ecx, 5);
+    if ymm
+        && v3_leaf1.iter().all(|&n| bit(leaf1.ecx, n))
+        && [3, 5, 8].iter().all(|&n| bit(leaf7.ebx, n))
+        && lzcnt
+    {
+        out |= X86V3;
     }
     // F is EBX bit 16, BW bit 30, VBMI is ECX bit 1.
     if zmm && bit(leaf7.ebx, 16) && bit(leaf7.ebx, 30) && bit(leaf7.ecx, 1) {
