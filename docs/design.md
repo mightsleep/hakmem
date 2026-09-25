@@ -793,8 +793,13 @@ called where the features are already proven (fearless_simd #293).
   (`for_each_position(|p| ..)`) and `positions_into(&mut buf)`
   dispatch once, with the closure monomorphised inside `run`.
 - **Structures queried per word.** A `Rank9` is built once and asked
-  a million times, and a query is one select in a word: the level is
-  a type parameter chosen at construction, `Rank9<'a, I = Native>`.
+  a million times, and a query is one select in a word. The plan was
+  a type parameter chosen at construction, `Rank9<'a, I = Native>`;
+  the measurement in 11.11 made it unnecessary. Each query asks per
+  call, which already beats today everywhere, and the caller who wants
+  the last quarter wraps the query loop in one `dispatch!` and calls
+  `select_in(k, cpu)`: the level lives in the caller's dispatch, not
+  in the type.
 - **Zen 1 and Zen 2.** They report BMI2 and run PDEP and PEXT in
   microcode, about 18 cycles. `detect()` cannot see that from the
   feature bits; it can from the family (AMD 17h), which is what the
@@ -882,6 +887,25 @@ dispatch changes nothing there: `xs.select(k)` and
 symbols). The benchmark still shows them apart at some lengths, by
 the same amount on every run; that is the timing loop inlining the
 call differently at two call sites, not the library.
+
+`Rank9` was the fourth cut and overturned 11.8's plan for it. Over
+2^20 bits, 1024 random queries, ns a query, in the build without flags:
+
+| query | `Native` | `dispatch!` per query | one `dispatch!` for the loop |
+|---|---|---|---|
+| `rank` | 2.25 | 1.63 | 1.27 |
+| `select`, dense | 14.90 | 7.30 | 6.92 |
+| `select`, sparse | 2.29 | 1.93 | 1.33 |
+
+With `-C target-cpu=native` the three columns are the same to the
+hundredth, the dispatch having folded to `Native`. So per-query
+dispatch beats the old default in every build, and costs a third of a
+nanosecond against the loop-wide one; plain `rank` and `select` ask
+per call, `rank_in` and `select_in` take a token for the loop, and no
+type parameter was needed. `build` is one pass over every word and
+asks once: 20.4 µs to 12.5 on the dense bitmap, 34.4 to 25.6 on the
+sparse, with the pass marked `inline(always)` so it compiles inside
+the trampoline and not beside it.
 
 ## Sources
 

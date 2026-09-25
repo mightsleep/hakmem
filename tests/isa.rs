@@ -177,3 +177,40 @@ fn every_level_agrees_on_slices() {
         }
     }
 }
+
+/// `Rank9` queries under every level agree with the slice scans, on a
+/// dense and a sparse bitmap, with and without the select inventory.
+fn rank9_of<I: Isa>(cpu: I, bits: &[u64]) {
+    use hakmem::Words;
+    use hakmem::rank9::Rank9;
+    let mut counts = vec![0; Rank9::counts_len(bits.len())];
+    let mut select = vec![0; Rank9::select_len(bits.len())];
+    let dir = Rank9::build(bits, &mut counts, &mut select);
+    let mut counts2 = vec![0; Rank9::counts_len(bits.len())];
+    let rank_only = Rank9::build(bits, &mut counts2, &mut []);
+    let n = bits.count_ones();
+    let len = bits.len() * 64;
+    for i in (0..=len + 64).step_by(61) {
+        assert_eq!(dir.rank_in(i, cpu), bits.rank(i), "{cpu:?} rank {i}");
+        assert_eq!(dir.rank(i), bits.rank(i));
+    }
+    for k in (0..n + 2).step_by(7) {
+        assert_eq!(dir.select_in(k, cpu), bits.select(k), "{cpu:?} select {k}");
+        assert_eq!(
+            rank_only.select_in(k, cpu),
+            bits.select(k),
+            "{cpu:?} search {k}"
+        );
+        assert_eq!(dir.select(k), bits.select(k));
+    }
+}
+
+#[test]
+fn every_level_agrees_on_rank9() {
+    let dense: Vec<u64> = samples().take(150).collect();
+    let sparse: Vec<u64> = samples().take(150).map(|x| 1 << (x % 64)).collect();
+    for level in isa::available() {
+        hakmem::dispatch!(level, |cpu| rank9_of(cpu, &dense));
+        hakmem::dispatch!(level, |cpu| rank9_of(cpu, &sparse));
+    }
+}

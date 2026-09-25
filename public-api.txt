@@ -2226,7 +2226,9 @@ pub const fn hakmem::rank9::Rank9<'a>::is_empty(&self) -> bool
 pub const fn hakmem::rank9::Rank9<'a>::len(&self) -> usize
 pub fn hakmem::rank9::Rank9<'a>::rank(&self, usize) -> usize
 pub fn hakmem::rank9::Rank9<'a>::rank0(&self, usize) -> usize
+pub fn hakmem::rank9::Rank9<'a>::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -> usize
 pub fn hakmem::rank9::Rank9<'a>::select(&self, usize) -> core::option::Option<usize>
+pub fn hakmem::rank9::Rank9<'a>::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub const fn hakmem::rank9::Rank9<'a>::select_len(usize) -> usize
 impl<'a> core::clone::Clone for hakmem::rank9::Rank9<'a>
 pub fn hakmem::rank9::Rank9<'a>::clone(&self) -> hakmem::rank9::Rank9<'a>
