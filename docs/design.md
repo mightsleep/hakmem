@@ -828,8 +828,6 @@ called where the features are already proven (fearless_simd #293).
   first; opening it later breaks nothing.
 - Where slices stop detecting. Measured in 11.11: nowhere, the check
   is lost in one word.
-- A codegen cell that sees what a caller's crate makes of the
-  generics (11.11): one codegen unit inlines what sixteen do not.
 
 ### 11.11 What the prototype changed
 
@@ -991,6 +989,23 @@ and its lead over `fast_hilbert`. The per-key cores are `#[inline]` too.
 The codegen cell saw neither: it compiles one codegen unit, which
 inlines what the sixteen of a release build do not, and its wrappers
 each have one caller. Its snapshots did not move when the fix went in.
+
+The cell that sees it reads the benches instead of wrappers. They are
+a crate that calls hakmem the way a user's does, release, sixteen
+codegen units, one kernel from several places, and their linked
+binaries say what survived: `llvm-objdump` lists every function, and
+the hakmem ones that are still functions go into
+`codegen/x86_64-linux-outlined-{portable,v3}.txt`. Sixty-odd lines,
+all of them things that should be calls (`cover`, the column
+conversions, the batch kernels, `isa::run`'s trampolines, `detect`).
+On the commit before the fix the list had four more:
+`<u64 as Word>::pext` and `::pdep` twice each, `pdep` on `u32` and
+`Hilbert2::from_morton`. Dropping the one `#[inline]` again fails the
+check with `+hilbert <u64 as hakmem::word::Word>::pext ×2`. Names
+only: instruction counts move with every edit, so they sit next to
+the list for reading, with the disassembly of every hakmem and bench
+function and the source lines the line tables give (which do not
+move an inlining decision; the list is the same without them).
 
 ## Sources
 

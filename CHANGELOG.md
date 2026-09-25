@@ -242,7 +242,12 @@ directives next to the wrappers they are about, and the count of each
 mnemonic per function as a snapshot a nix check diffs, like the public
 API: a build without flags and one with `+bmi2,+pclmulqdq,+ssse3,+avx2`.
 It found `select` paying for its popcount in software under the flags
-the README recommended. Miri runs its three cells side by side in two
+the README recommended. A second pair of cells reads the benches' linked
+binaries, a release build with sixteen codegen units, and checks in the
+hakmem functions that survived there as functions of their own: a kernel
+that shows up has lost its inlining. It would have caught the
+out-of-line `Word::pext` that made the 2D Hilbert decode eight times
+slower before a release had it. Miri runs its three cells side by side in two
 minutes where the old six took twenty; the AVX-512 cells wait for Miri
 to interpret AVX-512 (rust-lang/miri#5345).
 

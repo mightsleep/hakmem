@@ -55,11 +55,84 @@
     # No flags: what a dependency gets by default, and where the tokens
     # have to earn their keep.
     portable = cell "portable" "";
+
+    # The cells above see one codegen unit and one caller per wrapper, and
+    # there everything inlines. The benches are a crate that calls hakmem
+    # the way a user's does: a release build, sixteen codegen units, the
+    # same kernel from several places. Their linked binaries are where a
+    # lost `#[inline]` shows, as a hakmem function that should not exist;
+    # `<u64 as Word>::pext` did, and the 2D Hilbert decode was eight times
+    # slower. The snapshot is the list of those functions per bench
+    # (codegen/outlined.awk). After a deliberate change:
+    #
+    #   nix build .#codegen-outlined-portable && cp result/x86_64-linux-outlined-portable.txt codegen/
+    benchSrc = lib.cleanSourceWith {
+      src = ./..;
+      filter = path: type:
+        craneLib.filterCargoSources path type
+        || baseNameOf path == "README.md";
+      name = "source";
+    };
+    benchArgs = rustflags: {
+      src = benchSrc;
+      pname = "hakmem";
+      version = (craneLib.crateNameFromCargoToml {cargoToml = ../Cargo.toml;}).version;
+      strictDeps = true;
+      CARGO_PROFILE = "release";
+      RUSTFLAGS = rustflags;
+      # Source lines for annotated.s. Line tables do not move an inlining
+      # decision: the list came out the same without them.
+      CARGO_PROFILE_RELEASE_DEBUG = "line-tables-only";
+      CARGO_PROFILE_BENCH_DEBUG = "line-tables-only";
+    };
+    outlined = name: rustflags:
+      craneLib.mkCargoDerivation (benchArgs rustflags
+        // {
+          pname = "hakmem-codegen-outlined-${name}";
+          cargoArtifacts = craneLib.buildDepsOnly (benchArgs rustflags // {pname = "hakmem-deps-outlined-${name}";});
+          nativeBuildInputs = [llvm pkgs.jq];
+          doInstallCargoArtifacts = false;
+          buildPhaseCargoCommand = ''
+            cargo build --release --benches --message-format json-render-diagnostics > build.json
+          '';
+          # `--benches` brings the lib's unit tests too; only the benches
+          # are a user.
+          installPhaseCommand = ''
+            mkdir -p $out
+            jq -r 'select(.target.kind == ["bench"] and .executable != null) | "\(.target.name) \(.executable)"' build.json \
+              | while read -r bench bin; do
+                  llvm-objdump -d -l --no-show-raw-insn --no-leading-addr -C "$bin" \
+                    | awk -v bench="$bench" -v dir=$out -f ${../codegen/outlined.awk}
+                done
+            sort $out/outlined | uniq -c \
+              | awk '{ c = $1; sub(/^ *[0-9]+ /, ""); print (c > 1 ? $0 " ×" c : $0) }' \
+              > $out/${system}-outlined-${name}.txt
+            sort -t$'\t' -k1,1 -k2,2nr $out/sizes -o $out/sizes
+            rm $out/outlined
+          '';
+        });
+    outlinedCheck = name: out:
+      pkgs.runCommand "hakmem-codegen-outlined-${name}-check" {} ''
+        if ! diff -u ${../codegen + "/${system}-outlined-${name}.txt"} ${out}/${system}-outlined-${name}.txt; then
+          echo "A hakmem function appeared in or left the benches' binaries: + is a lost inlining unless meant." >&2
+          echo "If on purpose: nix build .#codegen-outlined-${name} && cp result/${system}-outlined-${name}.txt codegen/" >&2
+          exit 1
+        fi
+        touch $out
+      '';
+    outlinedPortable = outlined "portable" "";
+    # A fixed level instead of the benches' `target-cpu=native`: the same
+    # list on every builder.
+    outlinedV3 = outlined "v3" "-C target-cpu=x86-64-v3";
   in
     lib.optionalAttrs (system == "x86_64-linux") {
       packages.codegen-bmi2 = bmi2;
       checks.hakmem-codegen-bmi2 = check "bmi2" "CHECK,BMI2" bmi2;
       packages.codegen-portable = portable;
       checks.hakmem-codegen-portable = check "portable" "CHECK,PORTABLE" portable;
+      packages.codegen-outlined-portable = outlinedPortable;
+      checks.hakmem-codegen-outlined-portable = outlinedCheck "portable" outlinedPortable;
+      packages.codegen-outlined-v3 = outlinedV3;
+      checks.hakmem-codegen-outlined-v3 = outlinedCheck "v3" outlinedV3;
     };
 }

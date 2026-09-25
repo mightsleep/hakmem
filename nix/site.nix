@@ -31,6 +31,8 @@
       hakmem-public-api = "public API matches public-api/, x86_64 and aarch64";
       hakmem-codegen-bmi2 = "codegen, +bmi2,+pclmulqdq,+ssse3,+avx2: claims and instruction counts";
       hakmem-codegen-portable = "codegen, no flags: claims and instruction counts";
+      hakmem-codegen-outlined-portable = "codegen, no flags: hakmem functions left out of line in the benches";
+      hakmem-codegen-outlined-v3 = "codegen, x86-64-v3: hakmem functions left out of line in the benches";
       hakmem-none = "bare metal and kernels: the none targets build, and a +bmi2 kernel keeps PEXT";
       hakmem-msrv = "MSRV build of the packaged tarball";
       hakmem-deny = "cargo-deny";
