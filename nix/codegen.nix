@@ -66,6 +66,12 @@
     # (codegen/outlined.awk). After a deliberate change:
     #
     #   nix build .#codegen-outlined-portable && cp result/x86_64-linux-outlined-portable.txt codegen/
+    #
+    # The same derivation runs codegen/src/bin/loops.rs over the binaries:
+    # every innermost loop a bench times, by the hakmem function each
+    # instruction was inlined from, with the calls it makes and llvm-mca's
+    # cycles, into x86_64-linux-loops-<name>.txt; `result/loops` has every
+    # instruction. Its own check, so the badge says which of the two moved.
     benchSrc = lib.cleanSourceWith {
       src = ./..;
       filter = path: type:
@@ -99,12 +105,26 @@
           # are a user.
           installPhaseCommand = ''
             mkdir -p $out
+            # The loops tool reads the listing with hakmem itself; built
+            # here, offline, since hakmem is its only dependency.
+            RUSTFLAGS= cargo build --release --offline --manifest-path codegen/Cargo.toml --bin loops --target-dir "$TMPDIR/tool"
+            loops="$TMPDIR/tool/release/loops"
+            # By name: cargo reports binaries in the order its jobs finish.
             jq -r 'select(.target.kind == ["bench"] and .executable != null) | "\(.target.name) \(.executable)"' build.json \
+              | sort \
               | while read -r bench bin; do
                   awk -f ${../codegen/got.awk} <(llvm-nm -C --defined-only "$bin") <(llvm-objdump -R "$bin") > got
+                  # An empty map is a parser that lost objdump's format, not a
+                  # binary without calls.
+                  [ -s got ] || { echo "got.awk read nothing from $bench" >&2; exit 1; }
                   llvm-objdump -d -l --no-show-raw-insn --no-leading-addr -C "$bin" \
                     | awk -v bench="$bench" -v dir=$out -v got=got -f ${../codegen/outlined.awk}
+                  llvm-objdump -d --no-show-raw-insn -C "$bin" > dis
+                  "$loops" --bench "$bench" --bin "$bin" --dis dis --got got --root "$PWD" \
+                    --cpus znver5,x86-64-v3 --detail $out/loops --check >> $out/${system}-loops-${name}.txt
                 done
+            [ -s $out/outlined ] || { echo "outlined.awk found no hakmem function in any bench" >&2; exit 1; }
+            [ -s $out/${system}-loops-${name}.txt ] || { echo "loops found no loop in any bench" >&2; exit 1; }
             sort $out/outlined | uniq -c \
               | awk '{ c = $1; sub(/^ *[0-9]+ /, ""); print (c > 1 ? $0 " ×" c : $0) }' \
               > $out/${system}-outlined-${name}.txt
@@ -112,15 +132,19 @@
             rm $out/outlined
           '';
         });
-    outlinedCheck = name: out:
-      pkgs.runCommand "hakmem-codegen-outlined-${name}-check" {} ''
-        if ! diff -u ${../codegen + "/${system}-outlined-${name}.txt"} ${out}/${system}-outlined-${name}.txt; then
-          echo "A hakmem function appeared in or left the benches' binaries: + is a lost inlining unless meant." >&2
-          echo "If on purpose: nix build .#codegen-outlined-${name} && cp result/${system}-outlined-${name}.txt codegen/" >&2
+    # One diff, two snapshots: which hakmem functions survived as
+    # functions, and what the benches' loops are made of.
+    snapshotCheck = kind: blurb: name: out:
+      pkgs.runCommand "hakmem-codegen-${kind}-${name}-check" {} ''
+        if ! diff -u ${../codegen + "/${system}-${kind}-${name}.txt"} ${out}/${system}-${kind}-${name}.txt; then
+          echo ${lib.escapeShellArg blurb} >&2
+          echo "If on purpose: nix build .#codegen-outlined-${name} && cp result/${system}-${kind}-${name}.txt codegen/" >&2
           exit 1
         fi
         touch $out
       '';
+    outlinedCheck = snapshotCheck "outlined" "A hakmem function appeared in or left the benches' binaries: + is a lost inlining unless meant.";
+    loopsCheck = snapshotCheck "loops" "A bench's loop changed: its instructions, their hakmem functions, or llvm-mca's cycles. result/loops has the whole of each.";
     outlinedPortable = outlined "portable" "";
     # A fixed level instead of the benches' `target-cpu=native`: the same
     # list on every builder.
@@ -135,5 +159,7 @@
       checks.hakmem-codegen-outlined-portable = outlinedCheck "portable" outlinedPortable;
       packages.codegen-outlined-v3 = outlinedV3;
       checks.hakmem-codegen-outlined-v3 = outlinedCheck "v3" outlinedV3;
+      checks.hakmem-codegen-loops-portable = loopsCheck "portable" outlinedPortable;
+      checks.hakmem-codegen-loops-v3 = loopsCheck "v3" outlinedV3;
     };
 }

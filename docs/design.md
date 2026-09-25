@@ -838,6 +838,31 @@ called where the features are already proven (fearless_simd #293).
   covers it, would; `Flat`, `Two` and the `Pos` spans have one each on
   `counts[2 * lo]` and `pool`. For 0.3, with the scan engines, measured
   on the `select` bench.
+- `Rank9::rank` detects the level on every query. Its loop in the
+  portable build (`codegen/x86_64-linux-loops-portable.txt`) is 90
+  instructions: 57 of the portable rank, 17 of `detect`'s cached read,
+  and calls to the `run` trampolines of three levels. Choosing the
+  level once, when the directory is built or borrowed, would leave the
+  rank; whether the token belongs in `Rank9` or in a `rank_in` the
+  caller hoists is the question. Measure on the `rank9` bench.
+- `array::map` with a closure over `Lanes` inside `dispatch!` can stay
+  out of line and lose the level's target features (11.11, the
+  `loops` classifier). Worth a sentence in the `isa` docs next to
+  "everything `f` inlines gets them too", which is true only of what
+  inlines.
+- Wider lanes, for the scan engines: 64-byte blocks are simdjson's and
+  every engine's unit, and with sixteen lanes a class costs four
+  extractions a block. `scan.rs` in `codegen/src/bin/loops/` is the
+  draft: `U8x32` and `U8x64` behind `Avx2` and `Avx512` tokens, the
+  `Lanes` methods a classifier needs, one trait over every width, 1.7
+  times the sixteen-lane speed on a full classification (11.11). What
+  it lacks for hakmem: the tokens as `Isa` levels (`X86V3` has AVX2
+  already, `X86V4` AVX-512BW), NEON's pairs of `uint8x16_t`, and a
+  SWAR fallback worth the name.
+- `Swar16::lut16_nibbles` runs at a tenth of PSHUFB (1.2 against
+  12 GB/s classifying, 11.11): x86 and aarch64 never use it, but an
+  engine on anything else would. A nibble lookup in a `u64` has better
+  shapes than sixteen table reads.
 
 ### 11.11 What the prototype changed
 
@@ -1032,6 +1057,73 @@ pass taught why the lint cannot be satisfied by `#[inline]`
 everywhere: on the Myers entry points it moved LLVM's split of the
 function, `Peq::new` went out of line instead, and short patterns got
 13 % slower. They are exempt with that reason.
+
+The outlined list says which kernels left their callers; it cannot say
+what the ones that stayed turned into. `codegen/src/bin/loops.rs` does,
+for every innermost loop a bench times. Blocks, dominators as bitsets
+and natural loops come from the same linked binaries; `llvm-symbolizer
+--inlining` names the hakmem function behind each instruction, since
+line tables keep the inline stack; `llvm-mca` gives cycles per
+iteration on Zen 5 and on a generic `x86-64-v3`. The 2D decode reads:
+
+```text
+hilbert hilbert.rs:58  89 insns  znver5 15.3  x86-64-v3 24.8
+   82  hilbert::decode<u64>
+   54    hilbert::to_morton<u64>
+   30      bits::suffix_xor<u64> → … → word::xor_smear_down<u64>
+   28    dilated::decode<u64> → … → word::compress_broadword<u64>
+    1  hilbert::from_index<u64>
+    6  (not hakmem)
+```
+
+The bench measures 2.93 ns a point, about 14.7 cycles at a 5 GHz
+boost, against the model's 15.3. With `Word::pext` back out of line the
+3D Morton decode's loop goes from 78 instructions to 27 and a line
+`calls <u64 as word::Word>::pext`, which is the line to read: mca
+prices only the loop, so a call makes it look cheaper. The summary is
+`codegen/x86_64-linux-loops-{portable,v3}.txt`, its own check; the
+whole tree and every instruction with its function are in the output.
+A loop counts as hakmem's when a quarter of it is, or when it calls
+into hakmem, since DWARF drops an inline record now and then and an
+incumbent's loop shows a stray line; `laws` counts as the incumbent it
+is. `compact`'s bench calls its kernels through a table of function
+pointers, so its loops name nothing and the outlined list covers it.
+
+The tool reads objdump's text the way the scan engines will read
+theirs: two nibble lookups classify a register of bytes into the six
+characters the grammar turns on, fields are `trailing_zeros` on those
+masks, and an address is one `compact` of eight hex digits. `--check`
+holds every level's masks to a byte-by-byte scan, so a bug in hakmem
+cannot pass as a clean snapshot.
+
+Classifying every block into every class topped out at 14 GB/s on
+Zen 5 with hakmem's sixteen lanes, and the first step there taught
+something the crate's users will meet: building the four registers
+with `[0, 1, 2, 3].map(|i| load(..))` left `array::map`'s closure out
+of line, outside `Isa::run`'s target features, so every lookup was a
+call; written out, the loop ran 2.5 times faster. The ceiling was the
+extractions: a class is one movemask a register, four registers a
+block, and a movemask issues about once a cycle. Two things moved it.
+Less work: the line walk needs only the newline mask, the other five
+classes are computed for a block when a line in it is read (8 199 of
+557 213 blocks for the `hilbert` bench), and a function header needs
+none, its name sitting at a fixed offset. Wider registers:
+`codegen/src/bin/loops/scan.rs` has `U8x32` for AVX2 and `U8x64` for
+AVX-512BW behind tokens like hakmem's, with the `Lanes` methods the
+kernels use, and hakmem's `U8x16` implements the same trait, so one
+kernel runs at every width. On the 34 MB listing of the `hilbert`
+bench, best of twenty:
+
+| lanes | newlines | every class |
+|---|---|---|
+| 64, AVX-512BW | 40 GB/s | 21 GB/s |
+| 32, AVX2 | 36 GB/s | 19 GB/s |
+| 16, hakmem at v3 or v4 | 34 GB/s | 12 GB/s |
+| 16, hakmem portable (SWAR) | 11 GB/s | 1.2 GB/s |
+
+The newline pass is at the memory's speed on every width; the full
+classification is where width pays, one extraction a block instead of
+four. The pass the tool makes now takes 2.2 ms.
 
 ## Sources
 

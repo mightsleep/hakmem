@@ -247,7 +247,12 @@ binaries, a release build with sixteen codegen units, and checks in the
 hakmem functions that survived there as functions of their own: a kernel
 that shows up has lost its inlining. It would have caught the
 out-of-line `Word::pext` that made the 2D Hilbert decode eight times
-slower before a release had it. Miri runs its three cells side by side in two
+slower before a release had it. A third reads every innermost loop the
+benches time and checks in what it is made of: its instructions by the
+hakmem function they were inlined from, the calls it still makes, and
+llvm-mca's cycles per iteration (`codegen/src/bin/loops.rs`, which
+reads objdump's listing with hakmem's own byte classifier and, as a
+draft of wider lanes for 0.3, 32- and 64-lane registers beside it). Miri runs its three cells side by side in two
 minutes where the old six took twenty; the AVX-512 cells wait for Miri
 to interpret AVX-512 (rust-lang/miri#5345).
 
