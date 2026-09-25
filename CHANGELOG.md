@@ -261,8 +261,11 @@ bit vectors, fuzzy text, bits and bytes), a table of each against the
 crate people use, and the laws as the reason to believe the table.
 `benches/hilbert.rs` races `Morton2` against the three most downloaded
 Morton crates, `morton`, `morton-encoding` and `zorder`: the columns
-win by ten times without flags, a point at a time it ties, and two
-rows go to the incumbents, which the README's table says.
+win by five to ten times, and a point at a time it ties. It lost two
+rows first, and `Word::unzip` (with `Isa::unzip`) is what won them
+back: the even and the odd bits compacted, two PEXT of the code with
+BMI2, one ladder for both halves of a `u32` key without, the Morton
+decode on every carrier and held to two compresses by a law.
 
 ### Changed, for anyone on 0.1
 

@@ -191,6 +191,14 @@ pub fn compact_composes<W: Word>(x: W, m: W, n: W) -> bool {
     x.compact(m).compact(n) == x.compact(n.expand(m))
 }
 
+/// `unzip` is the even bits and the odd bits, each compacted: two
+/// compresses, whichever way a carrier computes the pair.
+#[must_use]
+pub fn unzip_is_two_compacts<W: Word>(x: W) -> bool {
+    let even = W::splat_byte(0x55);
+    x.unzip() == (x.compact(even), x.compact(even.shl(1)))
+}
+
 // --- dilated / Morton -------------------------------------------------
 
 /// Dilating then un-dilating is the identity on values that fit.

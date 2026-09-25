@@ -535,6 +535,7 @@ pub fn hakmem::isa::Native::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Native::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Native::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
 pub fn hakmem::isa::Native::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Native::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Native::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Native::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 impl core::marker::Freeze for hakmem::isa::Native
@@ -564,6 +565,7 @@ pub fn hakmem::isa::Portable::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Portable::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Portable::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
 pub fn hakmem::isa::Portable::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Portable::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Portable::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Portable::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 impl core::marker::Freeze for hakmem::isa::Portable
@@ -579,6 +581,7 @@ pub fn hakmem::isa::Isa::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Isa::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Isa::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
 pub fn hakmem::isa::Isa::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Isa::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Isa::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Isa::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 impl hakmem::isa::Isa for hakmem::isa::Native
@@ -587,6 +590,7 @@ pub fn hakmem::isa::Native::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Native::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Native::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
 pub fn hakmem::isa::Native::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Native::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Native::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Native::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 impl hakmem::isa::Isa for hakmem::isa::Portable
@@ -595,6 +599,7 @@ pub fn hakmem::isa::Portable::pdep<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Portable::pext<W: hakmem::word::Word>(self, W, W) -> W
 pub fn hakmem::isa::Portable::run<R>(self, impl core::ops::function::FnOnce(Self) -> R) -> R
 pub fn hakmem::isa::Portable::select<W: hakmem::word::Word>(self, W, u32) -> core::option::Option<u32>
+pub fn hakmem::isa::Portable::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Portable::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Portable::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::available() -> impl core::iter::traits::iterator::Iterator<Item = hakmem::isa::Level>
@@ -1098,6 +1103,7 @@ pub fn hakmem::laws::swar_lanes_match_reference<W: hakmem::word::Word>(W, u8, u8
 pub fn hakmem::laws::ternary_is_truth_table<W: hakmem::word::Word>(W, W, W, u8) -> bool
 pub fn hakmem::laws::truth_table_names_the_function<W: hakmem::word::Word>(W, W, W) -> bool
 pub fn hakmem::laws::u8x16_agrees_with_halves((u64, u64), (u64, u64), u32, [u8; 16]) -> bool
+pub fn hakmem::laws::unzip_is_two_compacts<W: hakmem::word::Word>(W) -> bool
 pub fn hakmem::laws::xor_linear_combinators<W: hakmem::word::Word>(W, W, W, u32) -> bool
 pub fn hakmem::laws::zero_bytes_turns_or_into_and<W: hakmem::word::Word>(W, W) -> bool
 pub mod hakmem::myers
@@ -1544,6 +1550,8 @@ pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
 pub fn hakmem::wide::Wide<N>::trailing_ones(self) -> u32
 pub fn hakmem::wide::Wide<N>::trailing_zeros(self) -> u32
+pub fn hakmem::wide::Wide<N>::unzip(self) -> (Self, Self)
+pub fn hakmem::wide::Wide<N>::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::wide::Wide<N>::wrapping_add(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_mul(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
@@ -1915,6 +1923,8 @@ pub fn hakmem::prelude::Word::shr(self, u32) -> Self
 pub fn hakmem::prelude::Word::splat_byte(u8) -> Self
 pub fn hakmem::prelude::Word::trailing_ones(self) -> u32
 pub fn hakmem::prelude::Word::trailing_zeros(self) -> u32
+pub fn hakmem::prelude::Word::unzip(self) -> (Self, Self)
+pub fn hakmem::prelude::Word::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::prelude::Word::wrapping_add(self, Self) -> Self
 pub fn hakmem::prelude::Word::wrapping_mul(self, Self) -> Self
 pub fn hakmem::prelude::Word::wrapping_sub(self, Self) -> Self
@@ -1951,6 +1961,8 @@ pub fn u128::shr(self, u32) -> Self
 pub fn u128::splat_byte(u8) -> Self
 pub fn u128::trailing_ones(self) -> u32
 pub fn u128::trailing_zeros(self) -> u32
+pub fn u128::unzip(self) -> (Self, Self)
+pub fn u128::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u128::wrapping_add(self, Self) -> Self
 pub fn u128::wrapping_mul(self, Self) -> Self
 pub fn u128::wrapping_sub(self, Self) -> Self
@@ -1987,6 +1999,8 @@ pub fn u16::shr(self, u32) -> Self
 pub fn u16::splat_byte(u8) -> Self
 pub fn u16::trailing_ones(self) -> u32
 pub fn u16::trailing_zeros(self) -> u32
+pub fn u16::unzip(self) -> (Self, Self)
+pub fn u16::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u16::wrapping_add(self, Self) -> Self
 pub fn u16::wrapping_mul(self, Self) -> Self
 pub fn u16::wrapping_sub(self, Self) -> Self
@@ -2023,6 +2037,8 @@ pub fn u32::shr(self, u32) -> Self
 pub fn u32::splat_byte(u8) -> Self
 pub fn u32::trailing_ones(self) -> u32
 pub fn u32::trailing_zeros(self) -> u32
+pub fn u32::unzip(self) -> (Self, Self)
+pub fn u32::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u32::wrapping_add(self, Self) -> Self
 pub fn u32::wrapping_mul(self, Self) -> Self
 pub fn u32::wrapping_sub(self, Self) -> Self
@@ -2059,6 +2075,8 @@ pub fn u64::shr(self, u32) -> Self
 pub fn u64::splat_byte(u8) -> Self
 pub fn u64::trailing_ones(self) -> u32
 pub fn u64::trailing_zeros(self) -> u32
+pub fn u64::unzip(self) -> (Self, Self)
+pub fn u64::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u64::wrapping_add(self, Self) -> Self
 pub fn u64::wrapping_mul(self, Self) -> Self
 pub fn u64::wrapping_sub(self, Self) -> Self
@@ -2095,6 +2113,8 @@ pub fn u8::shr(self, u32) -> Self
 pub fn u8::splat_byte(u8) -> Self
 pub fn u8::trailing_ones(self) -> u32
 pub fn u8::trailing_zeros(self) -> u32
+pub fn u8::unzip(self) -> (Self, Self)
+pub fn u8::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u8::wrapping_add(self, Self) -> Self
 pub fn u8::wrapping_mul(self, Self) -> Self
 pub fn u8::wrapping_sub(self, Self) -> Self
@@ -2131,6 +2151,8 @@ pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
 pub fn hakmem::wide::Wide<N>::trailing_ones(self) -> u32
 pub fn hakmem::wide::Wide<N>::trailing_zeros(self) -> u32
+pub fn hakmem::wide::Wide<N>::unzip(self) -> (Self, Self)
+pub fn hakmem::wide::Wide<N>::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::wide::Wide<N>::wrapping_add(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_mul(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
@@ -2351,6 +2373,8 @@ pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
 pub fn hakmem::wide::Wide<N>::trailing_ones(self) -> u32
 pub fn hakmem::wide::Wide<N>::trailing_zeros(self) -> u32
+pub fn hakmem::wide::Wide<N>::unzip(self) -> (Self, Self)
+pub fn hakmem::wide::Wide<N>::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::wide::Wide<N>::wrapping_add(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_mul(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
@@ -2395,6 +2419,8 @@ pub fn hakmem::word::Word::shr(self, u32) -> Self
 pub fn hakmem::word::Word::splat_byte(u8) -> Self
 pub fn hakmem::word::Word::trailing_ones(self) -> u32
 pub fn hakmem::word::Word::trailing_zeros(self) -> u32
+pub fn hakmem::word::Word::unzip(self) -> (Self, Self)
+pub fn hakmem::word::Word::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::word::Word::wrapping_add(self, Self) -> Self
 pub fn hakmem::word::Word::wrapping_mul(self, Self) -> Self
 pub fn hakmem::word::Word::wrapping_sub(self, Self) -> Self
@@ -2431,6 +2457,8 @@ pub fn u128::shr(self, u32) -> Self
 pub fn u128::splat_byte(u8) -> Self
 pub fn u128::trailing_ones(self) -> u32
 pub fn u128::trailing_zeros(self) -> u32
+pub fn u128::unzip(self) -> (Self, Self)
+pub fn u128::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u128::wrapping_add(self, Self) -> Self
 pub fn u128::wrapping_mul(self, Self) -> Self
 pub fn u128::wrapping_sub(self, Self) -> Self
@@ -2467,6 +2495,8 @@ pub fn u16::shr(self, u32) -> Self
 pub fn u16::splat_byte(u8) -> Self
 pub fn u16::trailing_ones(self) -> u32
 pub fn u16::trailing_zeros(self) -> u32
+pub fn u16::unzip(self) -> (Self, Self)
+pub fn u16::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u16::wrapping_add(self, Self) -> Self
 pub fn u16::wrapping_mul(self, Self) -> Self
 pub fn u16::wrapping_sub(self, Self) -> Self
@@ -2503,6 +2533,8 @@ pub fn u32::shr(self, u32) -> Self
 pub fn u32::splat_byte(u8) -> Self
 pub fn u32::trailing_ones(self) -> u32
 pub fn u32::trailing_zeros(self) -> u32
+pub fn u32::unzip(self) -> (Self, Self)
+pub fn u32::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u32::wrapping_add(self, Self) -> Self
 pub fn u32::wrapping_mul(self, Self) -> Self
 pub fn u32::wrapping_sub(self, Self) -> Self
@@ -2539,6 +2571,8 @@ pub fn u64::shr(self, u32) -> Self
 pub fn u64::splat_byte(u8) -> Self
 pub fn u64::trailing_ones(self) -> u32
 pub fn u64::trailing_zeros(self) -> u32
+pub fn u64::unzip(self) -> (Self, Self)
+pub fn u64::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u64::wrapping_add(self, Self) -> Self
 pub fn u64::wrapping_mul(self, Self) -> Self
 pub fn u64::wrapping_sub(self, Self) -> Self
@@ -2575,6 +2609,8 @@ pub fn u8::shr(self, u32) -> Self
 pub fn u8::splat_byte(u8) -> Self
 pub fn u8::trailing_ones(self) -> u32
 pub fn u8::trailing_zeros(self) -> u32
+pub fn u8::unzip(self) -> (Self, Self)
+pub fn u8::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u8::wrapping_add(self, Self) -> Self
 pub fn u8::wrapping_mul(self, Self) -> Self
 pub fn u8::wrapping_sub(self, Self) -> Self
@@ -2611,6 +2647,8 @@ pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
 pub fn hakmem::wide::Wide<N>::trailing_ones(self) -> u32
 pub fn hakmem::wide::Wide<N>::trailing_zeros(self) -> u32
+pub fn hakmem::wide::Wide<N>::unzip(self) -> (Self, Self)
+pub fn hakmem::wide::Wide<N>::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::wide::Wide<N>::wrapping_add(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_mul(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
@@ -2970,6 +3008,8 @@ pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
 pub fn hakmem::wide::Wide<N>::trailing_ones(self) -> u32
 pub fn hakmem::wide::Wide<N>::trailing_zeros(self) -> u32
+pub fn hakmem::wide::Wide<N>::unzip(self) -> (Self, Self)
+pub fn hakmem::wide::Wide<N>::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::wide::Wide<N>::wrapping_add(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_mul(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self
@@ -3341,6 +3381,8 @@ pub fn hakmem::Word::shr(self, u32) -> Self
 pub fn hakmem::Word::splat_byte(u8) -> Self
 pub fn hakmem::Word::trailing_ones(self) -> u32
 pub fn hakmem::Word::trailing_zeros(self) -> u32
+pub fn hakmem::Word::unzip(self) -> (Self, Self)
+pub fn hakmem::Word::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::Word::wrapping_add(self, Self) -> Self
 pub fn hakmem::Word::wrapping_mul(self, Self) -> Self
 pub fn hakmem::Word::wrapping_sub(self, Self) -> Self
@@ -3377,6 +3419,8 @@ pub fn u128::shr(self, u32) -> Self
 pub fn u128::splat_byte(u8) -> Self
 pub fn u128::trailing_ones(self) -> u32
 pub fn u128::trailing_zeros(self) -> u32
+pub fn u128::unzip(self) -> (Self, Self)
+pub fn u128::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u128::wrapping_add(self, Self) -> Self
 pub fn u128::wrapping_mul(self, Self) -> Self
 pub fn u128::wrapping_sub(self, Self) -> Self
@@ -3413,6 +3457,8 @@ pub fn u16::shr(self, u32) -> Self
 pub fn u16::splat_byte(u8) -> Self
 pub fn u16::trailing_ones(self) -> u32
 pub fn u16::trailing_zeros(self) -> u32
+pub fn u16::unzip(self) -> (Self, Self)
+pub fn u16::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u16::wrapping_add(self, Self) -> Self
 pub fn u16::wrapping_mul(self, Self) -> Self
 pub fn u16::wrapping_sub(self, Self) -> Self
@@ -3449,6 +3495,8 @@ pub fn u32::shr(self, u32) -> Self
 pub fn u32::splat_byte(u8) -> Self
 pub fn u32::trailing_ones(self) -> u32
 pub fn u32::trailing_zeros(self) -> u32
+pub fn u32::unzip(self) -> (Self, Self)
+pub fn u32::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u32::wrapping_add(self, Self) -> Self
 pub fn u32::wrapping_mul(self, Self) -> Self
 pub fn u32::wrapping_sub(self, Self) -> Self
@@ -3485,6 +3533,8 @@ pub fn u64::shr(self, u32) -> Self
 pub fn u64::splat_byte(u8) -> Self
 pub fn u64::trailing_ones(self) -> u32
 pub fn u64::trailing_zeros(self) -> u32
+pub fn u64::unzip(self) -> (Self, Self)
+pub fn u64::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u64::wrapping_add(self, Self) -> Self
 pub fn u64::wrapping_mul(self, Self) -> Self
 pub fn u64::wrapping_sub(self, Self) -> Self
@@ -3521,6 +3571,8 @@ pub fn u8::shr(self, u32) -> Self
 pub fn u8::splat_byte(u8) -> Self
 pub fn u8::trailing_ones(self) -> u32
 pub fn u8::trailing_zeros(self) -> u32
+pub fn u8::unzip(self) -> (Self, Self)
+pub fn u8::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn u8::wrapping_add(self, Self) -> Self
 pub fn u8::wrapping_mul(self, Self) -> Self
 pub fn u8::wrapping_sub(self, Self) -> Self
@@ -3557,6 +3609,8 @@ pub fn hakmem::wide::Wide<N>::shr(self, u32) -> Self
 pub fn hakmem::wide::Wide<N>::splat_byte(u8) -> Self
 pub fn hakmem::wide::Wide<N>::trailing_ones(self) -> u32
 pub fn hakmem::wide::Wide<N>::trailing_zeros(self) -> u32
+pub fn hakmem::wide::Wide<N>::unzip(self) -> (Self, Self)
+pub fn hakmem::wide::Wide<N>::unzip_in<I: hakmem::isa::Isa>(self, I) -> (Self, Self)
 pub fn hakmem::wide::Wide<N>::wrapping_add(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_mul(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::wrapping_sub(self, Self) -> Self

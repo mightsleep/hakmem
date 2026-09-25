@@ -32,6 +32,12 @@ fn primitives<I: Isa, W: Word>(cpu: I, x: W, m: W) {
         reference::pdep(x, m),
         "{cpu:?} pdep {x:x} {m:x}"
     );
+    let even = W::splat_byte(0x55);
+    assert_eq!(
+        cpu.unzip(x),
+        (reference::pext(x, even), reference::pext(x, even.shl(1))),
+        "{cpu:?} unzip {x:x}"
+    );
     assert_eq!(
         cpu.xor_scan(x),
         reference::prefix_xor(x),

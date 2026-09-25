@@ -50,6 +50,7 @@ macro_rules! for_all {
 #[test]
 #[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
 fn u8_unary_laws() {
+    for_all!(u8, x => laws::unzip_is_two_compacts(x));
     for_all!(u8, x => laws::run_starts_one_is_identity(x));
     for_all!(u8, x => laws::prefix_xor_after_delta_is_identity(x));
     for_all!(u8, x => laws::delta_after_prefix_xor_is_identity(x));
@@ -127,6 +128,7 @@ fn u8_compact_composes_all_triples() {
 #[test]
 #[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
 fn u16_unary_laws() {
+    for_all!(u16, x => laws::unzip_is_two_compacts(x));
     for_all!(u16, x => laws::run_starts_one_is_identity(x));
     for_all!(u16, x => laws::prefix_xor_after_delta_is_identity(x));
     for_all!(u16, x => laws::delta_after_prefix_xor_is_identity(x));
@@ -693,5 +695,22 @@ fn intersects_u8_every_rectangle() {
                 }
             }
         }
+    }
+}
+
+/// `unzip` on `u32` and `u64` without PEXT is a bit permutation: every
+/// ladder step ORs bits the mask keeps apart, so it moves bits and never
+/// mixes them, and the image of a word is the XOR of the images of its
+/// bits. Every single bit, then, is every word.
+#[test]
+fn unzip_moves_every_bit() {
+    for i in 0..32 {
+        assert!(laws::unzip_is_two_compacts(1u32 << i), "u32 bit {i}");
+    }
+    for i in 0..64 {
+        assert!(laws::unzip_is_two_compacts(1u64 << i), "u64 bit {i}");
+    }
+    for x in [0u32, u32::MAX, 0x5555_5555, 0xAAAA_AAAA] {
+        assert!(laws::unzip_is_two_compacts(x), "u32 {x:x}");
     }
 }

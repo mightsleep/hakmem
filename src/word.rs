@@ -7,8 +7,8 @@
 //!
 //! This module is the **only** place hardware selection happens. Each
 //! primitive with a fast path ([`pext`](Word::pext), [`pdep`](Word::pdep),
-//! [`select_lowest`](Word::select_lowest), [`xor_scan`](Word::xor_scan),
-//! [`xor_scan_down`](Word::xor_scan_down))
+//! [`unzip`](Word::unzip), [`select_lowest`](Word::select_lowest),
+//! [`xor_scan`](Word::xor_scan), [`xor_scan_down`](Word::xor_scan_down))
 //! picks the instruction when the matching `target_feature` is enabled
 //! at compile time and the `portable` cargo feature is off; otherwise a
 //! broadword definition with the same contract. The laws in
@@ -141,6 +141,16 @@ pub trait Word:
     fn pdep(self, mask: Self) -> Self {
         self.pdep_in(mask, Native)
     }
+    /// The even bits and the odd bits, each compacted to the low half:
+    /// `(pext(0x55…), pext(0xAA…))`, the Morton decode, and Hacker's
+    /// Delight's outer unshuffle (7-2) with its halves in two words.
+    /// BMI2: two PEXT; portable, `u32` and narrower: one shift ladder
+    /// over a `u64` that holds both halves; otherwise two compresses.
+    #[must_use]
+    #[inline]
+    fn unzip(self) -> (Self, Self) {
+        self.unzip_in(Native)
+    }
 
     /// Position of the `k`-th set bit (from 0), or `BITS` when there is
     /// none: the answer `trailing_zeros` gives for zero, which is where
@@ -172,7 +182,7 @@ pub trait Word:
         self.xor_scan_down_in(Native)
     }
 
-    /// [`pext`](Word::pext) with the instructions of `isa`. The five
+    /// [`pext`](Word::pext) with the instructions of `isa`. The six
     /// `_in` methods are the ones a carrier routes to hardware; the
     /// provided ones are the portable definitions, which is what an
     /// `isa` without the instruction would use anyway.
@@ -188,6 +198,15 @@ pub trait Word:
     fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
         let _ = isa;
         expand_broadword(self, mask)
+    }
+    /// [`unzip`](Word::unzip) with the instructions of `isa`.
+    #[must_use]
+    #[inline]
+    fn unzip_in<I: Isa>(self, isa: I) -> (Self, Self) {
+        // The odd bits shifted down and compacted under the even mask:
+        // a compress under the odd mask itself takes a round more.
+        let even = Self::splat_byte(0x55);
+        (self.pext_in(even, isa), self.shr(1).pext_in(even, isa))
     }
     /// [`select_lowest`](Word::select_lowest) with the instructions of
     /// `isa`. The provided loop takes `k` steps, so a carrier overrides it.
@@ -265,6 +284,26 @@ pub trait Word:
 }
 
 // --- portable definitions ----------------------------------------------
+
+/// The even and the odd bits of `x`, each compacted, without PEXT: both
+/// halves side by side in a `u64` and one shift ladder for the two, the
+/// way the `morton` crate decodes. What a bit shifts across the middle
+/// lands where the next mask clears it. Two compresses of a `u32` cost
+/// a third more.
+#[inline]
+#[must_use]
+pub(crate) const fn unzip_broadword(x: u32) -> (u32, u32) {
+    let z = x as u64;
+    let mut w = (z | (z >> 1) << 32) & 0x5555_5555_5555_5555;
+    w = (w | w >> 1) & 0x3333_3333_3333_3333;
+    w = (w | w >> 2) & 0x0F0F_0F0F_0F0F_0F0F;
+    w = (w | w >> 4) & 0x00FF_00FF_00FF_00FF;
+    // No last mask: each half is 16 bits, and the truncation clears
+    // what the shift dragged above them, as a zero-extending move.
+    w |= w >> 8;
+    #[allow(clippy::cast_possible_truncation)]
+    (w as u16 as u32, (w >> 32) as u16 as u32)
+}
 
 /// Portable PEXT: compress by parallel suffix (Hacker's Delight 7-4).
 ///
@@ -513,6 +552,10 @@ impl Word for u64 {
         isa.pext_u64(self, mask)
     }
     #[inline]
+    fn unzip_in<I: Isa>(self, isa: I) -> (Self, Self) {
+        isa.unzip_u64(self)
+    }
+    #[inline]
     fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
         isa.pdep_u64(self, mask)
     }
@@ -536,6 +579,10 @@ impl Word for u32 {
     #[inline]
     fn pext_in<I: Isa>(self, mask: Self, isa: I) -> Self {
         isa.pext_u32(self, mask)
+    }
+    #[inline]
+    fn unzip_in<I: Isa>(self, isa: I) -> (Self, Self) {
+        isa.unzip_u32(self)
     }
     #[inline]
     fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
@@ -630,6 +677,13 @@ macro_rules! impl_word_narrow {
             #[inline]
             fn pext_in<I: Isa>(self, mask: Self, isa: I) -> Self {
                 u32::from(self).pext_in(u32::from(mask), isa) as $t
+            }
+            // Each half of a zero-extended word fits the narrow one.
+            #[allow(clippy::cast_possible_truncation)]
+            #[inline]
+            fn unzip_in<I: Isa>(self, isa: I) -> (Self, Self) {
+                let (even, odd) = u32::from(self).unzip_in(isa);
+                (even as $t, odd as $t)
             }
             // Deposited bits land only at set positions of `mask`.
             #[allow(clippy::cast_possible_truncation)]

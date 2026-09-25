@@ -164,11 +164,12 @@ impl<W: Word> Morton2<W> {
         Self(xd.or(yd.shl(1)))
     }
 
-    /// Splits the code back into `(x, y)`.
+    /// Splits the code back into `(x, y)`: [`Word::unzip`], two PEXT of
+    /// the code itself with BMI2, one ladder for both on a `u32` without.
     #[inline]
     #[must_use]
     pub fn decode(self) -> (W, W) {
-        (self.x().to_int(), self.y().to_int())
+        self.0.unzip()
     }
 
     /// Wraps an existing code.

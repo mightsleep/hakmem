@@ -63,6 +63,26 @@ pub trait Isa:
     fn pdep_u32(self, x: u32, mask: u32) -> u32;
     #[doc(hidden)]
     fn pdep_u64(self, x: u64, mask: u64) -> u64;
+    /// The even and the odd bits of `x`, each compacted: a Morton decode.
+    /// Two PEXT where the level has them; otherwise one ladder over a
+    /// `u64` holding both halves.
+    #[doc(hidden)]
+    #[inline(always)]
+    fn unzip_u32(self, x: u32) -> (u32, u32) {
+        crate::word::unzip_broadword(x)
+    }
+    /// The same for a `u64`: two PEXT, or two compresses of the even bits,
+    /// the odd ones shifted down first; a compress under the odd mask
+    /// itself takes a round more.
+    #[doc(hidden)]
+    #[inline(always)]
+    fn unzip_u64(self, x: u64) -> (u64, u64) {
+        const EVEN: u64 = 0x5555_5555_5555_5555;
+        (
+            compress_broadword(x, EVEN),
+            compress_broadword(x >> 1, EVEN),
+        )
+    }
     #[doc(hidden)]
     fn select_u64(self, x: u64, k: u32) -> u32;
     #[doc(hidden)]
@@ -79,6 +99,11 @@ pub trait Isa:
     #[inline(always)]
     fn pdep<W: crate::Word>(self, x: W, mask: W) -> W {
         x.pdep_in(mask, self)
+    }
+    /// [`Word::unzip`](crate::Word::unzip) with this token's instructions.
+    #[inline(always)]
+    fn unzip<W: crate::Word>(self, x: W) -> (W, W) {
+        x.unzip_in(self)
     }
     /// [`Bits::select`](crate::Bits::select) with this token's instructions.
     #[inline(always)]
@@ -230,6 +255,30 @@ impl Isa for Native {
         )
     }
     #[inline(always)]
+    fn unzip_u32(self, x: u32) -> (u32, u32) {
+        native_bmi2!(
+            (
+                crate::x86::bmi2::pext_u32(x, 0x5555_5555),
+                crate::x86::bmi2::pext_u32(x, 0xAAAA_AAAA)
+            ),
+            crate::word::unzip_broadword(x)
+        )
+    }
+    #[inline(always)]
+    fn unzip_u64(self, x: u64) -> (u64, u64) {
+        const EVEN: u64 = 0x5555_5555_5555_5555;
+        native_bmi2!(
+            (
+                crate::x86::bmi2::pext_u64(x, EVEN),
+                crate::x86::bmi2::pext_u64(x, !EVEN)
+            ),
+            (
+                compress_broadword(x, EVEN),
+                compress_broadword(x >> 1, EVEN)
+            )
+        )
+    }
+    #[inline(always)]
     fn pdep_u64(self, x: u64, mask: u64) -> u64 {
         native_bmi2!(
             crate::x86::bmi2::pdep_u64(x, mask),
@@ -337,6 +386,17 @@ macro_rules! x86_level {
                 fn pdep_u32(self, x: u32, mask: u32) -> u32 {
                     // SAFETY: see above.
                     if $bmi2 { unsafe { bmi2::pdep_u32(x, mask) } } else { crate::word::expand_broadword(x, mask) }
+                }
+                #[inline(always)]
+                fn unzip_u32(self, x: u32) -> (u32, u32) {
+                    // SAFETY: see above.
+                    if $bmi2 { unsafe { (bmi2::pext_u32(x, 0x5555_5555), bmi2::pext_u32(x, 0xAAAA_AAAA)) } } else { crate::word::unzip_broadword(x) }
+                }
+                #[inline(always)]
+                fn unzip_u64(self, x: u64) -> (u64, u64) {
+                    const EVEN: u64 = 0x5555_5555_5555_5555;
+                    // SAFETY: see above.
+                    if $bmi2 { unsafe { (bmi2::pext_u64(x, EVEN), bmi2::pext_u64(x, !EVEN)) } } else { (crate::word::compress_broadword(x, EVEN), crate::word::compress_broadword(x >> 1, EVEN)) }
                 }
                 #[inline(always)]
                 fn pdep_u64(self, x: u64, mask: u64) -> u64 {

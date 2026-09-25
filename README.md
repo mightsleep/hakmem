@@ -23,7 +23,7 @@ bit tricks they are made of. `no_std`, no dependencies, stable Rust, no
 | job | `hakmem` | what people use |
 |---|---|---|
 | 2D Hilbert keys from coordinates, 1024 points | **1.3 µs** | `fast_hilbert` 12.2 µs |
-| 2D Morton keys from coordinates, 1024 points | **0.18 µs** | `zorder` 1.9 µs, 0.90 with its BMI2 path |
+| 2D Morton keys from coordinates, 1024 points | **0.17 µs** | `zorder` 1.9 µs, 0.89 with its BMI2 path |
 | a rectangle as 16 sorted ranges of keys | 0.3 µs Morton, 1.1 µs Hilbert | |
 | can a block of keys hold a point of the rectangle | 10 to 100 ns | |
 | rank over 2^20 bits, 1024 queries | **1.3 µs** | `sux` 2.0 µs |
@@ -329,27 +329,29 @@ similar strings and is not implemented.
 
 | Morton code in 2D, `u32` coordinates (1024 points) | encode, portable | encode, `+bmi2` | decode, portable | decode, `+bmi2` |
 |---|---|---|---|---|
-| `hakmem` `Morton2`, columns | **0.18 µs** | **0.17 µs** | **0.22 µs** | **0.22 µs** |
-| `hakmem` `Morton2`, per point | 1.81 µs | 0.47 µs | 1.44 µs | 0.58 µs |
-| `zorder`, with its BMI2 path where the CPU has it | 0.90 µs | 0.47 µs | 1.10 µs | 0.40 µs |
-| `zorder`, portable | 1.87 µs | 1.88 µs | 1.52 µs | 1.37 µs |
-| `morton-encoding` (also `lindel`'s Morton) | 37 µs | 37 µs | 36 µs | 36 µs |
+| `hakmem` `Morton2`, columns | **0.17 µs** | **0.17 µs** | **0.22 µs** | **0.22 µs** |
+| `hakmem` `Morton2`, per point | 1.81 µs | 0.47 µs | 1.39 µs | 0.44 µs |
+| `zorder`, with its BMI2 path where the CPU has it | 0.89 µs | 0.47 µs | 0.95 µs | 0.44 µs |
+| `zorder`, portable | 1.88 µs | 1.87 µs | 1.36 µs | 1.36 µs |
+| `morton-encoding` (also `lindel`'s Morton) | 37 µs | 36 µs | 36 µs | 36 µs |
 
 | Morton code in 2D, `u16` coordinates (1024 points) | encode, portable | encode, `+bmi2` | decode, portable | decode, `+bmi2` |
 |---|---|---|---|---|
 | `hakmem` `Morton2<u32>`, columns | **0.09 µs** | **0.09 µs** | **0.11 µs** | **0.11 µs** |
-| `hakmem` `Morton2<u32>`, per point | 1.52 µs | 0.58 µs | 1.62 µs | 0.58 µs |
-| `morton` | 1.52 µs | 1.52 µs | 1.15 µs | 1.15 µs |
+| `hakmem` `Morton2<u32>`, per point | 1.52 µs | 0.58 µs | 1.15 µs | 0.39 µs |
+| `morton` | 1.52 µs | 1.52 µs | 1.15 µs | 1.16 µs |
 
 The columns win because they choose AVX2 at run time and spread a
-coordinate's nibbles with one PSHUFB; a point at a time, a Morton code
-is a shift ladder or one PDEP, and the crates that do the same tie.
-Two do it better: `zorder`'s BMI2 decode, by a margin not yet
-explained (design notes 11.10), and `morton`, which decodes both
-coordinates of a `u32` key in one ladder over a `u64`, half the
-operations of two. Among the
-Morton crates, the most downloaded ones, only `zorder` finds PDEP
-without build flags, through a token it checks per call.
+coordinate's nibbles with one PSHUFB. A point at a time, a Morton code
+is a shift ladder or one PDEP each way, and it ties with the crates
+that do the same: the decode is `Word::unzip`, two PEXT of the code
+with BMI2, and without it, on a `u32` key, one ladder over a `u64`
+holding both halves, which is `morton`'s trick. Every row writes its
+coordinates at the coordinates' width. The one column this crate does
+not take is the per-point form without build flags, where `zorder`
+checks for BMI2 on every call and this crate uses what the build
+proves: ask once instead, with the columns or `dispatch!`
+([Hardware paths](#hardware-paths)).
 
 | Hilbert curve, 32 levels, `u32` coordinates (1024 points) | decode, portable | decode, `+pclmulqdq` | encode, portable | encode, `+bmi2,+pclmulqdq` |
 |---|---|---|---|---|

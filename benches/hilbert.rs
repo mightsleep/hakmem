@@ -522,6 +522,17 @@ fn morton_data() -> MortonData {
     let bmi2 = zorder::bmi2::HardwareSupportToken::new();
     for ((&x, &y), &m) in xs.iter().zip(&ys).zip(&codes) {
         assert_eq!(zorder::index_of([x, y]), m, "zorder order");
+        assert_eq!(zorder::coord_of(m), [x, y], "zorder decode");
+        assert_eq!(
+            morton_encoding::morton_decode::<u32, 2>(m),
+            [y, x],
+            "morton-encoding decode"
+        );
+        assert_eq!(
+            Morton2::<u64>::from_code(m).decode(),
+            (x.into(), y.into()),
+            "hakmem decode"
+        );
         assert_eq!(
             morton_encoding::morton_encode([y, x]),
             m,
@@ -529,6 +540,7 @@ fn morton_data() -> MortonData {
         );
         if let Some(t) = bmi2 {
             assert_eq!(zorder::bmi2::index_of([x, y], t), m, "zorder bmi2 order");
+            assert_eq!(zorder::bmi2::coord_of(m, t), [x, y], "zorder bmi2 decode");
         }
     }
     MortonData {
@@ -598,23 +610,21 @@ fn bench_morton(c: &mut Criterion) {
 }
 
 fn bench_morton_decode(c: &mut Criterion) {
-    let MortonData {
-        xs,
-        ys,
-        codes,
-        bmi2,
-        ..
-    } = morton_data();
+    let MortonData { codes, bmi2, .. } = morton_data();
     let (mut dx, mut dy) = (vec![0u64; N], vec![0u64; N]);
     let (mut ex, mut ey) = (vec![0u32; N], vec![0u32; N]);
     {
         let mut g = c.benchmark_group("morton2/decode");
+        // Into the same `u32` columns as the incumbents', as in the `u16`
+        // group below: the coordinates are `u32`, whatever the key.
+        #[allow(clippy::cast_possible_truncation)]
         g.bench_function("hakmem", |b| {
             b.iter(|| {
-                for ((&m, x), y) in codes.iter().zip(&mut dx).zip(&mut dy) {
-                    (*x, *y) = Morton2::<u64>::from_code(black_box(m)).decode();
+                for ((&m, x), y) in codes.iter().zip(&mut ex).zip(&mut ey) {
+                    let (a, c) = Morton2::<u64>::from_code(black_box(m)).decode();
+                    (*x, *y) = (a as u32, c as u32);
                 }
-                black_box((&dx, &dy));
+                black_box((&ex, &ey));
             });
         });
         g.bench_function("hakmem columns", |b| {
@@ -651,7 +661,6 @@ fn bench_morton_decode(c: &mut Criterion) {
         }
         g.finish();
     }
-    assert!(ex.iter().zip(&xs).all(|(a, b)| a == b) && ey.iter().zip(&ys).all(|(a, b)| a == b));
 }
 
 /// `morton` has `u16` coordinates only: against `Morton2<u32>`.
@@ -671,6 +680,13 @@ fn bench_morton_u16(c: &mut Criterion) {
             morton::interleave_morton(x, y),
             Morton2::<u32>::encode(x.into(), y.into()).code(),
             "morton order"
+        );
+        let m = morton::interleave_morton(x, y);
+        assert_eq!(morton::deinterleave_morton(m), (x, y), "morton decode");
+        assert_eq!(
+            Morton2::<u32>::from_code(m).decode(),
+            (x.into(), y.into()),
+            "hakmem decode"
         );
     }
     let mut out32 = vec![0u32; N];
@@ -704,12 +720,16 @@ fn bench_morton_u16(c: &mut Criterion) {
     let (mut vx, mut vy) = (vec![0u16; N], vec![0u16; N]);
     {
         let mut g = c.benchmark_group("morton2/decode u16");
+        // Into the same `u16` columns as `morton`'s: a store twice as wide
+        // was a tenth of the time, and not the decode's.
+        #[allow(clippy::cast_possible_truncation)]
         g.bench_function("hakmem", |b| {
             b.iter(|| {
-                for ((&m, x), y) in out32.iter().zip(&mut ux).zip(&mut uy) {
-                    (*x, *y) = Morton2::<u32>::from_code(black_box(m)).decode();
+                for ((&m, x), y) in out32.iter().zip(&mut vx).zip(&mut vy) {
+                    let (a, c) = Morton2::<u32>::from_code(black_box(m)).decode();
+                    (*x, *y) = (a as u16, c as u16);
                 }
-                black_box((&ux, &uy));
+                black_box((&vx, &vy));
             });
         });
         g.bench_function("hakmem columns", |b| {
@@ -728,7 +748,6 @@ fn bench_morton_u16(c: &mut Criterion) {
         });
         g.finish();
     }
-    assert!(vx == sx && vy == sy);
 }
 
 /// A granule and a rectangle, `intersects` in its argument order.

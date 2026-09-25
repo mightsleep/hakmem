@@ -863,15 +863,6 @@ called where the features are already proven (fearless_simd #293).
   12 GB/s classifying, 11.11): x86 and aarch64 never use it, but an
   engine on anything else would. A nibble lookup in a `u64` has better
   shapes than sixteen table reads.
-- Two Morton rows lost when the README's table got incumbents: with
-  `+bmi2`, `zorder` decodes 1024 `u64` keys in 0.40 µs against
-  `Morton2::decode`'s 0.58, both two PEXTs a key (`zorder` shifts
-  its mask to the bit instead of the key), the difference not yet read
-  off the asm (`codegen/x86_64-linux-loops-v3.txt` has this crate's loop);
-  and without flags `morton` decodes `u16` pairs in 1.15 µs against
-  1.62, by spreading both coordinates of the `u32` key through one
-  ladder in a `u64`. `Morton2<u32>` could do the same whenever a wider
-  word is free.
 
 ### 11.11 What the prototype changed
 
@@ -1150,6 +1141,26 @@ lines are the newline mask's `positions`, and llvm-symbolizer's
 records, split on blank lines, are `nl & nl >> 1` with the next word's
 first bit carried in, whose popcount counts the records before a line
 is read.
+
+The Morton decode lost two rows when the README's table got
+incumbents, and the loops tool said why before the profiler had to.
+With BMI2 the loop was 14 instructions where `zorder`'s is 10:
+`Morton2::decode` took `x()` and `y()`, a mask and a shift and a mask,
+and only then two PEXT, which ignore the bits outside their mask
+anyway. Without flags on a `u32` key it was 42 instructions, two
+compresses of 16 bits, where `morton` spreads both halves of the key
+into a `u64` and runs one ladder for the two. Both are `Word::unzip`
+now, the even and the odd bits compacted, with a leaf per width like
+`pext`: two PEXT of the code itself, or on `u32` the one ladder, its
+last mask left to the truncation to 16 bits; 10 and 29 instructions.
+On `u64` without PEXT the odd bits are shifted down first, since a
+compress under the odd mask itself takes a round more and was the
+slower by 70 %. What remained of the gap after that was the bench:
+this crate's rows wrote coordinates twice as wide as the incumbents',
+a tenth of the time, and now every row writes them at their width. A
+law holds `unzip` to two compresses on every carrier, and the ladder,
+being a bit permutation, is checked on every single bit of a `u32`
+and a `u64`, which is every word.
 
 ## Sources
 
