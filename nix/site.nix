@@ -30,6 +30,8 @@
       hakmem-doc = "rustdoc, warnings as errors";
       hakmem-public-api = "public API matches public-api.txt";
       hakmem-codegen-bmi2 = "codegen, +bmi2,+pclmulqdq,+ssse3,+avx2: claims and instruction counts";
+      hakmem-codegen-portable = "codegen, no flags: claims and instruction counts";
+      hakmem-none = "bare metal and kernels: the none targets build, and a +bmi2 kernel keeps PEXT";
       hakmem-msrv = "MSRV build of the packaged tarball";
       hakmem-deny = "cargo-deny";
       hakmem-audit = "cargo-audit";

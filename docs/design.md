@@ -824,7 +824,6 @@ called where the features are already proven (fearless_simd #293).
 - An aarch64 level with PMULL for the scans (11.11), detected through
   libc's `getauxval` or Windows' `IsProcessorFeaturePresent` by
   `extern`, and never in a kernel.
-- A check that builds the soft-float targets, so 11.11's fix stays.
 - `Isa` sealed (hakmem's levels only) or open to user levels. Sealed
   first; opening it later breaks nothing.
 - Where slices stop detecting. Measured in 11.11: nowhere, the check
@@ -967,6 +966,10 @@ asking. BMI2 touches general registers only, so a kernel built with
 in the build means none in `Native` and nothing asks. A token in a
 kernel will come from `new_unchecked`, whose safety will then have to
 say the caller holds the vector state, not only that the CPU has it.
+The `hakmem-none` check builds the three bare-metal targets, since
+nothing on a host would notice them breaking, and wants a PEXT in the
+`+bmi2` kernel build; its first version grepped for `pext` as a word
+and found none, AT&T syntax spelling it `pextq`.
 
 ## Sources
 
