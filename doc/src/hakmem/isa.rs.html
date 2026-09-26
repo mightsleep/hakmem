@@ -23,7 +23,7 @@
 <a href=#23 id=23 data-nosnippet>23</a>//! not in it. Everything the closure calls has to inline into it: a
 <a href=#24 id=24 data-nosnippet>24</a>//! helper kept out of line (`#[inline(never)]`, or too big for LLVM's
 <a href=#25 id=25 data-nosnippet>25</a>//! taste) is compiled without the features, and each primitive in it
-<a href=#26 id=26 data-nosnippet>26</a>//! becomes a call. Design notes, section 11.
+<a href=#26 id=26 data-nosnippet>26</a>//! becomes a call. Design notes, section 3.
 <a href=#27 id=27 data-nosnippet>27</a>
 <a href=#28 id=28 data-nosnippet>28</a></span><span class="comment">// `inline(always)` on everything a token does: a primitive that stays out
 <a href=#29 id=29 data-nosnippet>29</a>// of line is compiled without the features, which is the whole bug.
