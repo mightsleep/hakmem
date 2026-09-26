@@ -747,6 +747,14 @@ fn main() {
                 l.classes_all(&bytes) == want,
                 "{l:?}: classes differ from the byte scan"
             );
+            // And the entry the parser reads: one block at a time, the
+            // last one padded, compiled and dispatched apart from the bulk.
+            for (w, block) in bytes.chunks(64).enumerate() {
+                assert!(
+                    l.classes(&scan::pad(block)) == want[w],
+                    "{l:?}: block {w}'s classes differ from the byte scan"
+                );
+            }
         }
     }
     if a.speed {

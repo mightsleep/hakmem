@@ -346,8 +346,10 @@ coordinate's nibbles with one PSHUFB. A point at a time, a Morton code
 is a shift ladder or one PDEP each way, and it ties with the crates
 that do the same: the decode is `Word::unzip`, two PEXT of the code
 with BMI2, and without it, on a `u32` key, one ladder over a `u64`
-holding both halves, which is `morton`'s trick. Every row writes its
-coordinates at the coordinates' width. The one column this crate does
+holding both halves, which is `morton`'s trick. Every per-point row
+writes its coordinates at the coordinates' width; the columns write
+them as wide as the key, since that is their API, and lead anyway. The
+one column this crate does
 not take is the per-point form without build flags, where `zorder`
 checks for BMI2 on every call and this crate uses what the build
 proves: ask once instead, with the columns or `dispatch!`

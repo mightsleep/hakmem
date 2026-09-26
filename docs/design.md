@@ -68,9 +68,10 @@ such as the stride of a dilated integer.
 
 ### 2.2 Selection at compile time per word, at run time per batch
 
-This is the rule as built. Section 11 proposes the next one: the same
-two granularities, with the instruction set a value the caller can
-hold, pass and choose.
+This was the whole rule in 0.1, and it is still the rule for a method
+on a word. Since 0.2 the instruction set is also a value the caller
+can hold, pass and choose (section 11): `dispatch!` asks the CPU once
+above a loop, and the slice operations and `Rank9` ask once a call.
 
 For an operation of one to three cycles, run-time dispatch costs more
 than the operation. There is no branch per combinator on a CPUID
@@ -630,11 +631,12 @@ What is and is not a breaking change:
   coarser), or the Hilbert counts at `s` and `s − 1` sharing their
   path (a third of the time at 16 ranges). Open, to come back to.
 
-## 11. Instruction sets as values (proposed)
+## 11. Instruction sets as values (built in 0.2)
 
-Not built. Section 2.2 describes the crate as it is; this is where the
-API is going, written down before the code so the code can disagree
-with it in public.
+Built in 0.2. What follows is the proposal as it was written before
+the code, so the code could disagree with it in public, and it is kept
+as written; 11.10 lists what is still open and 11.11 what the
+prototype changed.
 
 ### 11.1 What 2.2 gets wrong
 
@@ -859,6 +861,14 @@ called where the features are already proven (fearless_simd #293).
   it lacks for hakmem: the tokens as `Isa` levels (`X86V3` has AVX2
   already, `X86V4` AVX-512BW), NEON's pairs of `uint8x16_t`, and a
   SWAR fallback worth the name.
+- Under `X86V2`, which has no BMI2, the `pext` in a `dispatch!` body
+  is `compress_broadword`, and in the codegen cell it stays a call out
+  of the trampoline (`cg_dispatch_gather`'s `X86V2` arm): compiled
+  without the level's features, which it needs none of, so the cost is
+  the call. Found when the `CHECK-NOT: call` lines moved ahead of the
+  instruction they guard; that arm checks only that no PEXT is there.
+  Whether a broadword leaf this big belongs inlined into every
+  trampoline is the question.
 - `Swar16::lut16_nibbles` runs at a tenth of PSHUFB (1.2 against
   12 GB/s classifying, 11.11): x86 and aarch64 never use it, but an
   engine on anything else would. A nibble lookup in a `u64` has better

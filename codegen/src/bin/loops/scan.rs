@@ -467,6 +467,12 @@ mod tests {
                 let t = &text[..len];
                 let want = classes_naive(t);
                 assert!(level.classes_all(t) == want, "{level:?} classes, len {len}");
+                for (w, block) in t.chunks(64).enumerate() {
+                    assert!(
+                        level.classes(&pad(block)) == want[w],
+                        "{level:?} classes of block {w}, len {len}"
+                    );
+                }
                 let nl: Vec<u64> = want.iter().map(|m| m[NL]).collect();
                 assert!(level.newlines(t) == nl, "{level:?} newlines, len {len}");
             }

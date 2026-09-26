@@ -543,6 +543,13 @@ fn morton_data() -> MortonData {
             assert_eq!(zorder::bmi2::coord_of(m, t), [x, y], "zorder bmi2 decode");
         }
     }
+    // The column rows too: the same codes and the same points back.
+    let mut cols = vec![0u64; N];
+    Morton2::<u64>::encode_columns(&x64, &y64, &mut cols);
+    assert_eq!(cols, codes, "hakmem columns encode");
+    let (mut cx, mut cy) = (vec![0u64; N], vec![0u64; N]);
+    Morton2::<u64>::decode_columns(&codes, &mut cx, &mut cy);
+    assert!(cx == x64 && cy == y64, "hakmem columns decode");
     MortonData {
         xs,
         ys,
@@ -627,6 +634,8 @@ fn bench_morton_decode(c: &mut Criterion) {
                 black_box((&ex, &ey));
             });
         });
+        // The columns write `u64` coordinates, their API; the other rows
+        // write `u32`, so this row carries the wider store.
         g.bench_function("hakmem columns", |b| {
             b.iter(|| {
                 Morton2::<u64>::decode_columns(black_box(&codes), &mut dx, &mut dy);
@@ -689,6 +698,17 @@ fn bench_morton_u16(c: &mut Criterion) {
             "hakmem decode"
         );
     }
+    let codes: Vec<u32> = sx
+        .iter()
+        .zip(&sy)
+        .map(|(&x, &y)| morton::interleave_morton(x, y))
+        .collect();
+    let mut cols = vec![0u32; N];
+    Morton2::<u32>::encode_columns(&wide_x, &wide_y, &mut cols);
+    assert_eq!(cols, codes, "hakmem columns encode");
+    let (mut cx, mut cy) = (vec![0u32; N], vec![0u32; N]);
+    Morton2::<u32>::decode_columns(&codes, &mut cx, &mut cy);
+    assert!(cx == wide_x && cy == wide_y, "hakmem columns decode");
     let mut out32 = vec![0u32; N];
     {
         let mut g = c.benchmark_group("morton2/encode u16");
@@ -732,6 +752,8 @@ fn bench_morton_u16(c: &mut Criterion) {
                 black_box((&vx, &vy));
             });
         });
+        // The columns write `u32` coordinates, their API; `morton` writes
+        // `u16`, so this row carries the wider store.
         g.bench_function("hakmem columns", |b| {
             b.iter(|| {
                 Morton2::<u32>::decode_columns(black_box(&out32), &mut ux, &mut uy);

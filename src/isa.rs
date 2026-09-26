@@ -499,6 +499,11 @@ pub enum Level {
 /// build already has it all. With the `portable` feature, on soft-float
 /// targets (kernels), and under Miri without the features in the build,
 /// [`Level::Portable`].
+///
+/// The CPU is asked once a process and the answer cached, as
+/// `std::is_x86_feature_detected!` caches it: every CPU the process runs
+/// on is taken to have the same features, which x86 operating systems
+/// and firmware keep true.
 #[inline]
 #[must_use]
 // A constant in some builds, CPUID in the rest.

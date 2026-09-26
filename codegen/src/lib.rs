@@ -19,6 +19,7 @@ use hakmem::lanes::{Lanes, U8x16};
 use hakmem::{Bits, Hilbert2};
 
 // CHECK-LABEL: cg_compact_u64:
+// CHECK-NOT: call
 // BMI2: pext
 // PORTABLE-NOT: pext
 // CHECK-NOT: call
@@ -28,6 +29,7 @@ pub fn cg_compact_u64(x: u64, mask: u64) -> u64 {
 }
 
 // CHECK-LABEL: cg_expand_u64:
+// CHECK-NOT: call
 // BMI2: pdep
 // CHECK-NOT: call
 #[unsafe(no_mangle)]
@@ -39,6 +41,7 @@ pub fn cg_expand_u64(x: u64, mask: u64) -> u64 {
 // `+bmi1` LLVM spells `rep bsf`: the same bytes, TZCNT on anything with
 // BMI1, and the input is never zero here.
 // CHECK-LABEL: cg_select_u64:
+// CHECK-NOT: call
 // BMI2: pdep
 // BMI2: {{tzcnt|rep[[:space:]]+bsf}}
 // CHECK-NOT: call
@@ -49,6 +52,7 @@ pub fn cg_select_u64(x: u64, k: u32) -> Option<u32> {
 
 // A carry-less multiply by all ones.
 // CHECK-LABEL: cg_prefix_xor_u64:
+// CHECK-NOT: call
 // BMI2: pclmulqdq
 // CHECK-NOT: call
 #[unsafe(no_mangle)]
@@ -67,6 +71,7 @@ pub fn cg_hilbert2_encode_u64(x: u64, y: u64) -> u64 {
 
 // Sixteen bytes to a mask: a compare and a PMOVMSKB with SSSE3.
 // CHECK-LABEL: cg_quote_mask:
+// CHECK-NOT: call
 // BMI2: pcmpeqb
 // BMI2: pmovmskb
 // CHECK-NOT: call
@@ -88,6 +93,7 @@ pub fn cg_quote_mask(block: &[u8; 16]) -> u16 {
 // `dispatch!` runs the body under x86-64-v3 and the primitive in it is
 // the instruction, inlined, where `x.compact(m)` above is broadword.
 // CHECK-LABEL: <hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<u64, hakmem_codegen::cg_dispatch_gather::{closure#1}>:
+// CHECK-NOT: call
 // CHECK: pext
 // CHECK-NOT: call
 #[unsafe(no_mangle)]
@@ -100,6 +106,7 @@ pub fn cg_dispatch_gather(xs: &[u64], mask: u64) -> u64 {
 // carrier is an XMM register, a compare and a PMOVMSKB, where
 // `cg_quote_mask` above is SWAR arithmetic.
 // CHECK-LABEL: <hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<u16, hakmem_codegen::cg_dispatch_quote_mask::{closure#1}>:
+// CHECK-NOT: call
 // CHECK: pcmpeqb
 // CHECK: pmovmskb
 // CHECK-NOT: call
@@ -116,6 +123,7 @@ pub fn cg_dispatch_quote_mask(block: &[u8; 16]) -> u16 {
 // A slice method with no token in sight: it asks once per call and runs
 // under x86-64-v3, so the build without flags counts with POPCNT.
 // CHECK-LABEL: <hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<usize, <[u64] as hakmem::slice::Words>::count_ones::{closure#1}>:
+// CHECK-NOT: call
 // CHECK: popcnt
 // CHECK-NOT: call
 #[unsafe(no_mangle)]
@@ -128,6 +136,7 @@ pub fn cg_words_count_ones(xs: &[u64]) -> usize {
 // reverses the bits of sixteen bytes with one `gf2p8affineqb`, where
 // SSSE3 alone needs two lookups and a shift.
 // CHECK-LABEL: <hakmem::isa::x86v4::X86V4 as hakmem::isa::Isa>::run::trampoline::<u16, hakmem_codegen::cg_dispatch_reverse_bits::{closure#2}>:
+// CHECK-NOT: call
 // CHECK: gf2p8affineqb
 // CHECK-NOT: call
 #[unsafe(no_mangle)]
@@ -143,6 +152,8 @@ pub fn cg_dispatch_reverse_bits(block: &[u8; 16]) -> u16 {
 // a PEXT under it would be an illegal instruction on the CPUs the level
 // is for, which a test on a newer machine cannot see. This can.
 // CHECK-LABEL: <hakmem::isa::x86v2::X86V2 as hakmem::isa::Isa>::run::trampoline::<usize, <[u64] as hakmem::slice::Words>::count_ones::{closure#4}>:
+// CHECK-NOT: call
 // CHECK: popcnt
+// CHECK-NOT: call
 // CHECK-LABEL: <hakmem::isa::x86v2::X86V2 as hakmem::isa::Isa>::run::trampoline::<u64, hakmem_codegen::cg_dispatch_gather::{closure#4}>:
 // CHECK-NOT: pext

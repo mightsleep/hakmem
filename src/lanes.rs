@@ -674,6 +674,7 @@ mod x86 {
         #[must_use]
         pub fn from_halves_in(isa: L, lo: u64, hi: u64) -> Self {
             let _ = isa;
+            // SAFETY: see above.
             Self::r(unsafe { _mm_set_epi64x(hi.cast_signed(), lo.cast_signed()) })
         }
 
@@ -681,6 +682,7 @@ mod x86 {
         #[inline]
         #[must_use]
         pub fn halves(self) -> (u64, u64) {
+            // SAFETY: see above.
             let (lo, hi) = unsafe {
                 (
                     _mm_cvtsi128_si64(self.0),
@@ -697,11 +699,14 @@ mod x86 {
             if n >= 8 {
                 return Self::zero(self.isa());
             }
+            // SAFETY: see above.
             let count = unsafe { _mm_cvtsi32_si128(n.cast_signed()) };
             if left {
+                // SAFETY: see above.
                 Self::r(unsafe { _mm_sll_epi16(self.0, count) })
                     .and(Self::splat(self.isa(), 0xFFu8 << n))
             } else {
+                // SAFETY: see above.
                 Self::r(unsafe { _mm_srl_epi16(self.0, count) })
                     .and(Self::splat(self.isa(), 0xFF >> n))
             }
@@ -722,6 +727,7 @@ mod x86 {
         #[inline]
         fn splat(isa: L, b: u8) -> Self {
             let _ = isa;
+            // SAFETY: see above.
             Self::r(unsafe { _mm_set1_epi8(b.cast_signed()) })
         }
 
@@ -748,31 +754,37 @@ mod x86 {
 
         #[inline]
         fn and(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_and_si128(self.0, other.0) })
         }
 
         #[inline]
         fn or(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_or_si128(self.0, other.0) })
         }
 
         #[inline]
         fn xor(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_xor_si128(self.0, other.0) })
         }
 
         #[inline]
         fn not(self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_xor_si128(self.0, _mm_set1_epi8(-1)) })
         }
 
         #[inline]
         fn add(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_add_epi8(self.0, other.0) })
         }
 
         #[inline]
         fn sub(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_sub_epi8(self.0, other.0) })
         }
 
@@ -797,17 +809,20 @@ mod x86 {
 
         #[inline]
         fn cmp_eq(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_cmpeq_epi8(self.0, other.0) })
         }
 
         /// `a <= b` iff `min(a, b) == a`.
         #[inline]
         fn cmp_le(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_cmpeq_epi8(_mm_min_epu8(self.0, other.0), self.0) })
         }
 
         #[inline]
         fn lut16(self, table: [u8; 16]) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_shuffle_epi8(Self::load(self.isa(), &table).0, self.0) })
         }
 
@@ -815,12 +830,14 @@ mod x86 {
         fn to_bitmask(self) -> u16 {
             // movemask yields 16 bits in an i32; the truncation keeps them all.
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            // SAFETY: see above.
             let bits = unsafe { _mm_movemask_epi8(self.0) } as u16;
             bits
         }
 
         #[inline]
         fn shuffle(self, idx: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_shuffle_epi8(self.0, idx.0) })
         }
 
@@ -831,6 +848,7 @@ mod x86 {
             macro_rules! alignr {
                 ($($k:literal),*) => {
                     match n {
+                        // SAFETY: see above.
                         $($k => Self::r(unsafe { _mm_alignr_epi8::<$k>(other.0, self.0) }),)*
                         17..=31 => other.concat_shift(Self::zero(self.isa()), n - 16),
                         _ => Self::zero(self.isa()),
@@ -842,27 +860,32 @@ mod x86 {
 
         #[inline]
         fn add_sat(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_adds_epu8(self.0, other.0) })
         }
 
         #[inline]
         fn sub_sat(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_subs_epu8(self.0, other.0) })
         }
 
         #[inline]
         fn unpack_lo(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_unpacklo_epi8(self.0, other.0) })
         }
 
         #[inline]
         fn unpack_hi(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_unpackhi_epi8(self.0, other.0) })
         }
 
         /// PSADBW leaves a sum in each 64-bit half.
         #[inline]
         fn sum_abs_diff(self, other: Self) -> u32 {
+            // SAFETY: see above.
             let (lo, hi) = Self::r(unsafe { _mm_sad_epu8(self.0, other.0) }).halves();
             // Each half is at most 8 × 255.
             #[allow(clippy::cast_possible_truncation)]
@@ -872,11 +895,13 @@ mod x86 {
 
         #[inline]
         fn mul_add_pairs(self, weights: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_maddubs_epi16(self.0, weights.0) })
         }
 
         #[inline]
         fn avg_round(self, other: Self) -> Self {
+            // SAFETY: see above.
             Self::r(unsafe { _mm_avg_epu8(self.0, other.0) })
         }
 
@@ -890,6 +915,7 @@ mod x86 {
             if !L::GFNI {
                 return affine_by_lut16(self, map);
             }
+            // SAFETY: see above; `L::GFNI` was checked just before.
             let linear = Self::r(unsafe {
                 _mm_gf2p8affine_epi64_epi8::<0>(self.0, _mm_set1_epi64x(map.matrix().cast_signed()))
             });

@@ -42,11 +42,11 @@ hilbert hilbert.rs:222  141 insns  znver5 24.3  x86-64-v3 43.2
     8      word::shl
     4      word::or
    11  (not hakmem)
-hilbert hilbert.rs:845  16 insns  znver5 4.1  x86-64-v3 5.1
+hilbert hilbert.rs:867  16 insns  znver5 4.1  x86-64-v3 5.1
        calls cover::cover_ranges
     4  dilated::cover
    12  (not hakmem)
-hilbert hilbert.rs:854  16 insns  znver5 4.1  x86-64-v3 5.1
+hilbert hilbert.rs:876  16 insns  znver5 4.1  x86-64-v3 5.1
        calls cover::cover_ranges
     4  hilbert::cover
    12  (not hakmem)
@@ -105,7 +105,7 @@ hilbert hilbert.rs:371  103 insns  znver5 17.2  x86-64-v3 25.4
 hilbert hilbert.rs:390  14 insns  znver5 13.3  x86-64-v3 10.8
        calls <hilbert3::Hilbert3<u64>>::encode_columns
    14  (not hakmem)
-hilbert hilbert.rs:570  40 insns  znver5 7.1  x86-64-v3 12.2
+hilbert hilbert.rs:577  40 insns  znver5 7.1  x86-64-v3 12.2
    31  dilated::encode<u64> → word::zip<u64> → word::zip_in<u64, isa::Native>
    27    word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
    14      word::and
@@ -114,7 +114,7 @@ hilbert hilbert.rs:570  40 insns  znver5 7.1  x86-64-v3 12.2
     3    word::or
     1    word::shl
     9  (not hakmem)
-hilbert hilbert.rs:697  35 insns  znver5 6.2  x86-64-v3 9.6
+hilbert hilbert.rs:717  35 insns  znver5 6.2  x86-64-v3 9.6
    23  dilated::encode<u32> → word::zip<u32> → word::zip_in<u32, isa::Native>
    19    word::pdep_in<isa::Native> → isa::pdep_u32 → word::expand_broadword<u32>
    10      word::and
@@ -123,7 +123,7 @@ hilbert hilbert.rs:697  35 insns  znver5 6.2  x86-64-v3 9.6
     3    word::or
     1    word::shl
    12  (not hakmem)
-hilbert hilbert.rs:728  29 insns  znver5 4.9  x86-64-v3 7.2
+hilbert hilbert.rs:748  29 insns  znver5 4.9  x86-64-v3 7.2
    22  dilated::decode<u32> → word::unzip<u32> → word::unzip_in<isa::Native> → isa::unzip_u32
    21    word::unzip_broadword
     7  (not hakmem)
@@ -141,7 +141,7 @@ hilbert hilbert.rs:475  39 insns  znver5 6.6  x86-64-v3 10.3
    30    isa::unzip_u64
    29      word::gather_even_u64
     8  (not hakmem)
-hilbert hilbert.rs:623  40 insns  znver5 6.7  x86-64-v3 10.8
+hilbert hilbert.rs:630  40 insns  znver5 6.7  x86-64-v3 10.8
    32  dilated::decode<u64> → word::unzip<u64> → word::unzip_in<isa::Native>
    31    isa::unzip_u64
    30      word::gather_even_u64
