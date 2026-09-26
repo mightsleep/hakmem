@@ -1,72 +1,95 @@
-name: aarch64
-on:
-  push:
-    branches: [main]
-  pull_request:
-
+# Generated from nix/workflows.nix (workflows/ci-aarch64.yml): edit there, then `nix run .#snapshots -- workflows`.
 # The matrix lives in the flake: `plan` reads the check names and asks the
 # binary cache which outputs already exist, `check` builds only the rest
 # (.github/plan.sh). A cell whose output is in the cache passed by
 # construction; `status` records it as such.
+name: aarch64
+"on":
+  pull_request: {}
+  push:
+    branches:
+    - main
+permissions: {}
+defaults:
+  run:
+    shell: bash
 jobs:
   plan:
-    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
     outputs:
-      checks: ${{ steps.plan.outputs.checks }}
       cached: ${{ steps.plan.outputs.cached }}
+      checks: ${{ steps.plan.outputs.checks }}
+    runs-on: ubuntu-24.04-arm
     steps:
-      - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@v23
-      - id: plan
-        run: .github/plan.sh aarch64-linux
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      with:
+        extra-conf: extra-experimental-features = pipe-operators
+    - id: plan
+      run: .github/plan.sh aarch64-linux
+  # GitHub rejects an empty matrix; nothing to build is a valid plan.
   check:
-    needs: plan
-    # GitHub rejects an empty matrix; nothing to build is a valid plan.
-    if: needs.plan.outputs.checks != '[]'
     name: ${{ matrix.check }}
+    permissions:
+      contents: read
+    needs: plan
+    if: needs.plan.outputs.checks != '[]'
     runs-on: ubuntu-24.04-arm
     strategy:
       fail-fast: false
       matrix:
         check: ${{ fromJSON(needs.plan.outputs.checks) }}
     steps:
-      - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: cachix/cachix-action@v17
-        with:
-          name: hakmem
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - run: nix build -L .#checks.aarch64-linux.${{ matrix.check }}
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      with:
+        extra-conf: extra-experimental-features = pipe-operators
+    - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+      with:
+        name: hakmem
+        authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+    - env:
+        CHECK: ${{ matrix.check }}
+      run: nix build -L ".#checks.aarch64-linux.$CHECK"
   # A grey placeholder for every cell about to build that has no badge
   # yet: a missing file is a red "resource not found" in the README, and a
   # check new in this push has none until the run ends.
   pending:
+    permissions:
+      contents: write
     needs: plan
     if: github.event_name == 'push' && needs.plan.outputs.checks != '[]'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/status
-        with:
-          system: aarch64-linux
-          pending: ${{ needs.plan.outputs.checks }}
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/status
+      with:
+        pending: ${{ needs.plan.outputs.checks }}
+        system: aarch64-linux
   # Result of every cell to gh-pages for the README matrix and the site.
   # Pushes to main only: a PR run must not overwrite the status of main.
   status:
-    needs: [plan, pending, check]
-    if: always() && github.event_name == 'push'
-    runs-on: ubuntu-latest
     permissions:
       actions: read
       contents: write
+    needs:
+    - plan
+    - pending
+    - check
+    if: always() && github.event_name == 'push'
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/status
-        with:
-          system: aarch64-linux
-          cached: ${{ needs.plan.outputs.cached }}
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: ./.github/actions/status
+      with:
+        cached: ${{ needs.plan.outputs.cached }}
+        system: aarch64-linux

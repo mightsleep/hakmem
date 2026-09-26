@@ -1,12 +1,14 @@
+# Generated from nix/workflows.nix (dependabot.yml): edit there, then `nix run .#snapshots -- workflows`.
 # Dependabot: alerts over Cargo.lock are enabled under Settings, Security;
-# these are the weekly bump PRs. Nix inputs are bumped by update-flake-lock.yml.
+# these are the weekly bump PRs. Nix inputs are bumped by update-flake-lock.yml,
+# actions by `nix run .#bump-actions` (nix/actions.json).
 version: 2
 updates:
-  - package-ecosystem: cargo
-    directory: /
-    schedule:
-      interval: weekly
-  - package-ecosystem: github-actions
-    directory: /
-    schedule:
-      interval: weekly
+- package-ecosystem: cargo
+  directory: /
+  schedule:
+    interval: weekly
+  # A release a week old before it is proposed: time for a
+  # compromised one to be yanked (zizmor: dependabot-cooldown).
+  cooldown:
+    default-days: 7

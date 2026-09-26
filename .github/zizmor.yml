@@ -1,0 +1,7 @@
+# Generated from nix/workflows.nix (zizmor.yml): edit there, then `nix run .#snapshots -- workflows`.
+# zizmor's configuration, for checks.workflows.
+rules:
+  # `$/.github/actions/status` instead of `./`: actionlint 1.7.12 does not
+  # know the syntax yet and rejects it. Again when it does.
+  self-repository:
+    disable: true

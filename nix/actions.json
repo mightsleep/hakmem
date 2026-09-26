@@ -1,0 +1,11 @@
+{
+  "actions/attest": { "ref": "v4.2.2", "sha": "1e69f48acb82d1966a394da916b4c1698aa569d6" },
+  "actions/checkout": { "ref": "v7.0.1", "sha": "3d3c42e5aac5ba805825da76410c181273ba90b1" },
+  "benchmark-action/github-action-benchmark": { "ref": "v1.22.2", "sha": "4322e5726e6334590d251fc4f92bec0efafc45dc" },
+  "cachix/cachix-action": { "ref": "v17", "sha": "38b082610b782e7e93e209c35fd730d399dee866" },
+  "DeterminateSystems/nix-installer-action": { "ref": "v23", "sha": "3138316df39ed29be04236d7ffc686fa525866aa" },
+  "DeterminateSystems/update-flake-lock": { "ref": "v29", "sha": "da03c0f078bc4b2c37ee4f7e072d34bf8f188bb3" },
+  "dtolnay/rust-toolchain": { "ref": "stable", "sha": "6bed0761d98439e5a578e2877258200ad565ba87" },
+  "peaceiris/actions-gh-pages": { "ref": "v4.1.0", "sha": "84c30a85c19949d7eee79c4ff27748b70285e453" },
+  "rust-lang/crates-io-auth-action": { "ref": "v1.0.5", "sha": "c6f97d42243bad5fab37ca0427f495c86d5b1a18" }
+}

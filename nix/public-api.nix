@@ -1,10 +1,8 @@
 # The public API as text, one file per target under public-api/: the
 # instruction-set tokens make it differ by architecture, so one file
-# cannot be right on both CI runners. A change shows up in the diff of
-# the change that made it, and this check fails until the files say the
-# same. After a deliberate change:
-#
-#   nix build .#public-api && cp result/*.txt public-api/
+# cannot be right on both CI runners. A snapshot (nix/hakmem.nix): a
+# change shows up in the diff of the change that made it, and the check
+# fails until the files say the same.
 #
 # rustdoc needs no linker, so every host checks every target through the
 # `cross` toolchain. cargo-public-api reads the rustdoc JSON of the pinned
@@ -17,11 +15,9 @@
     ...
   }: let
     craneLib = config.rust.craneLib.overrideToolchain (_: config.rust.cross);
-    src = lib.cleanSourceWith {
-      src = ./..;
-      filter = path: type: craneLib.filterCargoSources path type || baseNameOf path == "README.md";
-      name = "source";
-    };
+    inherit (config.hakmem) keep;
+    inherit (config.rust) apiTargets;
+    src = config.hakmem.src [keep.readme];
     # Default features: what `hakmem = "0.2"` gets.
     apiOf = target:
       craneLib.mkCargoDerivation {
@@ -35,25 +31,19 @@
         doCheck = false;
         doInstallCargoArtifacts = false;
       };
-    apis = map apiOf config.rust.apiTargets;
     api = pkgs.symlinkJoin {
       name = "hakmem-public-api";
-      paths = apis;
+      paths = map apiOf apiTargets;
     };
   in {
     packages.public-api = api;
-    checks.hakmem-public-api = pkgs.runCommand "hakmem-public-api" {} ''
-      status=0
-      for target in ${lib.escapeShellArgs config.rust.apiTargets}; do
-        if ! diff -u ${../public-api}/$target.txt ${api}/$target.txt; then
-          status=1
-        fi
-      done
-      if [ $status -ne 0 ]; then
-        echo "The public API changed; if on purpose: nix build .#public-api && cp result/*.txt public-api/" >&2
-        exit 1
-      fi
-      touch $out
-    '';
+    hakmem.snapshots.hakmem-public-api = {
+      files =
+        apiTargets
+        |> map (t: lib.nameValuePair "public-api/${t}.txt" "${api}/${t}.txt")
+        |> lib.listToAttrs;
+      why = "The public API changed.";
+      description = "the public API matches public-api/, every target";
+    };
   };
 }

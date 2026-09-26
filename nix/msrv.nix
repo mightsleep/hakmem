@@ -48,7 +48,11 @@
     };
     deps = craneLibMsrv.buildDepsOnly msrvArgs;
   in {
-    checks.hakmem-msrv = craneLibMsrv.cargoTest (msrvArgs // {cargoArtifacts = deps;});
+    checks.hakmem-msrv = craneLibMsrv.cargoTest (msrvArgs
+      // {
+        cargoArtifacts = deps;
+        meta.description = "MSRV ${config.rust.msrvVersion}: the packaged tarball builds and tests";
+      });
     packages.hakmem-crate = crate;
   };
 }

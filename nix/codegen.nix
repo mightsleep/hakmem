@@ -1,12 +1,25 @@
-# What the compiler makes of the kernels: codegen/src/lib.rs says which
-# instructions a build must (or must not) contain, FileCheck holds the asm
-# to it, and the count of each mnemonic per function is checked in next to
-# it, like public-api/. After a deliberate change:
+# What the compiler makes of the kernels, in two kinds of cell, x86_64
+# only. Compile only, nothing runs, so a cell may ask for instructions no
+# CI runner has. Each writes snapshots (nix/hakmem.nix); after a
+# deliberate change, `nix run .#snapshots -- <the check>`.
 #
-#   nix build .#codegen-bmi2 && cp result/x86_64-linux-bmi2.txt codegen/
+# Claims: codegen/src/lib.rs says which instructions a build must (or must
+# not) contain, FileCheck holds the asm to it, and the count of each
+# mnemonic per function is a snapshot. The asm is kept in the output for
+# whoever wants to read it.
 #
-# Compile only, nothing runs, so a cell may ask for instructions no CI
-# runner has. The asm is kept in the output for whoever wants to read it.
+# Benches: the claim cells see one codegen unit and one caller per
+# wrapper, and there everything inlines. The benches are a crate that
+# calls hakmem the way a user's does: a release build, sixteen codegen
+# units, the same kernel from several places. Their linked binaries are
+# where a lost `#[inline]` shows, as a hakmem function that should not
+# exist; `<u64 as Word>::pext` did, and the 2D Hilbert decode was eight
+# times slower. One snapshot lists those functions per bench
+# (codegen/outlined.awk); the other is codegen/src/bin/loops.rs over the
+# same binaries: every innermost loop a bench times, by the hakmem
+# function each instruction was inlined from, with the calls it makes and
+# llvm-mca's cycles. `result/loops` has every instruction. Two checks, so
+# the badge says which of the two moved.
 {lib, ...}: {
   perSystem = {
     config,
@@ -15,15 +28,10 @@
     ...
   }: let
     inherit (config.rust) craneLib;
+    inherit (config.hakmem) keep;
     llvm = pkgs.llvmPackages.llvm;
-    src = lib.cleanSourceWith {
-      src = ./..;
-      filter = path: type:
-        craneLib.filterCargoSources path type
-        || baseNameOf path == "README.md"
-        || lib.hasSuffix ".awk" path;
-      name = "source";
-    };
+    src = config.hakmem.src [keep.readme (keep.suffix ".awk")];
+
     # One build of hakmem and the wrappers, asm of both, cut into the
     # functions lib.rs names.
     cell = name: rustflags:
@@ -42,47 +50,11 @@
         awk -f mnemonics.awk $out/functions.s > $out/${system}-${name}.txt
         cp src/lib.rs $out/claims.rs
       '';
-    check = name: prefixes: out:
-      pkgs.runCommand "hakmem-codegen-${name}-check" {nativeBuildInputs = [llvm];} ''
-        FileCheck --check-prefixes=${prefixes} --input-file=${out}/functions.s ${out}/claims.rs
-        if ! diff -u ${../codegen + "/${system}-${name}.txt"} ${out}/${system}-${name}.txt; then
-          echo "The instruction counts changed; if on purpose: nix build .#codegen-${name} && cp result/${system}-${name}.txt codegen/" >&2
-          exit 1
-        fi
-        touch $out
-      '';
-    bmi2 = cell "bmi2" "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx2";
-    # No flags: what a dependency gets by default, and where the tokens
-    # have to earn their keep.
-    portable = cell "portable" "";
 
-    # The cells above see one codegen unit and one caller per wrapper, and
-    # there everything inlines. The benches are a crate that calls hakmem
-    # the way a user's does: a release build, sixteen codegen units, the
-    # same kernel from several places. Their linked binaries are where a
-    # lost `#[inline]` shows, as a hakmem function that should not exist;
-    # `<u64 as Word>::pext` did, and the 2D Hilbert decode was eight times
-    # slower. The snapshot is the list of those functions per bench
-    # (codegen/outlined.awk). After a deliberate change:
-    #
-    #   nix build .#codegen-outlined-portable && cp result/x86_64-linux-outlined-portable.txt codegen/
-    #
-    # The same derivation runs codegen/src/bin/loops.rs over the binaries:
-    # every innermost loop a bench times, by the hakmem function each
-    # instruction was inlined from, with the calls it makes and llvm-mca's
-    # cycles, into x86_64-linux-loops-<name>.txt; `result/loops` has every
-    # instruction. Its own check, so the badge says which of the two moved.
-    benchSrc = lib.cleanSourceWith {
-      src = ./..;
-      filter = path: type:
-        craneLib.filterCargoSources path type
-        || baseNameOf path == "README.md";
-      name = "source";
-    };
     benchArgs = rustflags: {
-      src = benchSrc;
+      src = config.hakmem.src [keep.readme];
       pname = "hakmem";
-      version = (craneLib.crateNameFromCargoToml {cargoToml = ../Cargo.toml;}).version;
+      inherit (config.hakmem) version;
       strictDeps = true;
       CARGO_PROFILE = "release";
       RUSTFLAGS = rustflags;
@@ -141,34 +113,68 @@
             rm $out/outlined
           '';
         });
-    # One diff, two snapshots: which hakmem functions survived as
-    # functions, and what the benches' loops are made of.
-    snapshotCheck = kind: blurb: name: out:
-      pkgs.runCommand "hakmem-codegen-${kind}-${name}-check" {} ''
-        if ! diff -u ${../codegen + "/${system}-${kind}-${name}.txt"} ${out}/${system}-${kind}-${name}.txt; then
-          echo ${lib.escapeShellArg blurb} >&2
-          echo "If on purpose: nix build .#codegen-outlined-${name} && cp result/${system}-${kind}-${name}.txt codegen/" >&2
-          exit 1
-        fi
-        touch $out
-      '';
-    outlinedCheck = snapshotCheck "outlined" "A hakmem function appeared in or left the benches' binaries: + is a lost inlining unless meant.";
-    loopsCheck = snapshotCheck "loops" "A bench's loop changed: its instructions, their hakmem functions, or llvm-mca's cycles. result/loops has the whole of each.";
-    outlinedPortable = outlined "portable" "";
-    # A fixed level instead of the benches' `target-cpu=native`: the same
-    # list on every builder.
-    outlinedV3 = outlined "v3" "-C target-cpu=x86-64-v3";
+
+    claims = {
+      bmi2 = {
+        flags = "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx2";
+        prefixes = "CHECK,BMI2";
+        label = "+bmi2,+pclmulqdq,+ssse3,+avx2";
+      };
+      # No flags: what a dependency gets by default, and where the tokens
+      # have to earn their keep.
+      portable = {
+        flags = "";
+        prefixes = "CHECK,PORTABLE";
+        label = "no flags";
+      };
+    };
+    benches = {
+      portable = {
+        flags = "";
+        label = "no flags";
+      };
+      # A fixed level instead of the benches' `target-cpu=native`: the same
+      # list on every builder.
+      v3 = {
+        flags = "-C target-cpu=x86-64-v3";
+        label = "x86-64-v3";
+      };
+    };
+
+    claimCells = claims |> lib.mapAttrs (name: c: cell name c.flags);
+    benchCells = benches |> lib.mapAttrs (name: b: outlined name b.flags);
+    file = out: kind: {"codegen/${system}-${kind}.txt" = "${out}/${system}-${kind}.txt";};
   in
     lib.optionalAttrs (system == "x86_64-linux") {
-      packages.codegen-bmi2 = bmi2;
-      checks.hakmem-codegen-bmi2 = check "bmi2" "CHECK,BMI2" bmi2;
-      packages.codegen-portable = portable;
-      checks.hakmem-codegen-portable = check "portable" "CHECK,PORTABLE" portable;
-      packages.codegen-outlined-portable = outlinedPortable;
-      checks.hakmem-codegen-outlined-portable = outlinedCheck "portable" outlinedPortable;
-      packages.codegen-outlined-v3 = outlinedV3;
-      checks.hakmem-codegen-outlined-v3 = outlinedCheck "v3" outlinedV3;
-      checks.hakmem-codegen-loops-portable = loopsCheck "portable" outlinedPortable;
-      checks.hakmem-codegen-loops-v3 = loopsCheck "v3" outlinedV3;
+      packages =
+        (claimCells |> lib.mapAttrs' (name: lib.nameValuePair "codegen-${name}"))
+        // (benchCells |> lib.mapAttrs' (name: lib.nameValuePair "codegen-outlined-${name}"));
+
+      hakmem.snapshots =
+        (claims
+          |> lib.mapAttrs' (name: c: let
+            out = claimCells.${name};
+          in
+            lib.nameValuePair "hakmem-codegen-${name}" {
+              files = file out name;
+              inputs = [llvm];
+              before = "FileCheck --check-prefixes=${c.prefixes} --input-file=${out}/functions.s ${out}/claims.rs";
+              why = "The instruction counts changed.";
+              description = "codegen, ${c.label}: lib.rs's claims hold for the asm, and the instruction counts";
+            }))
+        // (benchCells
+          |> lib.mapAttrs' (name: out:
+            lib.nameValuePair "hakmem-codegen-outlined-${name}" {
+              files = file out "outlined-${name}";
+              why = "A hakmem function appeared in or left the benches' binaries: + is a lost inlining unless meant.";
+              description = "codegen, ${benches.${name}.label}: hakmem functions left out of line in the benches";
+            }))
+        // (benchCells
+          |> lib.mapAttrs' (name: out:
+            lib.nameValuePair "hakmem-codegen-loops-${name}" {
+              files = file out "loops-${name}";
+              why = "A bench's loop changed: its instructions, their hakmem functions, or llvm-mca's cycles. result/loops has the whole of each.";
+              description = "codegen, ${benches.${name}.label}: the benches' innermost loops by hakmem function, llvm-mca cycles";
+            }));
     };
 }

@@ -1,3 +1,5 @@
+# Written with `|>`: evaluating it needs
+# `extra-experimental-features = pipe-operators` (CI sets it in every job).
 {
   description = "hakmem: bit tricks as a lawful algebra";
 

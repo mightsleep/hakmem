@@ -1,88 +1,102 @@
+# Generated from nix/workflows.nix (workflows/pages.yml): edit there, then `nix run .#snapshots -- workflows`.
 name: pages
-on:
-  push:
-    branches: [main]
+"on":
   schedule:
-    - cron: "17 4 * * 1"
-  workflow_dispatch:
-
-permissions:
-  contents: write
-
+  - cron: 17 4 * * 1
+  push:
+    branches:
+    - main
+  workflow_dispatch: {}
+permissions: {}
+defaults:
+  run:
+    shell: bash
 jobs:
   # What the pushed range needs. rustdoc and the index always; the bench
   # only when a file that can move a number changed. Schedule and manual
   # runs have no `before` and bench always.
   changes:
-    runs-on: ubuntu-latest
+    permissions:
+      contents: read
     outputs:
       bench: ${{ steps.diff.outputs.bench }}
+    runs-on: ubuntu-latest
     steps:
-      - id: diff
-        env:
-          GH_TOKEN: ${{ github.token }}
-          BEFORE: ${{ github.event.before }}
-        run: |
-          bench=true
-          if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
-            # A force push can leave `before` unreachable; then bench rather than guess.
-            if files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$GITHUB_SHA" --jq '.files[].filename'); then
-              bench=false
-              echo "$files" | grep -qE '^(src/|benches/|Cargo\.toml$|Cargo\.lock$|\.github/workflows/pages\.yml$)' && bench=true
-            fi
+    - id: diff
+      env:
+        BEFORE: ${{ github.event.before }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        bench=true
+        if [ -n "$BEFORE" ] && [ "$BEFORE" != "0000000000000000000000000000000000000000" ]; then
+          # A force push can leave `before` unreachable; then bench rather than guess.
+          if files=$(gh api "repos/$GITHUB_REPOSITORY/compare/$BEFORE...$GITHUB_SHA" --jq '.files[].filename'); then
+            bench=false
+            echo "$files" | grep -qE '^(src/|benches/|Cargo\.toml$|Cargo\.lock$|\.github/workflows/pages\.yml$)' && bench=true
           fi
-          echo "bench=$bench" >> "$GITHUB_OUTPUT"
-          echo "bench=$bench"
-
+        fi
+        echo "bench=$bench" >> "$GITHUB_OUTPUT"
+        echo "bench=$bench"
   docs:
     name: rustdoc + index
+    permissions:
+      contents: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: cachix/cachix-action@v17
-        with:
-          name: hakmem
-          authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
-      - run: nix build -L .#checks.x86_64-linux.hakmem-doc -o doc-result
-      - run: nix build -L .#site-index -o index-result
-      - run: nix build -L .#bench-index -o bench-index-result
-      - run: |
-          mkdir -p site/dev/bench
-          cp -r doc-result/share/doc site/doc
-          cp index-result site/index.html
-          # Replaces the default page of github-action-benchmark and ships
-          # Chart.js next to it; data.js stays.
-          cp -r bench-index-result/. site/dev/bench/
-      - uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./site
-          # Bench data and the status JSON live on the same branch; keep them.
-          keep_files: true
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      with:
+        extra-conf: extra-experimental-features = pipe-operators
+    - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+      with:
+        name: hakmem
+        authToken: ${{ secrets.CACHIX_AUTH_TOKEN }}
+    - run: nix build -L .#checks.x86_64-linux.hakmem-doc -o doc-result
+    - run: nix build -L .#site-index -o index-result
+    - run: nix build -L .#bench-index -o bench-index-result
+    - run: |
+        mkdir -p site/dev/bench
+        cp -r doc-result/share/doc site/doc
+        cp index-result site/index.html
+        # Replaces the default page of github-action-benchmark and ships
+        # Chart.js next to it; data.js stays.
+        cp -r bench-index-result/. site/dev/bench/
+    - uses: peaceiris/actions-gh-pages@84c30a85c19949d7eee79c4ff27748b70285e453 # v4.1.0
+      # Bench data and the status JSON live on the same branch; keep them.
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        keep_files: true
+        publish_dir: ./site
+  # docs pushes to gh-pages too; serialise the two pushes. Timed outside
+  # the Nix sandbox on a shared runner: a trend, never pass/fail.
   bench:
     name: bench (criterion, tracked on gh-pages)
-    runs-on: ubuntu-latest
-    # docs pushes to gh-pages too; serialise the two pushes.
-    needs: [docs, changes]
+    permissions:
+      contents: write
+    needs:
+    - docs
+    - changes
     if: needs.changes.outputs.bench == 'true'
-    # Timed outside the Nix sandbox on a shared runner: a trend, never pass/fail.
+    runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: dtolnay/rust-toolchain@stable
-      # Two seconds per bench: run-to-run noise on one runner type is a few
-      # percent, five seconds bought nothing but fourteen-minute jobs.
-      - run: cargo bench --bench incumbents --bench select --bench compact --bench rank9 -- --output-format bencher --warm-up-time 1 --measurement-time 2 | tee bench.txt
-        env:
-          RUSTFLAGS: -C target-cpu=native
-      - uses: benchmark-action/github-action-benchmark@v1
-        with:
-          tool: cargo
-          output-file-path: bench.txt
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          auto-push: true
-          benchmark-data-dir-path: dev/bench
-          # Comment on the commit only at a 2× regression; a shared runner is noisy.
-          alert-threshold: "200%"
-          comment-on-alert: true
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+    # Two seconds per bench: run-to-run noise on one runner type is a few
+    # percent, five seconds bought nothing but fourteen-minute jobs.
+    - env:
+        RUSTFLAGS: "-C target-cpu=native"
+      run: cargo bench --bench incumbents --bench select --bench compact --bench rank9 -- --output-format bencher --warm-up-time 1 --measurement-time 2 | tee bench.txt
+    - uses: benchmark-action/github-action-benchmark@4322e5726e6334590d251fc4f92bec0efafc45dc # v1.22.2
+      # Comment on the commit only at a 2× regression; a shared runner is noisy.
+      with:
+        alert-threshold: 200%
+        auto-push: true
+        benchmark-data-dir-path: dev/bench
+        comment-on-alert: true
+        github-token: ${{ secrets.GITHUB_TOKEN }}
+        output-file-path: bench.txt
+        tool: cargo
