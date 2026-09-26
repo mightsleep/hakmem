@@ -462,7 +462,7 @@ build with
 instructions; without
 them every combinator has a portable definition with the same
 contract. A hot loop that should not depend on the build asks once
-instead (`hakmem::isa`, design notes section 11):
+instead (`hakmem::isa`, design notes section 3):
 
 ```rust
 use hakmem::isa::Isa;

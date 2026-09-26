@@ -1,6 +1,6 @@
 # The crate as a kernel or firmware gets it: bare-metal targets, where
 # `x86_64-unknown-none` turns SSE off and rustc refuses any
-# `#[target_feature]` that implies it (design notes 11.11). Nothing on the
+# `#[target_feature]` that implies it (design notes section 3). Nothing on the
 # host would notice that breaking, so this builds it. Library only: the
 # tests want `std`. One derivation, cells in a loop; the crate has no
 # dependencies to cache between them.

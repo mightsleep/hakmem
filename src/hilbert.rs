@@ -756,7 +756,7 @@ impl<W: Word> Hilbert2<W> {
     /// the budget allows the exact cover, the ranges hold those cells
     /// and no others; otherwise they hold more, the least any budget's
     /// worth of ranges of the deepest cover that fits can hold (design
-    /// notes, section 5). A scan of keys sorted on the curve seeks once
+    /// notes, section 4). A scan of keys sorted on the curve seeks once
     /// per range. `x` and `y` are any ranges, `..` included; past the
     /// grid they are clipped, and an empty one gives no ranges. The
     /// rest of `out` is scratch.

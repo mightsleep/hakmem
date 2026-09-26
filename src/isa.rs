@@ -23,7 +23,7 @@
 //! not in it. Everything the closure calls has to inline into it: a
 //! helper kept out of line (`#[inline(never)]`, or too big for LLVM's
 //! taste) is compiled without the features, and each primitive in it
-//! becomes a call. Design notes, section 11.
+//! becomes a call. Design notes, section 3.
 
 // `inline(always)` on everything a token does: a primitive that stays out
 // of line is compiled without the features, which is the whole bug.

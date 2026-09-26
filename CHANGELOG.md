@@ -11,7 +11,7 @@ rawrunprotected's 2016 construction with the linear parts folded
 into GF(4), the adder's carry chain over a four-element field, here
 on any carrier; four rounds for a `u64` after a pairing round, four
 to seven times the speed of the four-state loop (cookbook recipe 13,
-design notes section 8). Benched against `fast_hilbert` and `lindel`
+design notes section 4). Benched against `fast_hilbert` and `lindel`
 in `benches/hilbert.rs` and the README. `hakmem::hilbert3::Hilbert3` and
 `Morton3`: the 3D curve of rawrunprotected's tables, whose frames are
 `A₄ ≅ AGL(1, 4)`, so the decode is the 2D encode's scan in log depth
@@ -203,7 +203,7 @@ docs search (`pext`, `pdep`, `popcnt`, `movemask`, `pshufb`, `z-order`),
 and the two claims that something does not compile are doctests that
 fail to, with the error code.
 
-`hakmem::isa`: instruction sets as values (design notes section 11).
+`hakmem::isa`: instruction sets as values (design notes section 3).
 A caller that dispatched the usual way, a loop under
 `#[target_feature]` picked after a CPUID check, got the portable
 primitives anyway, since `cfg` is decided once per crate: 291
