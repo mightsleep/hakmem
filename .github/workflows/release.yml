@@ -10,10 +10,26 @@
 # write to the repository, and "Re-run failed jobs" after a failed GitHub
 # release does not upload again (and if it does run again, publish finds
 # the same tarball on crates.io and passes).
+#
+# Outside a tag the same jobs run as a rehearsal: no environment, no
+# token, `nix run .#publish` as a dry run that reports what only a tag
+# can satisfy, and the GitHub release printed instead of made. The 0.2.0
+# release is why: its first run stopped on a tree the semver action had
+# left dirty, a step order no local dry run had.
 name: release
 on:
   push:
     tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - nix/release.nix
+      - nix/msrv.nix
+      - Cargo.toml
+      - Cargo.lock
+      - CHANGELOG.md
+      - release/**
+  workflow_dispatch:
 permissions: {}
 jobs:
   # A job of its own: the action leaves its rustdoc cache in the checkout
@@ -32,7 +48,7 @@ jobs:
   publish:
     needs: semver
     runs-on: ubuntu-latest
-    environment: crates-io
+    environment: ${{ github.ref_type == 'tag' && 'crates-io' || '' }}
     permissions:
       contents: read
       id-token: write # the OIDC token crates.io trusts
@@ -45,10 +61,12 @@ jobs:
         with:
           name: hakmem
       - id: auth
+        if: github.ref_type == 'tag'
         uses: rust-lang/crates-io-auth-action@v1
       - run: nix run .#publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+          HAKMEM_PUBLISH_REHEARSAL: ${{ github.ref_type != 'tag' && '1' || '' }}
 
   github-release:
     needs: publish
@@ -62,14 +80,20 @@ jobs:
       - name: GitHub release from the changelog section
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
         run: |
-          v=${GITHUB_REF_NAME#v}
+          tag=${TAG:-v$(sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -n1)}
+          v=${tag#v}
           awk -v v="$v" '$0 ~ "^## "v"," {p = 1; next} /^## / {p = 0} p' CHANGELOG.md > notes.md
+          [ -s notes.md ] || { echo "CHANGELOG.md has no section for $v" >&2; exit 1; }
           # `## 0.2.0, 2026-09-26: A Nocturne of Curves` names the release.
           name=$(sed -n "s/^## $v, [0-9-]*: //p" CHANGELOG.md | head -n1)
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "release $GITHUB_REF_NAME exists already"
+          title="$tag${name:+: $name}"
+          if [ -z "$TAG" ]; then
+            printf 'rehearsal, the release would be:\n%s\n\n' "$title"
+            cat notes.md
+          elif gh release view "$tag" >/dev/null 2>&1; then
+            echo "release $tag exists already"
           else
-            gh release create "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag \
-              --title "$GITHUB_REF_NAME${name:+: $name}"
+            gh release create "$tag" --notes-file notes.md --verify-tag --title "$title"
           fi

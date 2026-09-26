@@ -10,7 +10,8 @@
 # tag, the changelog dates the version, these checks pass for the tree,
 # and the tarball it is about to upload holds what the checked one holds.
 # A version already on crates.io with the same checksum is a success, so
-# a rerun of the release goes through.
+# a rerun of the release goes through. The release workflow runs it on
+# pull requests too, as a rehearsal (HAKMEM_PUBLISH_REHEARSAL=1).
 # `.cargo_vcs_info.json` is the one difference allowed: cargo writes the
 # commit into it, and a sandbox has no git to read it from.
 {lib, ...}: {
@@ -31,12 +32,24 @@
       runtimeInputs = [config.rust.nightly pkgs.git pkgs.gnutar pkgs.gzip pkgs.diffutils pkgs.curl pkgs.jq];
       text = ''
         die() { echo "publish: $*" >&2; exit 1; }
+        # HAKMEM_PUBLISH_REHEARSAL=1 (the release workflow outside a tag):
+        # a dry run in which what only a tagged commit can satisfy is
+        # reported instead of fatal. Everything else stops it as it would
+        # stop a release.
+        rehearsal=''${HAKMEM_PUBLISH_REHEARSAL:-}
+        [ -z "$rehearsal" ] || HAKMEM_PUBLISH_DRY_RUN=1
+        refuse() {
+          [ -n "$rehearsal" ] || die "$@"
+          echo "publish: rehearsal, a release would stop here: $*" >&2
+        }
         version=${version}
         grep -qs '^name = "hakmem"' Cargo.toml || die "run it from the repository root"
         [ -n "''${CARGO_REGISTRY_TOKEN:-}''${HAKMEM_PUBLISH_DRY_RUN:-}" ] || die "CARGO_REGISTRY_TOKEN is not set"
-        [ -z "$(git status --porcelain)" ] || die "the tree has uncommitted changes"
-        [ "$(git describe --exact-match --tags HEAD 2>/dev/null)" = "v$version" ] || die "HEAD is not tagged v$version"
-        grep -q "^## $version, [0-9]" CHANGELOG.md || die "CHANGELOG.md does not date $version"
+        dirty=$(git status --porcelain)
+        [ -z "$dirty" ] || die "the tree has uncommitted changes:
+        $dirty"
+        [ "$(git describe --exact-match --tags HEAD 2>/dev/null)" = "v$version" ] || refuse "HEAD is not tagged v$version"
+        grep -q "^## $version, [0-9]" CHANGELOG.md || refuse "CHANGELOG.md does not date $version"
 
         system=$(nix eval --impure --raw --expr builtins.currentSystem)
         nix build --no-link ".#checks.$system.hakmem-package" ".#checks.$system.hakmem-msrv"
@@ -64,9 +77,13 @@
             cargo publish --locked ''${HAKMEM_PUBLISH_DRY_RUN:+--dry-run}
             ;;
           200)
-            jq -e --arg s "$sum" '.version.checksum == $s' "$work/version.json" >/dev/null \
-              || die "$version is on crates.io with a different tarball"
-            echo "publish: $version is on crates.io already, the same tarball"
+            # In a rehearsal after a release, before the bump: another
+            # commit, so another checksum, as it should be.
+            if jq -e --arg s "$sum" '.version.checksum == $s' "$work/version.json" >/dev/null; then
+              echo "publish: $version is on crates.io already, the same tarball"
+            else
+              refuse "$version is on crates.io with a different tarball"
+            fi
             ;;
           *) die "crates.io answered $code for $version" ;;
         esac
