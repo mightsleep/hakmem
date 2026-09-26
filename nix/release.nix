@@ -56,7 +56,7 @@
         checked=$(nix build --no-link --print-out-paths .#hakmem-crate)
 
         work=$(mktemp -d)
-        trap 'rm -rf "$work"' EXIT
+        trap 'git worktree remove --force "$work/again" 2>/dev/null; rm -rf "$work"' EXIT
         cargo package --no-verify --locked --target-dir "$work/target"
         mkdir "$work/checked" "$work/upload"
         tar xzf "$checked"/hakmem-*.crate -C "$work/checked"
@@ -65,9 +65,16 @@
           || die "the tarball to upload is not the one the checks passed"
 
         # A rerun after an upload that went through (a failed step later, or
-        # cargo timing out on the index) finds the version on crates.io. The
-        # tarball is reproducible to the byte (fixed mtimes, the commit in
-        # .cargo_vcs_info.json), so the same tag gives the same checksum.
+        # cargo timing out on the index) finds the version on crates.io, and
+        # passes if the checksum is the same. That needs cargo to pack a
+        # commit to the same bytes wherever it is checked out (it fixes the
+        # mtimes, and .cargo_vcs_info.json holds only the commit), so every
+        # run checks it: a second checkout, at another path and with fresh
+        # mtimes, must pack to the same file.
+        git worktree add --quiet --detach "$work/again" HEAD
+        cargo package --no-verify --locked --manifest-path "$work/again/Cargo.toml" --target-dir "$work/target-again"
+        cmp "$work/target/package/hakmem-$version.crate" "$work/target-again/package/hakmem-$version.crate" \
+          || die "cargo packs this commit to other bytes from a second checkout; a rerun could not recognise its own upload"
         sum=$(sha256sum "$work/target/package/hakmem-$version.crate" | cut -d' ' -f1)
         code=$(curl -s -A hakmem-publish -o "$work/version.json" -w '%{http_code}' \
           "https://crates.io/api/v1/crates/hakmem/$version")

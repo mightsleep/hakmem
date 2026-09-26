@@ -1,18 +1,29 @@
-name: semver
-on:
-  push:
-    branches: [main]
-  pull_request:
-
+# Generated from nix/workflows.nix (workflows/semver.yml): edit there, then `nix run .#workflows`.
 # The last release against this tree: cargo-semver-checks says whether
 # the version in Cargo.toml went up enough for what changed. Outside the
-# nix matrix: it needs the registry for the baseline, and it is not in the
-# binary cache, so a nix check would build it from source every week.
-# The action downloads it built. `public-api/` (a nix check) sees every
+# nix matrix: it needs the registry for the baseline, so it is an app
+# (nix/semver.nix), not a check. `public-api/` (a nix check) sees every
 # change; this one says which of them break.
+name: semver
+"on":
+  pull_request: {}
+  push:
+    branches:
+    - main
+permissions: {}
 jobs:
   semver:
+    permissions:
+      contents: read
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: obi1kenobi/cargo-semver-checks-action@v2.9
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      with:
+        extra-conf: extra-experimental-features = pipe-operators
+    - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+      with:
+        name: hakmem
+    - run: nix run .#semver

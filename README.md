@@ -546,6 +546,7 @@ input in 65 536 is the bug they exist for.
 | cargo-deny (licences, bans, sources) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | cargo-audit (advisories, offline) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | treefmt | [![treefmt](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Ftreefmt.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![treefmt](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Ftreefmt.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| `.github/` is what `nix/workflows.nix` renders; actionlint, shellcheck, zizmor | [![workflows](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fworkflows.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![workflows](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fworkflows.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | Miri over the intrinsics, both paths | [![miri](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fmiri.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 
 ### How the checks got here
@@ -572,6 +573,18 @@ Put the missing `#[inline]` back and both fail with the line that says
 why. Clippy's `missing_inline_in_public_items` now asks before the fact,
 and on its first run it found `Rank9::rank` and `select` out of reach of
 any caller outside the crate: 6 to 39 % back.
+
+The `.github/` row came from the 0.2.0 release, whose first run stopped
+on a checkout a GitHub action had left dirty, in a step order nothing
+local ever ran. The workflows are Nix values now (`nix/workflows.nix`),
+rendered by a small emitter of our own with every action pinned by
+commit (the flake is written with `|>`, so evaluating it needs the
+`pipe-operators` experimental feature); the check holds the committed files to the rendering, parses
+them back to what they were rendered from, and lints them. The release
+workflow runs on pull requests as a rehearsal, semver runs from Nix
+instead of an action, and every release packs its tarball twice, from
+two checkouts, since a rerun recognises its own upload on crates.io by
+the checksum.
 
 Design: [`docs/design.md`](https://github.com/mightsleep/hakmem/blob/main/docs/design.md),
 the decisions behind the API, the hardware policy, how the laws are

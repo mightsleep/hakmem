@@ -1,27 +1,63 @@
+# Generated from nix/workflows.nix (workflows/update-flake-lock.yml): edit there, then `nix run .#workflows`.
+# Weekly PRs: the flake inputs (nixpkgs, fenix, crane, advisory-db; CI on
+# that PR runs hakmem-audit against the fresh RustSec DB) and the action
+# pins.
 name: update-flake-lock
-on:
+"on":
   schedule:
-    - cron: "23 5 * * 1"
-  workflow_dispatch:
-
-# Weekly PR bumping the inputs (nixpkgs, fenix, crane, advisory-db). CI on
-# that PR runs hakmem-audit against the fresh RustSec DB.
-permissions:
-  contents: write
-  pull-requests: write
-
+  - cron: 23 5 * * 1
+  workflow_dispatch: {}
+permissions: {}
 jobs:
   update:
+    permissions:
+      contents: write
+      pull-requests: write
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-      - uses: DeterminateSystems/nix-installer-action@v23
-      - uses: DeterminateSystems/update-flake-lock@v29
-        with:
-          # A PR opened with the default GITHUB_TOKEN triggers no workflows, so
-          # CI would never run on it. FLAKE_LOCK_TOKEN is a fine-grained PAT
-          # (contents + pull requests, this repo only); until it exists the
-          # default token still opens the PR, just without CI.
-          token: ${{ secrets.FLAKE_LOCK_TOKEN || github.token }}
-          pr-title: "flake.lock: weekly update"
-          pr-labels: dependencies
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      with:
+        extra-conf: extra-experimental-features = pipe-operators
+    - uses: DeterminateSystems/update-flake-lock@da03c0f078bc4b2c37ee4f7e072d34bf8f188bb3 # v29
+      # A PR opened with the default GITHUB_TOKEN triggers no workflows, so
+      # CI would never run on it. FLAKE_LOCK_TOKEN is a fine-grained PAT
+      # (contents + pull requests, this repo only); until it exists the
+      # default token still opens the PR, just without CI.
+      with:
+        pr-labels: dependencies
+        pr-title: "flake.lock: weekly update"
+        token: ${{ secrets.FLAKE_LOCK_TOKEN || github.token }}
+  # The action pins, which dependabot no longer watches: nix/actions.json
+  # moved by `nix run .#bump-actions`, the files rendered again, one PR.
+  # A push that changes .github/workflows needs a token with the
+  # Workflows permission: FLAKE_LOCK_TOKEN must have it, the default
+  # token never does.
+  actions:
+    permissions:
+      contents: write
+      pull-requests: write
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
+      with:
+        extra-conf: extra-experimental-features = pipe-operators
+    - env:
+        GH_TOKEN: ${{ secrets.FLAKE_LOCK_TOKEN || github.token }}
+        TOKEN: ${{ secrets.FLAKE_LOCK_TOKEN || github.token }}
+      run: |
+        nix run .#bump-actions | tee changes.txt
+        [ -s changes.txt ] || exit 0
+        nix run .#workflows
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git switch -c bump-actions
+        git commit -qam "Bump action pins" -m "$(cat changes.txt)"
+        git push -f "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY" bump-actions
+        gh pr view bump-actions >/dev/null 2>&1 \
+          || gh pr create --head bump-actions --title "Bump action pins" --body-file changes.txt --label dependencies
