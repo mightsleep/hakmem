@@ -2,7 +2,8 @@ name: status
 description: >-
   Write the result of every job of this run to gh-pages as shields.io
   endpoint JSON (status/<system>/<check>.json). The README matrix and the
-  site index read those files.
+  site index read those files. With `pending`, before the build, write a
+  grey placeholder for each listed check that has no file yet.
 inputs:
   system:
     description: Nix system of the matrix this run built (x86_64-linux, aarch64-linux).
@@ -11,6 +12,12 @@ inputs:
     description: JSON array of checks the plan skipped as cache hits (recorded as pass).
     required: false
     default: "[]"
+  pending:
+    description: >-
+      JSON array of checks about to build. When set, only placeholders are
+      written, for the ones without a file, and no results.
+    required: false
+    default: ""
 runs:
   using: composite
   steps:
@@ -21,20 +28,26 @@ runs:
     - shell: bash
       env:
         GH_TOKEN: ${{ github.token }}
-      run: gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
-    - shell: bash
-      env:
         CACHED: ${{ inputs.cached }}
+        PENDING: ${{ inputs.pending }}
       run: |
-        printf '%s' "$CACHED" > cached.json
-        .github/status.sh "${{ inputs.system }}" jobs.json site/status cached.json
+        if [ -n "$PENDING" ]; then
+          printf '%s' "$PENDING" > pending.json
+          .github/status.sh --pending "${{ inputs.system }}" pending.json site/status
+          echo "what=pending" >> "$GITHUB_ENV"
+        else
+          gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
+          printf '%s' "$CACHED" > cached.json
+          .github/status.sh "${{ inputs.system }}" jobs.json site/status cached.json
+          echo "what=status" >> "$GITHUB_ENV"
+        fi
     - shell: bash
       working-directory: site
       run: |
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git add status
-        git commit -qm "status: ${{ inputs.system }} ${GITHUB_SHA::8}" || exit 0
+        git commit -qm "$what: ${{ inputs.system }} ${GITHUB_SHA::8}" || exit 0
         # gh-pages is shared with the other CI workflow and with pages.yml:
         # rebase on a lost race and retry.
         for _ in 1 2 3 4 5; do

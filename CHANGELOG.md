@@ -11,7 +11,7 @@ rawrunprotected's 2016 construction with the linear parts folded
 into GF(4), the adder's carry chain over a four-element field, here
 on any carrier; four rounds for a `u64` after a pairing round, four
 to seven times the speed of the four-state loop (cookbook recipe 13,
-design notes section 8). Benched against `fast_hilbert` and `lindel`
+design notes section 4). Benched against `fast_hilbert` and `lindel`
 in `benches/hilbert.rs` and the README. `hakmem::hilbert3::Hilbert3` and
 `Morton3`: the 3D curve of rawrunprotected's tables, whose frames are
 `A₄ ≅ AGL(1, 4)`, so the decode is the 2D encode's scan in log depth
@@ -203,7 +203,7 @@ docs search (`pext`, `pdep`, `popcnt`, `movemask`, `pshufb`, `z-order`),
 and the two claims that something does not compile are doctests that
 fail to, with the error code.
 
-`hakmem::isa`: instruction sets as values (design notes section 11).
+`hakmem::isa`: instruction sets as values (design notes section 3).
 A caller that dispatched the usual way, a loop under
 `#[target_feature]` picked after a CPUID check, got the portable
 primitives anyway, since `cfg` is decided once per crate: 291
@@ -270,6 +270,16 @@ inverse, `Word::zip` (`Isa::zip`), is the Morton encode by name, two
 PDEP or two expands, with laws of its own; without flags the `u64`
 `unzip` gathers by the shift ladder, and the 2D Hilbert decode, which
 inlines it, went from 2.9 to 2.6 µs for 1024 points.
+
+Releases go out from a tag: `.github/workflows/release.yml` publishes
+by crates.io's trusted publishing, after a maintainer approves, through
+`nix run .#publish`, which uploads only a tagged, dated, clean tree
+whose tarball is the one the checks passed. A new check, `hakmem-package`,
+holds the tarball's file list to `release/package.txt`; writing it found
+0.2's tarball about to carry the public-API snapshots and the review
+bot's configuration, and the MSRV cell testing a tarball without the
+licences, built from a filtered tree. Both are fixed. Badges of checks
+new in a push read "pending" until their first run instead of red.
 
 ### Changed, for anyone on 0.1
 
