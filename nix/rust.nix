@@ -17,6 +17,7 @@ in {
     ...
   }: let
     fenixPkgs = inputs.fenix.packages.${system};
+    std = target: fenixPkgs.targets.${target}.latest.rust-std;
     t = lib.types;
   in {
     options.rust = {
@@ -36,6 +37,11 @@ in {
         type = t.listOf t.str;
         default = ["x86_64-unknown-linux-gnu" "aarch64-unknown-linux-gnu"];
         description = "The targets whose public API is checked in, one file each under public-api/.";
+      };
+      bareTargets = lib.mkOption {
+        type = t.listOf t.str;
+        default = ["x86_64-unknown-none" "aarch64-unknown-none-softfloat" "aarch64-unknown-none"];
+        description = "The bare-metal targets `bare` carries core and alloc for, and nix/none.nix builds.";
       };
       bare = lib.mkOption {
         type = t.package;
@@ -83,20 +89,13 @@ in {
         fenixPkgs.targets.aarch64-unknown-linux-gnu.latest.rust-std
       ];
       # The host's own std is in `nightly` already; the others join it.
-      cross = fenixPkgs.combine (
-        [config.rust.nightly]
-        ++ map (target: fenixPkgs.targets.${target}.latest.rust-std)
-        (lib.remove pkgs.stdenv.hostPlatform.rust.rustcTarget config.rust.apiTargets)
-      );
+      cross =
+        config.rust.apiTargets
+        |> lib.remove pkgs.stdenv.hostPlatform.rust.rustcTarget
+        |> map std
+        |> (stds: fenixPkgs.combine ([config.rust.nightly] ++ stds));
       # Prebuilt core and alloc: no `-Zbuild-std`, no rust-src in the build.
-      bare = fenixPkgs.combine [
-        fenixPkgs.latest.rustc
-        fenixPkgs.latest.cargo
-        fenixPkgs.latest.clippy
-        fenixPkgs.targets.x86_64-unknown-none.latest.rust-std
-        fenixPkgs.targets.aarch64-unknown-none-softfloat.latest.rust-std
-        fenixPkgs.targets.aarch64-unknown-none.latest.rust-std
-      ];
+      bare = fenixPkgs.combine ([fenixPkgs.latest.rustc fenixPkgs.latest.cargo fenixPkgs.latest.clippy] ++ map std config.rust.bareTargets);
       miri = fenixPkgs.latest.withComponents ["rustc" "cargo" "rust-src" "miri"];
       msrv =
         (fenixPkgs.toolchainOf {

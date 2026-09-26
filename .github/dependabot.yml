@@ -1,4 +1,4 @@
-# Generated from nix/workflows.nix (dependabot.yml): edit there, then `nix run .#workflows`.
+# Generated from nix/workflows.nix (dependabot.yml): edit there, then `nix run .#snapshots -- workflows`.
 # Dependabot: alerts over Cargo.lock are enabled under Settings, Security;
 # these are the weekly bump PRs. Nix inputs are bumped by update-flake-lock.yml,
 # actions by `nix run .#bump-actions` (nix/actions.json).

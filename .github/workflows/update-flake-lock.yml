@@ -1,4 +1,4 @@
-# Generated from nix/workflows.nix (workflows/update-flake-lock.yml): edit there, then `nix run .#workflows`.
+# Generated from nix/workflows.nix (workflows/update-flake-lock.yml): edit there, then `nix run .#snapshots -- workflows`.
 # Weekly PRs: the flake inputs (nixpkgs, fenix, crane, advisory-db; CI on
 # that PR runs hakmem-audit against the fresh RustSec DB) and the action
 # pins.
@@ -53,7 +53,7 @@ jobs:
       run: |
         nix run .#bump-actions | tee changes.txt
         [ -s changes.txt ] || exit 0
-        nix run .#workflows
+        nix run .#snapshots -- workflows
         git config user.name "github-actions[bot]"
         git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
         git switch -c bump-actions

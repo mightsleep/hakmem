@@ -12,18 +12,14 @@
     ...
   }: let
     craneLib = (config.rust.craneLib).overrideToolchain (_: config.rust.bare);
-    src = lib.cleanSourceWith {
-      src = ./..;
-      filter = path: type: craneLib.filterCargoSources path type || baseNameOf path == "README.md";
-      name = "source";
-    };
+    src = config.hakmem.src [config.hakmem.keep.readme];
     none = craneLib.mkCargoDerivation {
       inherit src;
       pname = "hakmem-none";
       version = "0";
       cargoArtifacts = null;
       buildPhaseCargoCommand = ''
-        for target in x86_64-unknown-none aarch64-unknown-none-softfloat aarch64-unknown-none; do
+        for target in ${lib.concatStringsSep " " config.rust.bareTargets}; do
           for features in "" "--no-default-features" "--features portable"; do
             echo "== $target $features"
             cargo build --lib --release --target $target $features
@@ -42,6 +38,7 @@
       '';
       installPhaseCommand = "mkdir -p $out";
       doCheck = false;
+      meta.description = "bare metal and kernels: the none targets build, and a +bmi2 kernel keeps PEXT";
     };
   in {
     # Cross builds: the same answer from any host, so from one.

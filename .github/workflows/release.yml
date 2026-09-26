@@ -1,4 +1,4 @@
-# Generated from nix/workflows.nix (workflows/release.yml): edit there, then `nix run .#workflows`.
+# Generated from nix/workflows.nix (workflows/release.yml): edit there, then `nix run .#snapshots -- workflows`.
 # crates.io from a tag, by trusted publishing: no stored token. The job
 # waits in the crates-io environment for a maintainer's approval, then
 # runs the checks `nix run .#publish` insists on (the tag is the version,
@@ -27,6 +27,7 @@ name: release
     - nix/actions.json
     - nix/semver.nix
     - nix/release.nix
+    - nix/hakmem.nix
     - nix/msrv.nix
     - Cargo.toml
     - Cargo.lock

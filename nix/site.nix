@@ -12,45 +12,20 @@
     repo = "mightsleep/hakmem";
 
     # Rows: the checks of this system (the workflow builds the index on
-    # x86_64-linux, the superset) plus miri, which is a job, not a check.
-    # Cells of the other system are looked up at run time; a missing file
-    # means the cell is not in that system's matrix.
-    labels = {
-      hakmem-test-portable-default = "tests, portable";
-      hakmem-test-bmi2-default = "tests, +bmi2,+pclmulqdq,+avx2";
-      hakmem-test-bmi2-portable-feature = "tests, +bmi2 with feature portable";
-      hakmem-test-debug = "tests, debug build (debug asserts, overflow checks)";
-      hakmem-test-portable-no-default = "tests, portable, no default features (no alloc)";
-      hakmem-test-bmi2-no-default = "tests, +bmi2, no default features (no alloc)";
-      hakmem-doctest-portable = "doctests, portable";
-      hakmem-doctest-bmi2 = "doctests, +bmi2";
-      hakmem-clippy-portable-default = "clippy, portable";
-      hakmem-clippy-bmi2-default = "clippy, +bmi2";
-      hakmem-clippy-bmi2-portable-feature = "clippy, +bmi2 with feature portable";
-      hakmem-doc = "rustdoc, warnings as errors";
-      hakmem-public-api = "public API matches public-api/, x86_64 and aarch64";
-      hakmem-codegen-bmi2 = "codegen, +bmi2,+pclmulqdq,+ssse3,+avx2: claims and instruction counts";
-      hakmem-codegen-portable = "codegen, no flags: claims and instruction counts";
-      hakmem-codegen-outlined-portable = "codegen, no flags: hakmem functions left out of line in the benches";
-      hakmem-codegen-outlined-v3 = "codegen, x86-64-v3: hakmem functions left out of line in the benches";
-      hakmem-codegen-loops-portable = "codegen, no flags: the benches' innermost loops by hakmem function, llvm-mca cycles";
-      hakmem-codegen-loops-v3 = "codegen, x86-64-v3: the benches' innermost loops by hakmem function, llvm-mca cycles";
-      hakmem-none = "bare metal and kernels: the none targets build, and a +bmi2 kernel keeps PEXT";
-      hakmem-msrv = "MSRV build of the packaged tarball";
-      hakmem-package = "what cargo publish uploads: the file list and the changelog's version";
-      hakmem-deny = "cargo-deny";
-      hakmem-audit = "cargo-audit";
-      treefmt = "treefmt";
-      miri = "Miri over the intrinsics, both paths";
-    };
-    order = builtins.attrNames labels;
-    present = builtins.attrNames config.checks ++ ["miri"];
-    rows = lib.filter (c: lib.elem c present) order ++ lib.filter (c: !(labels ? ${c})) present;
+    # x86_64-linux, the superset), each labelled by its meta.description,
+    # and miri, which is a job, not a check. Cells of the other system are
+    # looked up at run time; a missing file means the cell is not in that
+    # system's matrix.
+    labels =
+      config.checks
+      |> lib.mapAttrs (name: check: check.meta.description or name)
+      |> (l: l // {miri = "Miri over the intrinsics, every path Miri can run";});
+    rows = builtins.attrNames labels;
     systems = ["x86_64-linux" "aarch64-linux"];
 
     cell = system: check: ''<td data-system="${system}" data-check="${check}"><span class="dot"></span>pending</td>'';
     row = check: ''
-      <tr><th scope="row">${labels.${check} or check}<br><code>${check}</code></th>${lib.concatMapStrings (s: cell s check) systems}</tr>
+      <tr><th scope="row">${labels.${check}}<br><code>${check}</code></th>${lib.concatMapStrings (s: cell s check) systems}</tr>
     '';
   in {
     packages.site-index = pkgs.writeText "index.html" ''

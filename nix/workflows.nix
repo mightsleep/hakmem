@@ -3,10 +3,10 @@
 # only committed files, so they stay in the repository; this is where they
 # are written.
 #
-#   nix run .#workflows        write them
-#   checks.workflows           the committed files are the rendered ones,
-#                              parse back to what they were rendered from,
-#                              and pass actionlint and zizmor
+#   nix run .#snapshots -- workflows   write them (a snapshot, nix/hakmem.nix)
+#   checks.workflows                   the committed files are the rendered ones,
+#                                      parse back to what they were rendered
+#                                      from, and pass actionlint and zizmor
 #
 # Actions are pinned by commit in nix/actions.json, with the tag as a
 # comment; `nix run .#bump-actions` moves them. Dependabot no longer
@@ -256,7 +256,7 @@
                   run = ''
                     nix run .#bump-actions | tee changes.txt
                     [ -s changes.txt ] || exit 0
-                    nix run .#workflows
+                    nix run .#snapshots -- workflows
                     ${bot}git switch -c bump-actions
                     git commit -qam "Bump action pins" -m "$(cat changes.txt)"
                     git push -f "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY" bump-actions
@@ -410,6 +410,7 @@
             "nix/actions.json"
             "nix/semver.nix"
             "nix/release.nix"
+            "nix/hakmem.nix"
             "nix/msrv.nix"
             "Cargo.toml"
             "Cargo.lock"
@@ -630,8 +631,7 @@
     };
   };
 
-  header = file: "Generated from nix/workflows.nix (${file}): edit there, then `nix run .#workflows`.";
-  files = builtins.attrNames workflows;
+  header = file: "Generated from nix/workflows.nix (${file}): edit there, then `nix run .#snapshots -- workflows`.";
 in {
   perSystem = {pkgs, ...}: let
     rendered =
@@ -643,51 +643,64 @@ in {
       |> lib.concatStrings
       |> pkgs.runCommand "hakmem-workflows" {};
 
-    # What each file and the corpus mean, for the parser half of the check.
-    meaning =
-      workflows
-      |> lib.mapAttrs (_: yaml.toData)
-      |> builtins.toJSON
-      |> pkgs.writeText "hakmem-workflows.json";
+    # What the files and the corpus mean, for the parser half of the check.
+    json = name: v: builtins.toJSON v |> pkgs.writeText "${name}.json";
+    meaning = workflows |> lib.mapAttrs (_: yaml.toData) |> json "hakmem-workflows";
     corpus = {
-      yaml = pkgs.writeText "corpus.yml" (yaml.toYAML "The edges of `plain` in nix/_yaml.nix." yaml.corpus);
-      json = pkgs.writeText "corpus.json" (builtins.toJSON yaml.corpus);
+      yaml = yaml.toYAML "The edges of `plain` in nix/_yaml.nix." yaml.corpus |> pkgs.writeText "corpus.yml";
+      json = json "corpus" yaml.corpus;
     };
-
-    install = files |> map (f: "install -Dm644 ${rendered}/${f} .github/${f}") |> lib.concatLines;
-    compare =
-      files
-      |> map (f: ''
-        if ! diff -u ${../.github + "/${f}"} ${rendered}/${f}; then
-          echo ".github/${f} is not what nix/workflows.nix renders; nix run .#workflows" >&2
-          fail=1
-        fi
-        remarshal -if yaml -of json ${rendered}/${f} | jq -S . > got.json
-        jq -S --arg f ${f} '.[$f]' ${meaning} > want.json
-        if ! diff -u want.json got.json; then
-          echo "nix/_yaml.nix rendered ${f} into something that parses differently" >&2
-          fail=1
-        fi
-      '')
+    # A rendered file against what it was rendered from, through a parser.
+    parsesBack = yml: want: ''
+      remarshal -if yaml -of json ${yml} | jq -S . > got.json
+      jq -S ${lib.escapeShellArg want.filter} ${want.file} > want.json
+      diff -u want.json got.json || { echo "nix/_yaml.nix: ${yml} parses differently" >&2; fail=1; }
+    '';
+    roundTrips =
+      (workflows
+        |> lib.attrNames
+        |> map (f:
+          parsesBack "${rendered}/${f}" {
+            file = meaning;
+            filter = ".[${builtins.toJSON f}]";
+          }))
+      ++ [
+        (parsesBack corpus.yaml {
+          file = corpus.json;
+          filter = ".";
+        })
+      ]
       |> lib.concatStrings;
   in {
     packages.workflows = rendered;
 
-    apps.workflows = {
-      type = "app";
-      program = lib.getExe (pkgs.writeShellApplication {
-        name = "hakmem-workflows";
-        text = ''
-          grep -qs '^name = "hakmem"' Cargo.toml || { echo "run it from the repository root" >&2; exit 1; }
-          ${install}
-        '';
-      });
-      meta.description = "Write .github/ from nix/workflows.nix";
+    # The files in sync, then: the emitter's own tests (at eval time), every
+    # file and the corpus parsed back to what was meant, and actionlint (with
+    # shellcheck over every `run:`) and zizmor clean, offline.
+    hakmem.snapshots.workflows = {
+      files = workflows |> lib.mapAttrs' (f: _: lib.nameValuePair ".github/${f}" "${rendered}/${f}");
+      why = ".github/ is not what nix/workflows.nix renders.";
+      description = ".github/ is what nix/workflows.nix renders: parsed back, actionlint, shellcheck, zizmor";
+      inputs = [pkgs.remarshal pkgs.jq pkgs.actionlint pkgs.shellcheck pkgs.zizmor];
+      before = assert yaml.tests == [] || throw "nix/_yaml.nix tests: ${builtins.toJSON yaml.tests}"; "";
+      after = ''
+        export HOME=$TMPDIR
+        fail=0
+        ${roundTrips}
+        mkdir -p repo
+        cp -r ${rendered} repo/.github
+        chmod -R u+w repo
+        cd repo
+        actionlint .github/workflows/*.yml || fail=1
+        zizmor --offline --no-progress --config .github/zizmor.yml .github || fail=1
+        [ "$fail" = 0 ]
+      '';
     };
 
     # Each pin to the newest release tag of its action (a branch pin to
     # the branch's head), by the commit the tag names: `git ls-remote`, no
-    # token. Rewrites nix/actions.json; `nix run .#workflows` then renders.
+    # token. Rewrites nix/actions.json; `nix run .#snapshots -- workflows`
+    # then renders.
     apps.bump-actions = {
       type = "app";
       program = lib.getExe (pkgs.writeShellApplication {
@@ -722,27 +735,5 @@ in {
       });
       meta.description = "Move the action pins in nix/actions.json to their newest releases";
     };
-
-    # The emitter's own tests at eval time; then every file in sync, parsed
-    # back to what was meant, and clean by actionlint (with shellcheck over
-    # every `run:`) and zizmor, offline; and the corpus parsed back too.
-    checks.workflows = assert yaml.tests == [] || throw "nix/_yaml.nix tests: ${builtins.toJSON yaml.tests}";
-      pkgs.runCommand "hakmem-workflows-check" {
-        nativeBuildInputs = [pkgs.remarshal pkgs.jq pkgs.actionlint pkgs.shellcheck pkgs.zizmor];
-      } ''
-        export HOME=$TMPDIR
-        fail=0
-        ${compare}
-        remarshal -if yaml -of json ${corpus.yaml} | jq -S . > got.json
-        jq -S . ${corpus.json} > want.json
-        diff -u want.json got.json || { echo "nix/_yaml.nix: the corpus parses differently" >&2; fail=1; }
-        mkdir -p repo
-        cp -r ${rendered} repo/.github
-        chmod -R u+w repo
-        cd repo
-        actionlint .github/workflows/*.yml || fail=1
-        zizmor --offline --no-progress --config .github/zizmor.yml .github || fail=1
-        [ "$fail" = 0 ] && touch $out
-      '';
   };
 }

@@ -1,4 +1,4 @@
-# Generated from nix/workflows.nix (workflows/pages.yml): edit there, then `nix run .#workflows`.
+# Generated from nix/workflows.nix (workflows/pages.yml): edit there, then `nix run .#snapshots -- workflows`.
 name: pages
 "on":
   schedule:

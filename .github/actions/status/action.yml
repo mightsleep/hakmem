@@ -1,4 +1,4 @@
-# Generated from nix/workflows.nix (actions/status/action.yml): edit there, then `nix run .#workflows`.
+# Generated from nix/workflows.nix (actions/status/action.yml): edit there, then `nix run .#snapshots -- workflows`.
 name: status
 description: Write the result of every job of this run to gh-pages as shields.io endpoint JSON (status/<system>/<check>.json). The README matrix and the site index read those files. With `pending`, before the build, write a grey placeholder for each listed check that has no file yet.
 inputs:

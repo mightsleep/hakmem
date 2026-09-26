@@ -1,4 +1,4 @@
-# Generated from nix/workflows.nix (workflows/semver.yml): edit there, then `nix run .#workflows`.
+# Generated from nix/workflows.nix (workflows/semver.yml): edit there, then `nix run .#snapshots -- workflows`.
 # The last release against this tree: cargo-semver-checks says whether
 # the version in Cargo.toml went up enough for what changed. Outside the
 # nix matrix: it needs the registry for the baseline, so it is an app

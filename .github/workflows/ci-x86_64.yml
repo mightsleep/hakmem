@@ -1,4 +1,4 @@
-# Generated from nix/workflows.nix (workflows/ci-x86_64.yml): edit there, then `nix run .#workflows`.
+# Generated from nix/workflows.nix (workflows/ci-x86_64.yml): edit there, then `nix run .#snapshots -- workflows`.
 # The matrix lives in the flake: `plan` reads the check names and asks the
 # binary cache which outputs already exist, `check` builds only the rest
 # (.github/plan.sh). A cell whose output is in the cache passed by

@@ -1,9 +1,7 @@
 # What goes to crates.io, checked before it goes: the file list of the
 # `cargo package` tarball (the one hakmem-msrv builds and tests) against
 # release/package.txt, and the version in Cargo.toml against the newest
-# heading of CHANGELOG.md. After a deliberate change to the list:
-#
-#   nix build .#package-contents && cp result release/package.txt
+# heading of CHANGELOG.md. The list is a snapshot (nix/hakmem.nix).
 #
 # The upload is `nix run .#publish`, the one step that needs the network
 # and a token, so no derivation. It refuses unless HEAD is the version's
@@ -21,7 +19,7 @@
     ...
   }: let
     crate = config.packages.hakmem-crate;
-    inherit ((lib.importTOML ../Cargo.toml).package) version;
+    inherit (config.hakmem) version;
 
     contents = pkgs.runCommand "hakmem-package-contents" {} ''
       tar tzf ${crate}/hakmem-*.crate | sed 's|^[^/]*/||' | grep -v '^$' | LC_ALL=C sort > $out
@@ -98,21 +96,21 @@
     };
   in {
     packages.package-contents = contents;
-    checks.hakmem-package = pkgs.runCommand "hakmem-package-check" {} ''
-      if ! diff -u ${../release/package.txt} ${contents}; then
-        echo "The files cargo publish would upload changed; if on purpose: nix build .#package-contents && cp result release/package.txt" >&2
-        exit 1
-      fi
-      head=$(grep -m1 '^## ' ${../CHANGELOG.md})
-      case "$head" in
-        "## ${version}, "*) ;;
-        *)
-          echo "CHANGELOG.md's newest heading is '$head', Cargo.toml says ${version}" >&2
-          exit 1
-          ;;
-      esac
-      touch $out
-    '';
+    hakmem.snapshots.hakmem-package = {
+      files."release/package.txt" = "${contents}";
+      why = "The files cargo publish would upload changed.";
+      description = "what cargo publish uploads: the file list, and the changelog heading the version";
+      after = ''
+        head=$(grep -m1 '^## ' ${../CHANGELOG.md})
+        case "$head" in
+          "## ${version}, "*) ;;
+          *)
+            echo "CHANGELOG.md's newest heading is '$head', Cargo.toml says ${version}" >&2
+            exit 1
+            ;;
+        esac
+      '';
+    };
     apps.publish = {
       type = "app";
       program = lib.getExe publish;

@@ -1,83 +1,78 @@
 # The CI matrix as data. Dimension × dimension = a list of cells
-# (`lib.cartesianProduct`), one crane derivation in `checks` per cell.
-# `nix flake check` is the reduce; cachix turns the whole fold into a memo,
-# so an unchanged cell is a cache hit. The GitHub workflow reads the check
-# names at run time (`nix eval .#checks.<system>`) and expands them into a
-# dynamic matrix: the YAML never knows the matrix and cannot drift from it.
+# (`lib.cartesianProduct`), one crane derivation in `checks` per cell and
+# kind. `nix flake check` is the reduce; cachix turns the whole fold into a
+# memo, so an unchanged cell is a cache hit. The GitHub workflow reads the
+# check names at run time (`nix eval .#checks.<system>`) and expands them
+# into a dynamic matrix: the YAML never knows the matrix and cannot drift
+# from it.
 {lib, ...}: {
   perSystem = {
     config,
-    pkgs,
     system,
     ...
   }: let
     inherit (config.rust) craneLib;
-    isX86 = lib.hasPrefix "x86_64" system;
+    inherit (config.hakmem) keep version;
+    inherit (lib) concatMapStringsSep concatStringsSep nameValuePair listToAttrs filter;
 
-    # cleanCargoSource keeps only .rs and Cargo.*; README.md enters the crate
-    # through `include_str!`, so it must pass too, and so must proptest's
-    # saved failures, or CI never replays them and they fail again for
-    # the first time. Nothing else: an edit in docs/ or CHANGELOG.md must
-    # not change a single derivation.
-    src = lib.cleanSourceWith {
-      src = ./..;
-      filter = path: type:
-        craneLib.filterCargoSources path type
-        || baseNameOf path == "README.md"
-        || lib.hasSuffix ".proptest-regressions" (baseNameOf path);
-      name = "source";
+    # README.md enters the crate through `include_str!`, and proptest's
+    # saved failures must pass too, or CI never replays them and they fail
+    # again for the first time. Nothing else: an edit in docs/ or
+    # CHANGELOG.md must not change a single derivation.
+    src = config.hakmem.src [keep.readme (keep.suffix ".proptest-regressions")];
+
+    # A hardware cell from the CPU features it builds for. A builder
+    # without one of them would die with SIGILL; the guard fails first,
+    # with a sentence.
+    hw = name: features: let
+      plus = concatMapStringsSep "," (f: "+" + f) features;
+      has = features |> map (f: "grep -qw ${f} /proc/cpuinfo") |> concatStringsSep " && ";
+    in {
+      inherit name;
+      label =
+        if features == []
+        then name
+        else plus;
+      rustflags = lib.optionalString (features != []) "-C target-feature=${plus}";
+      guard = lib.optionalString (features != []) ''
+        ${has} \
+          || { echo "builder CPU lacks ${concatStringsSep "/" features}; cannot run this cell" >&2; exit 1; }
+      '';
     };
-    version = (craneLib.crateNameFromCargoToml {cargoToml = ../Cargo.toml;}).version;
 
-    # --- dimensions ---------------------------------------------------------
     dims = {
       hw =
-        [
-          {
-            name = "portable";
-            rustflags = "";
-            # The portable path must run everywhere: no guard.
-            guard = "";
-          }
-        ]
-        ++ lib.optionals isX86 [
-          {
-            name = "bmi2";
-            # AVX2 rides along: the 3D Hilbert batch kernel is its only user,
-            # and every runner has it.
-            rustflags = "-C target-feature=+bmi2,+pclmulqdq,+ssse3,+avx2";
-            # A builder without BMI2 would die with SIGILL; fail with a
-            # readable message instead.
-            guard = ''
-              grep -qw bmi2 /proc/cpuinfo && grep -qw pclmulqdq /proc/cpuinfo && grep -qw ssse3 /proc/cpuinfo && grep -qw avx2 /proc/cpuinfo \
-                || { echo "builder CPU lacks bmi2/pclmulqdq/avx2; cannot run this cell" >&2; exit 1; }
-            '';
-          }
-        ];
+        [(hw "portable" [])]
+        # AVX2 rides along: the 3D Hilbert batch kernel is its only user,
+        # and every runner has it.
+        ++ lib.optional (lib.hasPrefix "x86_64" system) (hw "bmi2" ["bmi2" "pclmulqdq" "ssse3" "avx2"]);
       features = [
         {
           name = "default";
           args = "";
+          label = "";
         }
         {
           name = "portable-feature";
           args = "--features portable";
+          label = ", feature portable";
         }
         {
           # `alloc` is on by default; this is the crate an embedded
           # user gets, with nothing that allocates.
           name = "no-default";
           args = "--no-default-features";
+          label = ", no default features (no alloc)";
         }
       ];
     };
 
     # hw `portable` × feature `portable` is the same path twice; skip it.
     combos =
-      lib.filter (c: !(c.hw.name == "portable" && c.features.name == "portable-feature"))
-      (lib.cartesianProduct dims);
+      lib.cartesianProduct dims
+      |> filter (c: !(c.hw.name == "portable" && c.features.name == "portable-feature"));
+    cellName = c: "${c.hw.name}-${c.features.name}";
 
-    # --- derivations --------------------------------------------------------
     common = {
       inherit src version;
       pname = "hakmem";
@@ -86,9 +81,6 @@
       # Release: the exhaustive sweeps are `ignore`d in debug builds.
       CARGO_PROFILE = "release";
     };
-
-    cellName = c: "${c.hw.name}-${c.features.name}";
-
     depsFor = c:
       craneLib.buildDepsOnly (common
         // {
@@ -96,41 +88,39 @@
           cargoExtraArgs = c.features.args;
           RUSTFLAGS = c.hw.rustflags;
         });
+    # What the site calls a kind, where the check name says it shorter.
+    noun.test = "tests";
+    # What every kind of cell passes crane, named after the kind.
+    cell = kind: c: extra:
+      common
+      // {
+        pname = "hakmem-${kind}-${cellName c}";
+        cargoArtifacts = depsFor c;
+        cargoExtraArgs = c.features.args;
+        RUSTFLAGS = c.hw.rustflags;
+        meta.description = "${noun.${kind} or kind}, ${c.hw.label}${c.features.label}";
+      }
+      // extra;
 
     # nextest: one process per test (the exhaustive sweeps stay isolated),
-    # better output. It cannot run doctests; `hakmem-doctest` below does.
-    testFor = c:
-      craneLib.cargoNextest (common
-        // {
-          pname = "hakmem-test-${cellName c}";
-          cargoArtifacts = depsFor c;
-          cargoExtraArgs = c.features.args;
-          RUSTFLAGS = c.hw.rustflags;
+    # better output. It cannot run doctests; `doctest` below does.
+    kinds = {
+      test = c:
+        craneLib.cargoNextest (cell "test" c {
           preCheck = c.hw.guard;
           partitions = 1;
           partitionType = "count";
         });
-
-    doctestFor = c:
-      craneLib.cargoTest (common
-        // {
-          pname = "hakmem-doctest-${cellName c}";
-          cargoArtifacts = depsFor c;
-          cargoExtraArgs = c.features.args;
-          cargoTestExtraArgs = "--doc";
-          RUSTFLAGS = c.hw.rustflags;
-          preCheck = c.hw.guard;
-        });
-
-    clippyFor = c:
-      craneLib.cargoClippy (common
-        // {
-          pname = "hakmem-clippy-${cellName c}";
-          cargoArtifacts = depsFor c;
-          cargoExtraArgs = c.features.args;
-          cargoClippyExtraArgs = "--all-targets -- -D warnings";
-          RUSTFLAGS = c.hw.rustflags;
-        });
+      clippy = c: craneLib.cargoClippy (cell "clippy" c {cargoClippyExtraArgs = "--all-targets -- -D warnings";});
+    };
+    # The doctests (the README) along the hw dimension only; the `portable`
+    # feature does not change them.
+    doctest = c:
+      craneLib.cargoTest (cell "doctest" c {
+        cargoTestExtraArgs = "--doc";
+        preCheck = c.hw.guard;
+        meta.description = "doctests (the README), ${c.hw.label}";
+      });
 
     # One cell in debug: the `debug_assert!`s and the overflow checks run
     # nowhere else, and the README tells users to run their tests this
@@ -145,31 +135,28 @@
           cargoArtifacts = craneLib.buildDepsOnly (dev // {pname = "hakmem-deps-debug";});
           partitions = 1;
           partitionType = "count";
+          meta.description = "tests, debug build (debug asserts, overflow checks)";
         });
-
-    baseline = lib.head combos;
-
-    tests = lib.listToAttrs (map (c: lib.nameValuePair "hakmem-test-${cellName c}" (testFor c)) combos);
-    clippies = lib.listToAttrs (map (c: lib.nameValuePair "hakmem-clippy-${cellName c}" (clippyFor c)) combos);
-    # Doctests (the README) only along the hw dimension; the `portable`
-    # feature does not change them.
-    doctests =
-      lib.listToAttrs (map (c: lib.nameValuePair "hakmem-doctest-${c.hw.name}" (doctestFor c))
-        (lib.filter (c: c.features.name == "default") combos));
   in {
     checks =
-      tests
-      // clippies
-      // doctests
+      (kinds
+        |> lib.mapAttrsToList (kind: f: combos |> map (c: nameValuePair "hakmem-${kind}-${cellName c}" (f c)))
+        |> lib.concatLists
+        |> listToAttrs)
+      // (combos
+        |> filter (c: c.features.name == "default")
+        |> map (c: nameValuePair "hakmem-doctest-${c.hw.name}" (doctest c))
+        |> listToAttrs)
       // {
         hakmem-test-debug = debugTest;
         # rustdoc as docs.rs will see it: no dependencies, warnings are errors.
         hakmem-doc = craneLib.cargoDoc (common
           // {
             pname = "hakmem-doc";
-            cargoArtifacts = depsFor baseline;
+            cargoArtifacts = depsFor (lib.head combos);
             cargoDocExtraArgs = "--no-deps";
             RUSTDOCFLAGS = "-D warnings --cfg docsrs";
+            meta.description = "rustdoc, warnings as errors, as docs.rs builds it";
           });
       };
 
