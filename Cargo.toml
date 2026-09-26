@@ -12,7 +12,7 @@ authors = ["Michal <acannix@proton.me>"]
 repository = "https://github.com/mightsleep/hakmem"
 keywords = ["hilbert-curve", "morton", "rank-select", "levenshtein", "bit-manipulation"]
 categories = ["algorithms", "data-structures", "no-std"]
-exclude = ["/.github", "/nix", "/flake.*", "/codegen"]
+exclude = ["/.github", "/nix", "/flake.*", "/codegen", "/public-api", "/release", "/.coderabbit.yaml", "/.gitignore"]
 
 [features]
 default = ["alloc"]

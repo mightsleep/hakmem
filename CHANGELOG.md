@@ -271,6 +271,16 @@ PDEP or two expands, with laws of its own; without flags the `u64`
 `unzip` gathers by the shift ladder, and the 2D Hilbert decode, which
 inlines it, went from 2.9 to 2.6 µs for 1024 points.
 
+Releases go out from a tag: `.github/workflows/release.yml` publishes
+by crates.io's trusted publishing, after a maintainer approves, through
+`nix run .#publish`, which uploads only a tagged, dated, clean tree
+whose tarball is the one the checks passed. A new check, `hakmem-package`,
+holds the tarball's file list to `release/package.txt`; writing it found
+0.2's tarball about to carry the public-API snapshots and the review
+bot's configuration, and the MSRV cell testing a tarball without the
+licences, built from a filtered tree. Both are fixed. Badges of checks
+new in a push read "pending" until their first run instead of red.
+
 ### Changed, for anyone on 0.1
 
 A clean break, no deprecated aliases: 0.2 is a new major for Cargo,

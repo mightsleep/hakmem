@@ -8,16 +8,12 @@
     ...
   }: let
     inherit (config.rust) craneLib craneLibMsrv;
-    src = lib.cleanSourceWith {
-      src = ./..;
-      # README.md is in the crate through `include_str!`; proptest's saved
-      # failures ride along to be replayed; nothing else from docs.
-      filter = path: type:
-        craneLib.filterCargoSources path type
-        || baseNameOf path == "README.md"
-        || lib.hasSuffix ".proptest-regressions" (baseNameOf path);
-      name = "source";
-    };
+    # Every tracked file, and `exclude` in Cargo.toml decides, as it does
+    # for `cargo publish`: a filter here once left the licences and the
+    # changelog out of the tarball this cell tests while the real one
+    # carried the public-api snapshots. The price is a rebuild of this
+    # cell on a docs-only change.
+    src = lib.cleanSource ./..;
 
     # 1. the tarball (nightly cargo, offline through crane's vendor dir)
     crate = craneLib.mkCargoDerivation {

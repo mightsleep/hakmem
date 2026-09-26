@@ -1,0 +1,38 @@
+# crates.io from a tag, by trusted publishing: no stored token. The job
+# waits in the crates-io environment for a maintainer's approval, then
+# runs the checks `nix run .#publish` insists on (the tag is the version,
+# the changelog dates it, the package's file list, the MSRV build of the
+# tarball) and uploads the tarball those passed. Semver is checked here
+# too, against what crates.io has: it needs the registry, so it is not a
+# nix check.
+name: release
+on:
+  push:
+    tags: ["v*"]
+permissions: {}
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: crates-io
+    permissions:
+      contents: write # the GitHub release
+      id-token: write # the OIDC token crates.io trusts
+    steps:
+      - uses: actions/checkout@v7
+      - uses: DeterminateSystems/nix-installer-action@v23
+      - uses: cachix/cachix-action@v17
+        with:
+          name: hakmem
+      - uses: obi1kenobi/cargo-semver-checks-action@v2.9
+      - id: auth
+        uses: rust-lang/crates-io-auth-action@v1
+      - run: nix run .#publish
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+      - name: GitHub release from the changelog section
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          v=${GITHUB_REF_NAME#v}
+          awk -v v="$v" '$0 ~ "^## "v"," {p = 1; next} /^## / {p = 0} p' CHANGELOG.md > notes.md
+          gh release create "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag

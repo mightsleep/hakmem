@@ -37,6 +37,7 @@
       hakmem-codegen-loops-v3 = "codegen, x86-64-v3: the benches' innermost loops by hakmem function, llvm-mca cycles";
       hakmem-none = "bare metal and kernels: the none targets build, and a +bmi2 kernel keeps PEXT";
       hakmem-msrv = "MSRV build of the packaged tarball";
+      hakmem-package = "what cargo publish uploads: the file list and the changelog's version";
       hakmem-deny = "cargo-deny";
       hakmem-audit = "cargo-audit";
       treefmt = "treefmt";
