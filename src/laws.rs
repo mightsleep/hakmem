@@ -12,6 +12,10 @@
 //! breaking one. A test suite built on them should not wake up to a
 //! different theorem.
 
+// Properties for tests, each a handful of calls over a reference model:
+// nothing here is on anyone's hot path.
+#![allow(clippy::missing_inline_in_public_items)]
+
 use crate::affine::Affine8;
 use crate::bits::truth_table;
 use crate::lanes::{Lanes, U8x8, U8x16};
@@ -185,6 +189,29 @@ pub fn compact_preserves_popcount<W: Word>(x: W, m: W) -> bool {
 #[must_use]
 pub fn compact_composes<W: Word>(x: W, m: W, n: W) -> bool {
     x.compact(m).compact(n) == x.compact(n.expand(m))
+}
+
+/// `unzip` is the even bits and the odd bits, each compacted: two
+/// compresses, whichever way a carrier computes the pair.
+#[must_use]
+pub fn unzip_is_two_compacts<W: Word>(x: W) -> bool {
+    let even = W::splat_byte(0x55);
+    x.unzip() == (x.compact(even), x.compact(even.shl(1)))
+}
+
+/// `zip` is two expands, the second a bit up: `a` on the even bits, `b`
+/// on the odd, whichever way a carrier computes it.
+#[must_use]
+pub fn zip_is_two_expands<W: Word>(a: W, b: W) -> bool {
+    let even = W::splat_byte(0x55);
+    a.zip(b) == a.expand(even).or(b.expand(even).shl(1))
+}
+
+/// `unzip` undoes `zip` on the low halves, which is all `zip` reads.
+#[must_use]
+pub fn unzip_after_zip<W: Word>(a: W, b: W) -> bool {
+    let low = W::low_ones(W::BITS / 2);
+    a.zip(b).unzip() == (a.and(low), b.and(low))
 }
 
 // --- dilated / Morton -------------------------------------------------
@@ -1724,8 +1751,8 @@ pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) 
         && unpack
         && sad
         && madd
-        && L::splat(0x5A).lane(lanes - 1) == 0x5A
-        && L::zero() == L::splat(0)
+        && L::splat(lhs.isa(), 0x5A).lane(lanes - 1) == 0x5A
+        && L::zero(lhs.isa()) == L::splat(lhs.isa(), 0)
         && lane_maps_match_reference(lhs, rhs, n, table)
 }
 
@@ -1734,7 +1761,7 @@ pub fn lanes_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 16]) 
 /// applying PSHUFB's zero-on-top-bit rule to `a`'s entries.
 #[must_use]
 pub fn lut16_composes<L: Lanes>(x: L, a: [u8; 16], b: [u8; 16]) -> bool {
-    let x = x.and(L::splat(0x7F));
+    let x = x.and(L::splat(x.isa(), 0x7F));
     let mut composed = [0u8; 16];
     for (c, &v) in composed.iter_mut().zip(a.iter()) {
         *c = if v & 0x80 == 0 {
@@ -1929,7 +1956,7 @@ pub fn lane_maps_match_reference<L: Lanes>(lhs: L, rhs: L, n: u32, table: [u8; 1
             && u16::from(lhs.avg_round(rhs).lane(i)) == (u16::from(x) + u16::from(y) + 1) >> 1
             && u16::from(lhs.avg_floor(rhs).lane(i)) == u16::midpoint(u16::from(x), u16::from(y))
             && lhs.ternary(rhs, third, truth).lane(i) == x.ternary(y, z, truth)
-    }) && L::zero().avg_round(L::zero().not()) == L::splat(0x80)
+    }) && L::zero(lhs.isa()).avg_round(L::zero(lhs.isa()).not()) == L::splat(lhs.isa(), 0x80)
 }
 
 // --- carry-rippler and gather ------------------------------------------

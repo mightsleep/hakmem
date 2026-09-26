@@ -148,6 +148,7 @@ impl<W: Word> Hilbert2<W> {
     /// per word pair per round, and the frame at a level is the
     /// translation of the product above it, the top frame being zero.
     /// rawrunprotected's construction (2016), in the dilated layout.
+    #[inline]
     #[must_use]
     pub fn from_morton(morton: Morton2<W>) -> Self {
         let code = morton.code();
@@ -196,6 +197,7 @@ impl<W: Word> Hilbert2<W> {
     /// parity of `¬(s_hi ^ s_lo)` and `flip` the parity of
     /// `s_hi & s_lo` over the levels above, two suffix XORs. Then
     /// `x = s_hi ^ swap·s_lo ^ flip` and `y = x ^ s_lo`.
+    #[inline]
     #[must_use]
     pub fn to_morton(self) -> Morton2<W> {
         let lanes = Dilated::<W, 2>::mask();
@@ -238,7 +240,11 @@ const fn level(frame: u8, x: u8, y: u8) -> (u8, u8) {
 /// itself. `N = 2 · 4^L` entries, half of the unreduced table.
 #[cfg_attr(
     not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -287,7 +293,11 @@ const TABLE4: [u8; 32] = reduced();
 /// Three levels a byte, 128 entries: two AVX-512 registers for
 /// `vpermi2b`.
 #[cfg_attr(
-    not(all(target_arch = "x86_64", not(feature = "portable"))),
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )),
     allow(dead_code)
 )]
 const TABLE6: [u8; 128] = reduced();
@@ -309,6 +319,8 @@ macro_rules! hilbert2_batch {
             /// last whole batch, it is [`from_morton`](Self::from_morton)
             /// per key. Coordinates never enter: fill the slice with
             /// [`Morton2::encode`] from whatever layout the points are in.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn from_morton_in_place(keys: &mut [$w]) {
                 let done = batch::$kernel(keys);
                 for key in &mut keys[done..] {
@@ -320,6 +332,8 @@ macro_rules! hilbert2_batch {
             /// place: each Hilbert index becomes the Morton code of the
             /// same cell. Per key; the decode is two suffix XORs and has no
             /// table to batch.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place(keys: &mut [$w]) {
                 for key in keys {
                     *key = Self::from_index(*key).to_morton().code();
@@ -332,6 +346,8 @@ macro_rules! hilbert2_batch {
             /// (debug-asserted). The order-`n` curve is the full-width one
             /// with `x` and `y` swapped when `LEVELS − n` is odd: a swap of
             /// the Morton lanes per key, then the full-width batch.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn from_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
@@ -350,6 +366,8 @@ macro_rules! hilbert2_batch {
             /// [`to_morton_in_place`](Self::to_morton_in_place) on the
             /// curve of `order` levels, as [`decode_order`](Self::decode_order)
             /// per key; indices below `4^order` (debug-asserted).
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
@@ -388,6 +406,8 @@ macro_rules! hilbert2_columns {
             /// # Panics
             ///
             /// If the three slices differ in length.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn encode_columns(xs: &[$w], ys: &[$w], out: &mut [$w]) {
                 Morton2::<$w>::encode_columns(xs, ys, out);
                 Self::from_morton_in_place(out);
@@ -403,6 +423,8 @@ macro_rules! hilbert2_columns {
             /// # Panics
             ///
             /// If the three slices differ in length.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn decode_columns(keys: &[$w], xs: &mut [$w], ys: &mut [$w]) {
                 let n = keys.len();
                 assert!(
@@ -751,6 +773,7 @@ impl<W: Word> Hilbert2<W> {
     /// # Panics
     ///
     /// If the rectangle is not empty and `out` is.
+    #[inline]
     pub fn cover(x: impl RangeBounds<W>, y: impl RangeBounds<W>, out: &mut [(W, W)]) -> &[(W, W)] {
         crate::cover::cover_ranges::<W, HilbertQuadrants>(Self::LEVELS, x, y, out)
     }
@@ -772,6 +795,7 @@ impl<W: Word> Hilbert2<W> {
     /// assert!(!Hilbert2::<u8>::intersects(0..4, 2..=5, ..));
     /// ```
     #[must_use]
+    #[inline]
     pub fn intersects(
         keys: impl RangeBounds<W>,
         x: impl RangeBounds<W>,
@@ -785,10 +809,14 @@ impl<W: Word> Hilbert2<W> {
 /// converted, a whole number of batches; the caller finishes the rest.
 /// The intrinsics are `unsafe` solely because they require the target
 /// feature: on `x86_64` a kernel carries its features in
-/// `target_feature` and is called only where `crate::cpu` found them;
+/// `target_feature` and is called only where `crate::isa` found them;
 /// on `aarch64` NEON is a compile-time fact.
 mod batch {
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod vbmi {
         use core::arch::x86_64::{
@@ -910,16 +938,19 @@ mod batch {
 
     /// `x86_64` chooses the kernel once a call, as in `hilbert3`: at
     /// compile time when the build has the features, else at run time.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod dispatch {
         use super::vbmi;
-        use crate::cpu;
 
         macro_rules! keys {
             ($($name:ident: $w:ty;)*) => {$(
                 pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
-                    if cpu::avx512vbmi() {
+                    if crate::isa::batch().vbmi {
                         // SAFETY: AVX-512 F, BW and VBMI are present.
                         unsafe { vbmi::$name(keys) }
                     } else {
@@ -935,7 +966,11 @@ mod batch {
         }
     }
 
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     pub(super) use dispatch::{from_morton_u32, from_morton_u64};
 
     #[cfg(all(
@@ -1063,7 +1098,11 @@ mod batch {
 
     /// No batch path: the caller converts every key.
     #[cfg(not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -1075,7 +1114,11 @@ mod batch {
     }
 
     #[cfg(not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",

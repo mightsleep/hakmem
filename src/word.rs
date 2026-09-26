@@ -7,12 +7,15 @@
 //!
 //! This module is the **only** place hardware selection happens. Each
 //! primitive with a fast path ([`pext`](Word::pext), [`pdep`](Word::pdep),
-//! [`select_lowest`](Word::select_lowest), [`xor_scan`](Word::xor_scan),
-//! [`xor_scan_down`](Word::xor_scan_down))
+//! [`zip`](Word::zip), [`unzip`](Word::unzip),
+//! [`select_lowest`](Word::select_lowest),
+//! [`xor_scan`](Word::xor_scan), [`xor_scan_down`](Word::xor_scan_down))
 //! picks the instruction when the matching `target_feature` is enabled
 //! at compile time and the `portable` cargo feature is off; otherwise a
 //! broadword definition with the same contract. The laws in
 //! [`crate::laws`] are what make the two interchangeable.
+
+use crate::isa::{Isa, Native};
 
 /// A fixed-width word of `BITS` bits, bit 0 least significant: the
 /// carrier every combinator and every law is written against.
@@ -117,6 +120,7 @@ pub trait Word:
     /// Clears the lowest set bit (BLSR); identity on zero.
     #[must_use]
     #[doc(alias("blsr"))]
+    #[inline]
     fn clear_lowest_set(self) -> Self {
         self.and(self.wrapping_sub(Self::ONE))
     }
@@ -126,15 +130,38 @@ pub trait Word:
     /// preserving order. BMI2: one instruction; portable:
     /// [`compress_broadword`].
     #[must_use]
+    #[inline]
     fn pext(self, mask: Self) -> Self {
-        compress_broadword(self, mask)
+        self.pext_in(mask, Native)
     }
     /// Parallel bit deposit (PDEP): scatters the low `count_ones(mask)`
     /// bits of `self` to the set positions of `mask`, preserving order.
     /// BMI2: one instruction; portable: [`expand_broadword`].
     #[must_use]
+    #[inline]
     fn pdep(self, mask: Self) -> Self {
-        expand_broadword(self, mask)
+        self.pdep_in(mask, Native)
+    }
+    /// The even bits and the odd bits, each compacted to the low half:
+    /// `(pext(0x55…), pext(0xAA…))`, the Morton decode, and Hacker's
+    /// Delight's outer unshuffle (7-2) with its halves in two words.
+    /// BMI2: two PEXT; portable: the shift ladder, once over a `u64`
+    /// holding both halves for `u32` and narrower, twice for `u64`;
+    /// wider carriers, two compresses.
+    #[must_use]
+    #[inline]
+    fn unzip(self) -> (Self, Self) {
+        self.unzip_in(Native)
+    }
+    /// The low halves of `self` and `other` interleaved, `self` on the
+    /// even bits and `other` on the odd: the Morton encode, and Hacker's
+    /// Delight's outer shuffle (7-2) with its halves from two words; the
+    /// inverse of [`unzip`](Word::unzip). BMI2: two PDEP; portable: two
+    /// expands, which under this mask fold to the shift ladder already.
+    #[must_use]
+    #[inline]
+    fn zip(self, other: Self) -> Self {
+        self.zip_in(other, Native)
     }
 
     /// Position of the `k`-th set bit (from 0), or `BITS` when there is
@@ -143,20 +170,18 @@ pub trait Word:
     /// steps, so a carrier overrides it. BMI2: `trailing_zeros(pdep(1 << k,
     /// self))`; portable: Vigna's broadword select.
     #[must_use]
+    #[inline]
     fn select_lowest(self, k: u32) -> u32 {
-        let mut x = self;
-        for _ in 0..k {
-            x = x.clear_lowest_set();
-        }
-        x.trailing_zeros()
+        self.select_lowest_in(k, Native)
     }
 
     /// Prefix XOR: bit `i` of the result is the parity of bits `0..=i`.
     /// PCLMULQDQ: carry-less multiply by all-ones; portable: log-depth
     /// smear.
     #[must_use]
+    #[inline]
     fn xor_scan(self) -> Self {
-        xor_smear(self)
+        self.xor_scan_in(Native)
     }
 
     /// Suffix XOR: bit `i` of the result is the parity of bits
@@ -164,12 +189,75 @@ pub trait Word:
     /// carry-less multiply by all-ones is the exclusive suffix parity,
     /// one XOR from the inclusive; portable: log-depth smear downward.
     #[must_use]
+    #[inline]
     fn xor_scan_down(self) -> Self {
+        self.xor_scan_down_in(Native)
+    }
+
+    /// [`pext`](Word::pext) with the instructions of `isa`. The seven
+    /// `_in` methods are the ones a carrier routes to hardware; the
+    /// provided ones are the portable definitions, which is what an
+    /// `isa` without the instruction would use anyway.
+    #[must_use]
+    #[inline]
+    fn pext_in<I: Isa>(self, mask: Self, isa: I) -> Self {
+        let _ = isa;
+        compress_broadword(self, mask)
+    }
+    /// [`pdep`](Word::pdep) with the instructions of `isa`.
+    #[must_use]
+    #[inline]
+    fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
+        let _ = isa;
+        expand_broadword(self, mask)
+    }
+    /// [`unzip`](Word::unzip) with the instructions of `isa`.
+    #[must_use]
+    #[inline]
+    fn unzip_in<I: Isa>(self, isa: I) -> (Self, Self) {
+        // The odd bits shifted down and compacted under the even mask:
+        // a compress under the odd mask itself takes a round more.
+        let even = Self::splat_byte(0x55);
+        (self.pext_in(even, isa), self.shr(1).pext_in(even, isa))
+    }
+    /// [`zip`](Word::zip) with the instructions of `isa`.
+    #[must_use]
+    #[inline]
+    fn zip_in<I: Isa>(self, other: Self, isa: I) -> Self {
+        let even = Self::splat_byte(0x55);
+        self.pdep_in(even, isa).or(other.pdep_in(even, isa).shl(1))
+    }
+    /// [`select_lowest`](Word::select_lowest) with the instructions of
+    /// `isa`. The provided loop takes `k` steps, so a carrier overrides it.
+    #[must_use]
+    #[inline]
+    fn select_lowest_in<I: Isa>(self, k: u32, isa: I) -> u32 {
+        let _ = isa;
+        let mut x = self;
+        for _ in 0..k {
+            x = x.clear_lowest_set();
+        }
+        x.trailing_zeros()
+    }
+    /// [`xor_scan`](Word::xor_scan) with the instructions of `isa`.
+    #[must_use]
+    #[inline]
+    fn xor_scan_in<I: Isa>(self, isa: I) -> Self {
+        let _ = isa;
+        xor_smear(self)
+    }
+    /// [`xor_scan_down`](Word::xor_scan_down) with the instructions of
+    /// `isa`.
+    #[must_use]
+    #[inline]
+    fn xor_scan_down_in<I: Isa>(self, isa: I) -> Self {
+        let _ = isa;
         xor_smear_down(self)
     }
 
     /// Mask with the `n` lowest bits set, `n <= BITS`.
     #[must_use]
+    #[inline]
     fn low_ones(n: u32) -> Self {
         if n >= Self::BITS {
             Self::ONES
@@ -215,6 +303,41 @@ pub trait Word:
 }
 
 // --- portable definitions ----------------------------------------------
+
+/// The even and the odd bits of `x`, each compacted, without PEXT: both
+/// halves side by side in a `u64` and one shift ladder for the two, the
+/// way the `morton` crate decodes. What a bit shifts across the middle
+/// lands where the next mask clears it. Two compresses of a `u32` cost
+/// a third more.
+#[inline]
+#[must_use]
+pub(crate) const fn unzip_broadword(x: u32) -> (u32, u32) {
+    let z = x as u64;
+    let mut w = (z | (z >> 1) << 32) & 0x5555_5555_5555_5555;
+    w = (w | w >> 1) & 0x3333_3333_3333_3333;
+    w = (w | w >> 2) & 0x0F0F_0F0F_0F0F_0F0F;
+    w = (w | w >> 4) & 0x00FF_00FF_00FF_00FF;
+    // No last mask: each half is 16 bits, and the truncation clears
+    // what the shift dragged above them, as a zero-extending move.
+    w |= w >> 8;
+    #[allow(clippy::cast_possible_truncation)]
+    (w as u16 as u32, (w >> 32) as u16 as u32)
+}
+
+/// The even bits of `x` gathered into the low 32: the classic ladder,
+/// five shifts. [`compress_broadword`] under the same mask folds to about
+/// as many operations, but this one schedules better where the Hilbert
+/// decode inlines it (2.94 to 2.65 µs for 1024 points, no flags).
+#[inline]
+#[must_use]
+pub(crate) const fn gather_even_u64(x: u64) -> u64 {
+    let mut x = x & 0x5555_5555_5555_5555;
+    x = (x | x >> 1) & 0x3333_3333_3333_3333;
+    x = (x | x >> 2) & 0x0F0F_0F0F_0F0F_0F0F;
+    x = (x | x >> 4) & 0x00FF_00FF_00FF_00FF;
+    x = (x | x >> 8) & 0x0000_FFFF_0000_FFFF;
+    (x | x >> 16) & 0xFFFF_FFFF
+}
 
 /// Portable PEXT: compress by parallel suffix (Hacker's Delight 7-4).
 ///
@@ -287,7 +410,7 @@ pub fn expand_broadword<W: Word>(x: W, mask: W) -> W {
 
 /// Log-depth XOR smear: `x ^= x << 1; x ^= x << 2; …`.
 #[inline]
-fn xor_smear<W: Word>(mut x: W) -> W {
+pub(crate) fn xor_smear<W: Word>(mut x: W) -> W {
     let mut s = 1;
     while s < W::BITS {
         x = x.xor(x.shl(s));
@@ -298,7 +421,7 @@ fn xor_smear<W: Word>(mut x: W) -> W {
 
 /// Log-depth XOR smear downward: `x ^= x >> 1; x ^= x >> 2; …`.
 #[inline]
-fn xor_smear_down<W: Word>(mut x: W) -> W {
+pub(crate) fn xor_smear_down<W: Word>(mut x: W) -> W {
     let mut s = 1;
     while s < W::BITS {
         x = x.xor(x.shr(s));
@@ -328,6 +451,7 @@ const INCR_STEP_8: u64 = 0x8040_2010_0804_0201;
 /// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 3), 64);
 /// ```
 #[must_use]
+#[inline]
 pub fn select_broadword64(x: u64, k: u32) -> u32 {
     // Phase 1: per-byte popcounts, then per-byte prefix sums by
     // multiplying with 0x0101…: byte j = popcount of bytes 0..=j.
@@ -362,88 +486,6 @@ pub fn select_broadword64(x: u64, k: u32) -> u32 {
     let byte_rank_step_8 = u64::from(byte_rank) * ONES_STEP_8;
     let geq_r = ((byte_rank_step_8 | MSBS_STEP_8) - bit_sums) & MSBS_STEP_8;
     place + geq_r.count_ones()
-}
-
-// --- hardware paths -------------------------------------------------------
-
-#[cfg(all(
-    target_arch = "x86_64",
-    target_feature = "bmi2",
-    not(feature = "portable")
-))]
-#[allow(unsafe_code)]
-mod bmi2 {
-    //! BMI2 fast paths.
-    //!
-    //! The intrinsics are `unsafe` solely because they require the
-    //! `bmi2` target feature. The `cfg` on this module proves the
-    //! feature is enabled for the whole compilation, so the calls are
-    //! sound; there is no other precondition.
-    use core::arch::x86_64::{_pdep_u32, _pdep_u64, _pext_u32, _pext_u64};
-
-    #[inline]
-    pub(super) fn pext32(x: u32, m: u32) -> u32 {
-        // SAFETY: bmi2 is statically enabled (module cfg).
-        unsafe { _pext_u32(x, m) }
-    }
-    #[inline]
-    pub(super) fn pdep32(x: u32, m: u32) -> u32 {
-        // SAFETY: bmi2 is statically enabled (module cfg).
-        unsafe { _pdep_u32(x, m) }
-    }
-    #[inline]
-    pub(super) fn pext64(x: u64, m: u64) -> u64 {
-        // SAFETY: bmi2 is statically enabled (module cfg).
-        unsafe { _pext_u64(x, m) }
-    }
-    #[inline]
-    pub(super) fn pdep64(x: u64, m: u64) -> u64 {
-        // SAFETY: bmi2 is statically enabled (module cfg).
-        unsafe { _pdep_u64(x, m) }
-    }
-}
-
-#[cfg(all(
-    target_arch = "x86_64",
-    target_feature = "pclmulqdq",
-    not(feature = "portable")
-))]
-#[allow(unsafe_code)]
-mod clmul {
-    //! PCLMULQDQ fast path for prefix XOR: a carry-less multiply by
-    //! all-ones XORs every left shift of the operand together, which is
-    //! exactly the prefix parity. The high half of the same 128-bit
-    //! product holds every right shift combined by XOR, bit `i` the
-    //! parity of bits `i + 1..64`: the exclusive suffix parity, one
-    //! XOR from the suffix scan. Same soundness argument as `bmi2`.
-    use core::arch::x86_64::{
-        __m128i, _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x, _mm_unpackhi_epi64,
-    };
-
-    #[inline]
-    pub(super) fn prefix_xor64(x: u64) -> u64 {
-        // SAFETY: pclmulqdq (and sse2, implied on x86_64) are
-        // statically enabled (module cfg). Reinterpreting the u64 as
-        // an i64 lane is a bit copy.
-        unsafe {
-            let a: __m128i = _mm_set_epi64x(0, x.cast_signed());
-            let ones: __m128i = _mm_set_epi64x(0, -1);
-            _mm_cvtsi128_si64(_mm_clmulepi64_si128(a, ones, 0)).cast_unsigned()
-        }
-    }
-
-    #[inline]
-    pub(super) fn suffix_xor64(x: u64) -> u64 {
-        // SAFETY: as above; `unpackhi` moves the high lane down, a
-        // register shuffle.
-        unsafe {
-            let a: __m128i = _mm_set_epi64x(0, x.cast_signed());
-            let ones: __m128i = _mm_set_epi64x(0, -1);
-            let p = _mm_clmulepi64_si128(a, ones, 0);
-            let exclusive = _mm_cvtsi128_si64(_mm_unpackhi_epi64(p, p)).cast_unsigned();
-            exclusive ^ x
-        }
-    }
 }
 
 // --- carrier impls --------------------------------------------------------
@@ -540,101 +582,28 @@ impl Word for u64 {
     impl_word_core!(u64);
 
     #[inline]
-    fn pext(self, mask: Self) -> Self {
-        #[cfg(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        ))]
-        {
-            bmi2::pext64(self, mask)
-        }
-        #[cfg(not(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        )))]
-        {
-            compress_broadword(self, mask)
-        }
+    fn pext_in<I: Isa>(self, mask: Self, isa: I) -> Self {
+        isa.pext_u64(self, mask)
     }
     #[inline]
-    fn pdep(self, mask: Self) -> Self {
-        #[cfg(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        ))]
-        {
-            bmi2::pdep64(self, mask)
-        }
-        #[cfg(not(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        )))]
-        {
-            expand_broadword(self, mask)
-        }
+    fn unzip_in<I: Isa>(self, isa: I) -> (Self, Self) {
+        isa.unzip_u64(self)
     }
     #[inline]
-    fn select_lowest(self, k: u32) -> u32 {
-        #[cfg(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        ))]
-        {
-            // Past the last set bit PDEP deposits nothing and TZCNT says 64,
-            // as long as `1 << k` is not asked to exist first.
-            bmi2::pdep64(1u64.checked_shl(k).unwrap_or(0), self).trailing_zeros()
-        }
-        #[cfg(not(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        )))]
-        {
-            select_broadword64(self, k)
-        }
+    fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
+        isa.pdep_u64(self, mask)
     }
     #[inline]
-    fn xor_scan(self) -> Self {
-        #[cfg(all(
-            target_arch = "x86_64",
-            target_feature = "pclmulqdq",
-            not(feature = "portable")
-        ))]
-        {
-            clmul::prefix_xor64(self)
-        }
-        #[cfg(not(all(
-            target_arch = "x86_64",
-            target_feature = "pclmulqdq",
-            not(feature = "portable")
-        )))]
-        {
-            xor_smear(self)
-        }
+    fn select_lowest_in<I: Isa>(self, k: u32, isa: I) -> u32 {
+        isa.select_u64(self, k)
     }
     #[inline]
-    fn xor_scan_down(self) -> Self {
-        #[cfg(all(
-            target_arch = "x86_64",
-            target_feature = "pclmulqdq",
-            not(feature = "portable")
-        ))]
-        {
-            clmul::suffix_xor64(self)
-        }
-        #[cfg(not(all(
-            target_arch = "x86_64",
-            target_feature = "pclmulqdq",
-            not(feature = "portable")
-        )))]
-        {
-            xor_smear_down(self)
-        }
+    fn xor_scan_in<I: Isa>(self, isa: I) -> Self {
+        isa.xor_scan_u64(self)
+    }
+    #[inline]
+    fn xor_scan_down_in<I: Isa>(self, isa: I) -> Self {
+        isa.xor_scan_down_u64(self)
     }
 }
 
@@ -642,60 +611,34 @@ impl Word for u32 {
     impl_word_core!(u32);
 
     #[inline]
-    fn pext(self, mask: Self) -> Self {
-        #[cfg(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        ))]
-        {
-            bmi2::pext32(self, mask)
-        }
-        #[cfg(not(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        )))]
-        {
-            compress_broadword(self, mask)
-        }
+    fn pext_in<I: Isa>(self, mask: Self, isa: I) -> Self {
+        isa.pext_u32(self, mask)
     }
     #[inline]
-    fn pdep(self, mask: Self) -> Self {
-        #[cfg(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        ))]
-        {
-            bmi2::pdep32(self, mask)
-        }
-        #[cfg(not(all(
-            target_arch = "x86_64",
-            target_feature = "bmi2",
-            not(feature = "portable")
-        )))]
-        {
-            expand_broadword(self, mask)
-        }
+    fn unzip_in<I: Isa>(self, isa: I) -> (Self, Self) {
+        isa.unzip_u32(self)
     }
     #[inline]
-    fn select_lowest(self, k: u32) -> u32 {
+    fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
+        isa.pdep_u32(self, mask)
+    }
+    #[inline]
+    fn select_lowest_in<I: Isa>(self, k: u32, isa: I) -> u32 {
         // Zero-extended, "none" comes back as 64.
-        u64::from(self).select_lowest(k).min(Self::BITS)
+        u64::from(self).select_lowest_in(k, isa).min(Self::BITS)
     }
     // The prefix of a zero-extended word is the prefix of the word.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
-    fn xor_scan(self) -> Self {
-        u64::from(self).xor_scan() as Self
+    fn xor_scan_in<I: Isa>(self, isa: I) -> Self {
+        u64::from(self).xor_scan_in(isa) as Self
     }
     // The zero extension contributes no parity: the suffix of the
     // extended word, truncated, is the suffix of the word.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
-    fn xor_scan_down(self) -> Self {
-        u64::from(self).xor_scan_down() as Self
+    fn xor_scan_down_in<I: Isa>(self, isa: I) -> Self {
+        u64::from(self).xor_scan_down_in(isa) as Self
     }
 }
 
@@ -707,50 +650,50 @@ impl Word for u128 {
     // Truncating casts split the halves on purpose.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
-    fn pext(self, mask: Self) -> Self {
+    fn pext_in<I: Isa>(self, mask: Self, isa: I) -> Self {
         let (lo, hi) = (self as u64, (self >> 64) as u64);
         let (mlo, mhi) = (mask as u64, (mask >> 64) as u64);
-        Self::from(lo.pext(mlo)) | (Self::from(hi.pext(mhi)) << mlo.count_ones())
+        Self::from(lo.pext_in(mlo, isa)) | (Self::from(hi.pext_in(mhi, isa)) << mlo.count_ones())
     }
     /// Two 64-bit halves: the high half consumes source bits after the
     /// low mask's `popcount`.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
-    fn pdep(self, mask: Self) -> Self {
+    fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
         let (mlo, mhi) = (mask as u64, (mask >> 64) as u64);
-        let lo = (self as u64).pdep(mlo);
-        let hi = ((self >> mlo.count_ones()) as u64).pdep(mhi);
+        let lo = (self as u64).pdep_in(mlo, isa);
+        let hi = ((self >> mlo.count_ones()) as u64).pdep_in(mhi, isa);
         Self::from(lo) | (Self::from(hi) << 64)
     }
     /// Pick the half by comparing `k` with the low half's popcount.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
-    fn select_lowest(self, k: u32) -> u32 {
+    fn select_lowest_in<I: Isa>(self, k: u32, isa: I) -> u32 {
         let (lo, hi) = (self as u64, (self >> 64) as u64);
         let n = lo.count_ones();
         if k < n {
-            lo.select_lowest(k)
+            lo.select_lowest_in(k, isa)
         } else {
-            64 + hi.select_lowest(k - n)
+            64 + hi.select_lowest_in(k - n, isa)
         }
     }
     /// Prefix of each half, with the low half's parity carried into
     /// every bit of the high half.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
-    fn xor_scan(self) -> Self {
+    fn xor_scan_in<I: Isa>(self, isa: I) -> Self {
         let (lo, hi) = (self as u64, (self >> 64) as u64);
         let carry = 0u64.wrapping_sub(u64::from(lo.count_ones() & 1));
-        Self::from(lo.xor_scan()) | (Self::from(hi.xor_scan() ^ carry) << 64)
+        Self::from(lo.xor_scan_in(isa)) | (Self::from(hi.xor_scan_in(isa) ^ carry) << 64)
     }
     /// Suffix of each half, with the high half's parity carried into
     /// every bit of the low half.
     #[allow(clippy::cast_possible_truncation)]
     #[inline]
-    fn xor_scan_down(self) -> Self {
+    fn xor_scan_down_in<I: Isa>(self, isa: I) -> Self {
         let (lo, hi) = (self as u64, (self >> 64) as u64);
         let carry = 0u64.wrapping_sub(u64::from(hi.count_ones() & 1));
-        Self::from(lo.xor_scan_down() ^ carry) | (Self::from(hi.xor_scan_down()) << 64)
+        Self::from(lo.xor_scan_down_in(isa) ^ carry) | (Self::from(hi.xor_scan_down_in(isa)) << 64)
     }
 }
 
@@ -766,28 +709,35 @@ macro_rules! impl_word_narrow {
             // The result fits: it has at most `count_ones(mask)` bits.
             #[allow(clippy::cast_possible_truncation)]
             #[inline]
-            fn pext(self, mask: Self) -> Self {
-                u32::from(self).pext(u32::from(mask)) as $t
+            fn pext_in<I: Isa>(self, mask: Self, isa: I) -> Self {
+                u32::from(self).pext_in(u32::from(mask), isa) as $t
+            }
+            // Each half of a zero-extended word fits the narrow one.
+            #[allow(clippy::cast_possible_truncation)]
+            #[inline]
+            fn unzip_in<I: Isa>(self, isa: I) -> (Self, Self) {
+                let (even, odd) = u32::from(self).unzip_in(isa);
+                (even as $t, odd as $t)
             }
             // Deposited bits land only at set positions of `mask`.
             #[allow(clippy::cast_possible_truncation)]
             #[inline]
-            fn pdep(self, mask: Self) -> Self {
-                u32::from(self).pdep(u32::from(mask)) as $t
+            fn pdep_in<I: Isa>(self, mask: Self, isa: I) -> Self {
+                u32::from(self).pdep_in(u32::from(mask), isa) as $t
             }
             #[inline]
-            fn select_lowest(self, k: u32) -> u32 {
-                u64::from(self).select_lowest(k).min(Self::BITS)
-            }
-            #[allow(clippy::cast_possible_truncation)]
-            #[inline]
-            fn xor_scan(self) -> Self {
-                u64::from(self).xor_scan() as $t
+            fn select_lowest_in<I: Isa>(self, k: u32, isa: I) -> u32 {
+                u64::from(self).select_lowest_in(k, isa).min(Self::BITS)
             }
             #[allow(clippy::cast_possible_truncation)]
             #[inline]
-            fn xor_scan_down(self) -> Self {
-                u64::from(self).xor_scan_down() as $t
+            fn xor_scan_in<I: Isa>(self, isa: I) -> Self {
+                u64::from(self).xor_scan_in(isa) as $t
+            }
+            #[allow(clippy::cast_possible_truncation)]
+            #[inline]
+            fn xor_scan_down_in<I: Isa>(self, isa: I) -> Self {
+                u64::from(self).xor_scan_down_in(isa) as $t
             }
         }
     )*};

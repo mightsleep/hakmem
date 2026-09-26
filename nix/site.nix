@@ -28,7 +28,14 @@
       hakmem-clippy-bmi2-default = "clippy, +bmi2";
       hakmem-clippy-bmi2-portable-feature = "clippy, +bmi2 with feature portable";
       hakmem-doc = "rustdoc, warnings as errors";
-      hakmem-public-api = "public API matches public-api.txt";
+      hakmem-public-api = "public API matches public-api/, x86_64 and aarch64";
+      hakmem-codegen-bmi2 = "codegen, +bmi2,+pclmulqdq,+ssse3,+avx2: claims and instruction counts";
+      hakmem-codegen-portable = "codegen, no flags: claims and instruction counts";
+      hakmem-codegen-outlined-portable = "codegen, no flags: hakmem functions left out of line in the benches";
+      hakmem-codegen-outlined-v3 = "codegen, x86-64-v3: hakmem functions left out of line in the benches";
+      hakmem-codegen-loops-portable = "codegen, no flags: the benches' innermost loops by hakmem function, llvm-mca cycles";
+      hakmem-codegen-loops-v3 = "codegen, x86-64-v3: the benches' innermost loops by hakmem function, llvm-mca cycles";
+      hakmem-none = "bare metal and kernels: the none targets build, and a +bmi2 kernel keeps PEXT";
       hakmem-msrv = "MSRV build of the packaged tarball";
       hakmem-deny = "cargo-deny";
       hakmem-audit = "cargo-audit";

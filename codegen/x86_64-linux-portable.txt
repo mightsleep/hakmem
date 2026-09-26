@@ -1,0 +1,13 @@
+cg_compact_u64: jmp=1 total=1
+cg_expand_u64: jmp=1 total=1
+cg_select_u64: addq=8 andq=14 cmpl=1 imulq=9 jae=1 leal=2 leaq=1 movabsq=9 movl=2 movq=14 movzbl=2 orq=5 popq=6 pushq=3 retq=2 shrq=17 subl=1 subq=3 xorl=1 total=101
+cg_prefix_xor_u64: leaq=2 movq=4 retq=1 shlq=4 xorq=6 total=17
+cg_hilbert2_encode_u64: addq=1 andl=8 andq=23 movabsq=1 movdqa=7 movl=4 movq=34 orq=5 paddq=1 pand=8 pandn=2 popq=6 por=5 pshufd=1 psllq=4 punpcklqdq=1 pushq=6 retq=1 shrq=20 xorl=6 xorq=35 total=179
+cg_quote_mask: addq=2 andl=1 andq=6 imulq=2 movabsq=5 movq=6 notq=2 orl=1 orq=2 retq=1 shlq=2 shrq=4 subq=2 xorq=2 total=38
+<hakmem::hilbert3::Hilbert3<u64>>::from_morton_in_place: addq=1 callq=5 cmpq=3 ja=1 je=3 jmp=2 jne=2 jns=1 leaq=1 movl=2 movq=13 orl=1 popq=3 pushq=3 retq=1 shlq=2 testb=3 testl=1 xorl=1 total=49
+<hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<u64, hakmem_codegen::cg_dispatch_gather::{closure#1}>: addq=1 andl=1 andq=1 cmpq=3 incq=1 jae=1 je=2 jmp=1 jne=2 leaq=1 movl=1 movq=9 pextq=5 retq=2 testq=2 xorl=6 xorq=5 total=44
+<hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<u16, hakmem_codegen::cg_dispatch_quote_mask::{closure#1}>: retq=1 vmovq=2 vpcmpeqb=1 vpmovmskb=1 vpunpcklqdq=1 total=6
+<hakmem::isa::x86v3::X86V3 as hakmem::isa::Isa>::run::trampoline::<usize, <[u64] as hakmem::slice::Words>::count_ones::{closure#1}>: addq=3 andq=3 cmpq=6 incq=1 jae=2 je=3 jmp=3 jne=3 leaq=1 movabsq=1 movq=3 popcntq=1 retq=2 subq=1 testb=1 testq=1 vextracti128=2 vmovdqa=2 vmovdqu=5 vmovq=3 vpaddb=5 vpaddq=12 vpand=10 vpbroadcastb=2 vpsadbw=5 vpshufb=10 vpshufd=2 vpsrlw=5 vpxor=6 vzeroupper=1 xorl=6 total=111
+<hakmem::isa::x86v4::X86V4 as hakmem::isa::Isa>::run::trampoline::<u16, hakmem_codegen::cg_dispatch_reverse_bits::{closure#2}>: retq=1 vgf2p8affineqb=1 vmovq=2 vpmovmskb=1 vpunpcklqdq=1 total=6
+<hakmem::isa::x86v2::X86V2 as hakmem::isa::Isa>::run::trampoline::<usize, <[u64] as hakmem::slice::Words>::count_ones::{closure#4}>: addq=6 andl=1 andq=1 cmpq=3 incq=1 jae=1 je=2 jmp=1 jne=2 leaq=1 movabsq=1 movl=1 popcntq=5 retq=2 testq=2 xorl=6 total=36
+<hakmem::isa::x86v2::X86V2 as hakmem::isa::Isa>::run::trampoline::<u64, hakmem_codegen::cg_dispatch_gather::{closure#4}>: callq=1 cmpq=1 incq=1 je=1 jmp=1 jne=1 movq=7 popq=5 pushq=5 retq=1 testq=1 xorl=3 xorq=1 total=29

@@ -7,13 +7,17 @@
 //! tricks of [`Bits`] take over. That boundary is where simdjson's first
 //! stage hands its masks to its second.
 //!
-//! Two carriers. [`U8x8`] is eight lanes in a `u64` by SWAR, always
-//! available and the one the exhaustive tests run on. [`U8x16`] is
-//! sixteen lanes in a vector register, SSSE3 on x86-64 and NEON on
-//! aarch64, chosen at compile time by `target_feature` like every other
-//! hardware path in this crate, and two `U8x8` halves otherwise. The
-//! intrinsic calls are the crate's only `unsafe`, as in [`Word`]: sound
-//! because the `cfg` makes the feature a compile-time fact.
+//! Two widths. [`U8x8`] is eight lanes in a `u64` by SWAR, always
+//! available and the one the exhaustive tests run on. Sixteen lanes come
+//! per instruction set: `X86x16` in an XMM register at an x86 level with
+//! SSSE3, `Neon16` on aarch64, [`Swar16`] as two `U8x8` halves anywhere.
+//! [`U8x16`] is the one the build proves, and `U8x16::load(bytes)` needs
+//! nothing more; under a token from [`crate::isa`], `I::U8x16` is that
+//! level's, made with `I::U8x16::load(cpu, bytes)`.
+//!
+//! A carrier's value is a proof that the CPU has its instructions, which
+//! is why the [`Lanes`] constructors take the token and why the intrinsic
+//! calls, the crate's only `unsafe` besides [`Word`]'s, are sound.
 //!
 //! The one lane instruction that has no scalar sibling is the 16-entry
 //! table lookup ([`Lanes::lut16`], PSHUFB / `tbl`): two of them, one on
@@ -57,6 +61,7 @@
 
 use crate::affine::Affine8;
 use crate::bits::Bits;
+use crate::isa::{Isa, Portable};
 use crate::word::Word;
 
 /// The provided methods' scratch, checked against [`Lanes::LANES`] at
@@ -78,17 +83,24 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     const LANES: usize;
     /// The word [`to_bitmask`](Self::to_bitmask) produces: one bit per lane.
     type Bitmask: Word;
+    /// The instruction set the lanes are in. A value of a carrier proves
+    /// the CPU has it, which is why the constructors take the token.
+    type Isa: Isa;
+
+    /// The token of the lanes' instruction set.
+    #[must_use]
+    fn isa(self) -> Self::Isa;
 
     /// `b` in every lane.
     #[must_use]
-    fn splat(b: u8) -> Self;
+    fn splat(isa: Self::Isa, b: u8) -> Self;
     /// Lanes from `LANES` bytes, lane 0 first.
     ///
     /// # Panics
     ///
     /// If `bytes.len() != LANES`.
     #[must_use]
-    fn load(bytes: &[u8]) -> Self;
+    fn load(isa: Self::Isa, bytes: &[u8]) -> Self;
     /// Lane `i`.
     ///
     /// # Panics
@@ -145,8 +157,8 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     /// Every lane zero.
     #[inline]
     #[must_use]
-    fn zero() -> Self {
-        Self::splat(0)
+    fn zero(isa: Self::Isa) -> Self {
+        Self::splat(isa, 0)
     }
 
     /// Mask of lanes where `self < other`, unsigned.
@@ -196,7 +208,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[inline]
     #[must_use]
     fn lut16_nibbles(self, lo: [u8; 16], hi: [u8; 16]) -> Self {
-        self.and(Self::splat(0x0F))
+        self.and(Self::splat(self.isa(), 0x0F))
             .lut16(lo)
             .and(self.shr(4).lut16(hi))
     }
@@ -219,7 +231,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
                 0
             };
         }
-        Self::load(&out[..Self::LANES])
+        Self::load(self.isa(), &out[..Self::LANES])
     }
 
     /// Lanes `n..n + LANES` of the concatenation `self ++ other`, zeros
@@ -239,7 +251,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
                 0
             };
         }
-        Self::load(&out[..Self::LANES])
+        Self::load(self.isa(), &out[..Self::LANES])
     }
 
     /// Saturating add per lane: `min(x + y, 255)`.
@@ -268,7 +280,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
             out[2 * k] = self.lane(k);
             out[2 * k + 1] = other.lane(k);
         }
-        Self::load(&out[..Self::LANES])
+        Self::load(self.isa(), &out[..Self::LANES])
     }
 
     /// Interleave the high halves: `self[LANES/2], other[LANES/2], ...`
@@ -282,7 +294,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
             out[2 * k] = self.lane(half + k);
             out[2 * k + 1] = other.lane(half + k);
         }
-        Self::load(&out[..Self::LANES])
+        Self::load(self.isa(), &out[..Self::LANES])
     }
 
     /// Sum over all lanes of `|self - other|` (PSADBW, `uabd` + `addv`):
@@ -319,7 +331,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
             });
             out[2 * k..2 * k + 2].copy_from_slice(&s.to_le_bytes());
         }
-        Self::load(&out[..Self::LANES])
+        Self::load(self.isa(), &out[..Self::LANES])
     }
 
     // --- byte maps: GF(2) affine, and the shapes built on it ------------
@@ -334,10 +346,7 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[must_use]
     #[doc(alias("gf2p8affineqb", "gfni"))]
     fn affine(self, map: Affine8) -> Self {
-        let (lo, hi) = map.tables();
-        self.and(Self::splat(0x0F))
-            .lut16(lo)
-            .xor(self.shr(4).lut16(hi))
+        affine_by_lut16(self, map)
     }
 
     /// Reverse the bits of every lane: [`Affine8::REVERSE`]; `rbit` on
@@ -355,21 +364,14 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[inline]
     #[must_use]
     fn sra(self, n: u32) -> Self {
-        let n = n.min(8);
-        let sign = self.cmp_ge(Self::splat(0x80));
-        self.shr(n).or(sign.shl(8 - n))
+        sra_by_shifts(self, n)
     }
 
     /// Rotate every lane left by `n mod 8`.
     #[inline]
     #[must_use]
     fn rotl(self, n: u32) -> Self {
-        let n = n % 8;
-        if n == 0 {
-            self
-        } else {
-            self.shl(n).or(self.shr(8 - n))
-        }
+        rotl_by_shifts(self, n)
     }
 
     /// Rotate every lane right by `n mod 8`.
@@ -405,14 +407,38 @@ pub trait Lanes: Copy + Eq + core::fmt::Debug {
     #[must_use]
     fn ternary(self, b: Self, c: Self, table: u8) -> Self {
         let leaf = |t: u8| match t & 3 {
-            0 => Self::zero(),
+            0 => Self::zero(self.isa()),
             1 => c.not(),
             2 => c,
-            _ => Self::zero().not(),
+            _ => Self::zero(self.isa()).not(),
         };
         let on_b = |t: u8| b.and(leaf(t >> 2)).or(b.not().and(leaf(t)));
         self.and(on_b(table >> 4)).or(self.not().and(on_b(table)))
     }
+}
+
+/// [`Lanes::affine`] by two nibble lookups: `A·x = A·hi ⊕ A·lo`.
+#[inline]
+pub(crate) fn affine_by_lut16<L: Lanes>(x: L, map: Affine8) -> L {
+    let (lo, hi) = map.tables();
+    x.and(L::splat(x.isa(), 0x0F))
+        .lut16(lo)
+        .xor(x.shr(4).lut16(hi))
+}
+
+/// [`Lanes::sra`] by the logical shift and the sign mask shifted into place.
+#[inline]
+pub(crate) fn sra_by_shifts<L: Lanes>(x: L, n: u32) -> L {
+    let n = n.min(8);
+    let sign = x.cmp_ge(L::splat(x.isa(), 0x80));
+    x.shr(n).or(sign.shl(8 - n))
+}
+
+/// [`Lanes::rotl`] by two shifts.
+#[inline]
+pub(crate) fn rotl_by_shifts<L: Lanes>(x: L, n: u32) -> L {
+    let n = n % 8;
+    if n == 0 { x } else { x.shl(n).or(x.shr(8 - n)) }
 }
 
 /// Eight lanes in a `u64` by SWAR: portable, and the carrier the
@@ -449,20 +475,54 @@ impl U8x8 {
     }
 }
 
-impl Lanes for U8x8 {
-    const LANES: usize = 8;
-    type Bitmask = u8;
-
+/// SWAR is sound on any CPU, so these need no token.
+impl U8x8 {
+    /// `b` in every lane.
     #[inline]
-    fn splat(b: u8) -> Self {
+    #[must_use]
+    pub fn splat(b: u8) -> Self {
         Self(u64::splat_byte(b))
     }
 
+    /// Lanes from 8 bytes, lane 0 first.
+    ///
+    /// # Panics
+    ///
+    /// If `bytes.len() != 8`.
     #[inline]
-    fn load(bytes: &[u8]) -> Self {
+    #[must_use]
+    pub const fn load(bytes: &[u8]) -> Self {
         let mut w = [0; 8];
         w.copy_from_slice(bytes);
         Self(u64::from_le_bytes(w))
+    }
+
+    /// Every lane zero.
+    #[inline]
+    #[must_use]
+    pub const fn zero() -> Self {
+        Self(0)
+    }
+}
+
+impl Lanes for U8x8 {
+    const LANES: usize = 8;
+    type Bitmask = u8;
+    type Isa = Portable;
+
+    #[inline]
+    fn isa(self) -> Portable {
+        Portable
+    }
+
+    #[inline]
+    fn splat(_: Portable, b: u8) -> Self {
+        Self::splat(b)
+    }
+
+    #[inline]
+    fn load(_: Portable, bytes: &[u8]) -> Self {
+        Self::load(bytes)
     }
 
     #[inline]
@@ -571,53 +631,58 @@ impl Lanes for U8x8 {
     }
 }
 
-// --- U8x16: SSSE3 -------------------------------------------------------
+// --- 16 lanes on x86: SSSE3 ----------------------------------------------
 
-/// The intrinsics are `unsafe` solely because they require the target
-/// feature, and `cfg` makes SSSE3 a compile-time fact of this build. The
+/// The intrinsics are `unsafe` solely because they need the target
+/// feature, and a value of `X86x16<L>` proves the CPU has it: the only
+/// way to make one is a constructor that takes the level's token. The
 /// attribute route is closed: `#[target_feature]` cannot go on safe trait
 /// methods, and the build configuration does not count for the check.
-#[cfg(all(
-    target_arch = "x86_64",
-    target_feature = "ssse3",
-    not(feature = "portable")
-))]
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
 #[allow(unsafe_code)]
-mod x16 {
+mod x86 {
     use core::arch::x86_64::{
         __m128i, _mm_add_epi8, _mm_adds_epu8, _mm_alignr_epi8, _mm_and_si128, _mm_avg_epu8,
-        _mm_cmpeq_epi8, _mm_cvtsi128_si64, _mm_maddubs_epi16, _mm_min_epu8, _mm_movemask_epi8,
-        _mm_or_si128, _mm_sad_epu8, _mm_set_epi64x, _mm_set1_epi8, _mm_shuffle_epi8,
-        _mm_srli_si128, _mm_sub_epi8, _mm_subs_epu8, _mm_unpackhi_epi8, _mm_unpacklo_epi8,
-        _mm_xor_si128,
+        _mm_cmpeq_epi8, _mm_cvtsi32_si128, _mm_cvtsi128_si64, _mm_gf2p8affine_epi64_epi8,
+        _mm_maddubs_epi16, _mm_min_epu8, _mm_movemask_epi8, _mm_or_si128, _mm_sad_epu8,
+        _mm_set_epi64x, _mm_set1_epi8, _mm_set1_epi64x, _mm_shuffle_epi8, _mm_sll_epi16,
+        _mm_srl_epi16, _mm_srli_si128, _mm_sub_epi8, _mm_subs_epu8, _mm_unpackhi_epi8,
+        _mm_unpacklo_epi8, _mm_xor_si128,
     };
-    #[cfg(not(target_feature = "gfni"))]
-    use core::arch::x86_64::{_mm_cvtsi32_si128, _mm_sll_epi16, _mm_srl_epi16};
-    #[cfg(target_feature = "gfni")]
-    use core::arch::x86_64::{_mm_gf2p8affine_epi64_epi8, _mm_set1_epi64x};
+    use core::marker::PhantomData;
 
-    #[cfg(target_feature = "gfni")]
-    use super::Affine8;
-    use super::{Lanes, U8x8};
+    use super::{Affine8, Lanes, U8x8, affine_by_lut16, rotl_by_shifts, sra_by_shifts};
+    use crate::isa::X86Level;
 
-    /// Sixteen lanes in an XMM register (SSSE3).
+    /// Sixteen lanes in an XMM register, at an x86 level with SSSE3:
+    /// PSHUFB for the lookups, and GFNI for the byte maps where the level
+    /// has it.
     #[derive(Clone, Copy)]
-    pub struct U8x16(__m128i);
+    pub struct X86x16<L>(__m128i, PhantomData<L>);
 
-    impl U8x16 {
+    // SAFETY, for every intrinsic below: a value of `X86x16<L>` exists, so
+    // the CPU has `L`'s features (SSSE3 and SSE2 on every x86 level), and
+    // GFNI where `L::GFNI` says so.
+    impl<L: X86Level> X86x16<L> {
+        #[inline]
+        const fn r(v: __m128i) -> Self {
+            Self(v, PhantomData)
+        }
+
         /// Lanes from two words: lanes `0..8` from `lo`, `8..16` from `hi`.
         #[inline]
         #[must_use]
-        pub fn from_halves(lo: u64, hi: u64) -> Self {
-            // SAFETY: SSE2 is enabled by cfg (SSSE3 implies it).
-            Self(unsafe { _mm_set_epi64x(hi.cast_signed(), lo.cast_signed()) })
+        pub fn from_halves_in(isa: L, lo: u64, hi: u64) -> Self {
+            let _ = isa;
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_set_epi64x(hi.cast_signed(), lo.cast_signed()) })
         }
 
         /// The two words, lanes `0..8` and `8..16`.
         #[inline]
         #[must_use]
         pub fn halves(self) -> (u64, u64) {
-            // SAFETY: SSE2 is enabled by cfg.
+            // SAFETY: see above.
             let (lo, hi) = unsafe {
                 (
                     _mm_cvtsi128_si64(self.0),
@@ -626,27 +691,55 @@ mod x16 {
             };
             (lo.cast_unsigned(), hi.cast_unsigned())
         }
+
+        /// 16-bit lanes shifted, and the bits that crossed a byte masked:
+        /// SSE has no byte shift.
+        #[inline]
+        fn shift_by_words(self, n: u32, left: bool) -> Self {
+            if n >= 8 {
+                return Self::zero(self.isa());
+            }
+            // SAFETY: see above.
+            let count = unsafe { _mm_cvtsi32_si128(n.cast_signed()) };
+            if left {
+                // SAFETY: see above.
+                Self::r(unsafe { _mm_sll_epi16(self.0, count) })
+                    .and(Self::splat(self.isa(), 0xFFu8 << n))
+            } else {
+                // SAFETY: see above.
+                Self::r(unsafe { _mm_srl_epi16(self.0, count) })
+                    .and(Self::splat(self.isa(), 0xFF >> n))
+            }
+        }
     }
 
-    impl Lanes for U8x16 {
+    impl<L: X86Level> Lanes for X86x16<L> {
         const LANES: usize = 16;
         type Bitmask = u16;
+        type Isa = L;
 
         #[inline]
-        fn splat(b: u8) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_set1_epi8(b.cast_signed()) })
+        fn isa(self) -> L {
+            // SAFETY: the value exists, see above.
+            unsafe { L::assume() }
         }
 
         #[inline]
-        fn load(bytes: &[u8]) -> Self {
+        fn splat(isa: L, b: u8) -> Self {
+            let _ = isa;
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_set1_epi8(b.cast_signed()) })
+        }
+
+        #[inline]
+        fn load(isa: L, bytes: &[u8]) -> Self {
             assert!(
                 bytes.len() == 16,
                 "U8x16::load needs 16 bytes, got {}",
                 bytes.len()
             );
             let (lo, hi) = (U8x8::load(&bytes[..8]), U8x8::load(&bytes[8..]));
-            Self::from_halves(lo.bits(), hi.bits())
+            Self::from_halves_in(isa, lo.bits(), hi.bits())
         }
 
         #[inline]
@@ -661,108 +754,91 @@ mod x16 {
 
         #[inline]
         fn and(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_and_si128(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_and_si128(self.0, other.0) })
         }
 
         #[inline]
         fn or(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_or_si128(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_or_si128(self.0, other.0) })
         }
 
         #[inline]
         fn xor(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_xor_si128(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_xor_si128(self.0, other.0) })
         }
 
         #[inline]
         fn not(self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_xor_si128(self.0, _mm_set1_epi8(-1)) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_xor_si128(self.0, _mm_set1_epi8(-1)) })
         }
 
         #[inline]
         fn add(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_add_epi8(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_add_epi8(self.0, other.0) })
         }
 
         #[inline]
         fn sub(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_sub_epi8(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_sub_epi8(self.0, other.0) })
         }
 
-        /// No 8-bit shift in SSE: shift 16-bit lanes and mask the bits
-        /// that crossed a byte. With GFNI the shift is a matrix, below.
-        #[cfg(not(target_feature = "gfni"))]
+        /// A matrix with GFNI; otherwise 16-bit shifts and a mask.
         #[inline]
         fn shl(self, n: u32) -> Self {
-            if n >= 8 {
-                return Self::zero();
+            if L::GFNI {
+                self.affine(Affine8::shl(n))
+            } else {
+                self.shift_by_words(n, true)
             }
-            // SAFETY: SSE2 is enabled by cfg.
-            let shifted = unsafe { _mm_sll_epi16(self.0, _mm_cvtsi32_si128(n.cast_signed())) };
-            Self(shifted).and(Self::splat(0xFFu8 << n))
         }
 
-        #[cfg(not(target_feature = "gfni"))]
         #[inline]
         fn shr(self, n: u32) -> Self {
-            if n >= 8 {
-                return Self::zero();
+            if L::GFNI {
+                self.affine(Affine8::shr(n))
+            } else {
+                self.shift_by_words(n, false)
             }
-            // SAFETY: SSE2 is enabled by cfg.
-            let shifted = unsafe { _mm_srl_epi16(self.0, _mm_cvtsi32_si128(n.cast_signed())) };
-            Self(shifted).and(Self::splat(0xFF >> n))
-        }
-
-        #[cfg(target_feature = "gfni")]
-        #[inline]
-        fn shl(self, n: u32) -> Self {
-            self.affine(Affine8::shl(n))
-        }
-
-        #[cfg(target_feature = "gfni")]
-        #[inline]
-        fn shr(self, n: u32) -> Self {
-            self.affine(Affine8::shr(n))
         }
 
         #[inline]
         fn cmp_eq(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_cmpeq_epi8(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_cmpeq_epi8(self.0, other.0) })
         }
 
         /// `a <= b` iff `min(a, b) == a`.
         #[inline]
         fn cmp_le(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_cmpeq_epi8(_mm_min_epu8(self.0, other.0), self.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_cmpeq_epi8(_mm_min_epu8(self.0, other.0), self.0) })
         }
 
         #[inline]
         fn lut16(self, table: [u8; 16]) -> Self {
-            // SAFETY: SSSE3 is enabled by cfg.
-            Self(unsafe { _mm_shuffle_epi8(Self::load(&table).0, self.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_shuffle_epi8(Self::load(self.isa(), &table).0, self.0) })
         }
 
         #[inline]
         fn to_bitmask(self) -> u16 {
-            // SAFETY: SSE2 is enabled by cfg. movemask yields 16 bits in an
-            // i32; the truncation keeps them all.
+            // movemask yields 16 bits in an i32; the truncation keeps them all.
             #[allow(clippy::cast_possible_truncation, clippy::cast_sign_loss)]
+            // SAFETY: see above.
             let bits = unsafe { _mm_movemask_epi8(self.0) } as u16;
             bits
         }
 
         #[inline]
         fn shuffle(self, idx: Self) -> Self {
-            // SAFETY: SSSE3 is enabled by cfg.
-            Self(unsafe { _mm_shuffle_epi8(self.0, idx.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_shuffle_epi8(self.0, idx.0) })
         }
 
         /// PALIGNR takes an immediate; the match folds to one instruction
@@ -772,10 +848,10 @@ mod x16 {
             macro_rules! alignr {
                 ($($k:literal),*) => {
                     match n {
-                        // SAFETY: SSSE3 is enabled by cfg.
-                        $($k => Self(unsafe { _mm_alignr_epi8::<$k>(other.0, self.0) }),)*
-                        17..=31 => other.concat_shift(Self::zero(), n - 16),
-                        _ => Self::zero(),
+                        // SAFETY: see above.
+                        $($k => Self::r(unsafe { _mm_alignr_epi8::<$k>(other.0, self.0) }),)*
+                        17..=31 => other.concat_shift(Self::zero(self.isa()), n - 16),
+                        _ => Self::zero(self.isa()),
                     }
                 };
             }
@@ -784,33 +860,33 @@ mod x16 {
 
         #[inline]
         fn add_sat(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_adds_epu8(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_adds_epu8(self.0, other.0) })
         }
 
         #[inline]
         fn sub_sat(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_subs_epu8(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_subs_epu8(self.0, other.0) })
         }
 
         #[inline]
         fn unpack_lo(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_unpacklo_epi8(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_unpacklo_epi8(self.0, other.0) })
         }
 
         #[inline]
         fn unpack_hi(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_unpackhi_epi8(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_unpackhi_epi8(self.0, other.0) })
         }
 
         /// PSADBW leaves a sum in each 64-bit half.
         #[inline]
         fn sum_abs_diff(self, other: Self) -> u32 {
-            // SAFETY: SSE2 is enabled by cfg.
-            let (lo, hi) = Self(unsafe { _mm_sad_epu8(self.0, other.0) }).halves();
+            // SAFETY: see above.
+            let (lo, hi) = Self::r(unsafe { _mm_sad_epu8(self.0, other.0) }).halves();
             // Each half is at most 8 × 255.
             #[allow(clippy::cast_possible_truncation)]
             let sum = (lo + hi) as u32;
@@ -819,55 +895,107 @@ mod x16 {
 
         #[inline]
         fn mul_add_pairs(self, weights: Self) -> Self {
-            // SAFETY: SSSE3 is enabled by cfg.
-            Self(unsafe { _mm_maddubs_epi16(self.0, weights.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_maddubs_epi16(self.0, weights.0) })
         }
 
         #[inline]
         fn avg_round(self, other: Self) -> Self {
-            // SAFETY: SSE2 is enabled by cfg.
-            Self(unsafe { _mm_avg_epu8(self.0, other.0) })
+            // SAFETY: see above.
+            Self::r(unsafe { _mm_avg_epu8(self.0, other.0) })
         }
 
-        /// One `gf2p8affineqb`. Its immediate is the constant term, but
-        /// an immediate must be a literal and the map is a value, so the
-        /// constant goes in as an XOR after the instruction; a linear
-        /// map, which every named one is, needs nothing after it.
-        #[cfg(target_feature = "gfni")]
+        /// One `gf2p8affineqb` with GFNI. Its immediate is the constant
+        /// term, but an immediate must be a literal and the map is a
+        /// value, so the constant goes in as an XOR after the instruction;
+        /// a linear map, which every named one is, needs nothing after it.
+        /// Without GFNI, two nibble lookups.
         #[inline]
         fn affine(self, map: Affine8) -> Self {
-            // SAFETY: GFNI is enabled by cfg, and SSE2 with it.
-            let linear = Self(unsafe {
+            if !L::GFNI {
+                return affine_by_lut16(self, map);
+            }
+            // SAFETY: see above; `L::GFNI` was checked just before.
+            let linear = Self::r(unsafe {
                 _mm_gf2p8affine_epi64_epi8::<0>(self.0, _mm_set1_epi64x(map.matrix().cast_signed()))
             });
             if map.is_linear() {
                 linear
             } else {
-                linear.xor(Self::splat(map.add()))
+                linear.xor(Self::splat(self.isa(), map.add()))
             }
         }
 
-        #[cfg(target_feature = "gfni")]
         #[inline]
         fn sra(self, n: u32) -> Self {
-            self.affine(Affine8::sra(n))
+            if L::GFNI {
+                self.affine(Affine8::sra(n))
+            } else {
+                sra_by_shifts(self, n)
+            }
         }
 
-        #[cfg(target_feature = "gfni")]
         #[inline]
         fn rotl(self, n: u32) -> Self {
-            self.affine(Affine8::rotl(n))
+            if L::GFNI {
+                self.affine(Affine8::rotl(n))
+            } else {
+                rotl_by_shifts(self, n)
+            }
         }
 
-        #[cfg(target_feature = "gfni")]
         #[inline]
         fn rotr(self, n: u32) -> Self {
-            self.affine(Affine8::rotr(n))
+            if L::GFNI {
+                self.affine(Affine8::rotr(n))
+            } else {
+                rotl_by_shifts(self, (8 - n % 8) % 8)
+            }
+        }
+    }
+
+    /// `Native` with SSSE3 in the build: the build is the proof, so the
+    /// plain constructors need no token.
+    #[cfg(all(target_feature = "ssse3", not(feature = "portable")))]
+    impl X86x16<crate::isa::Native> {
+        /// `b` in every lane.
+        #[inline]
+        #[must_use]
+        pub fn splat(b: u8) -> Self {
+            <Self as Lanes>::splat(crate::isa::Native, b)
+        }
+
+        /// Lanes from 16 bytes, lane 0 first.
+        ///
+        /// # Panics
+        ///
+        /// If `bytes.len() != 16`.
+        #[inline]
+        #[must_use]
+        pub fn load(bytes: &[u8]) -> Self {
+            <Self as Lanes>::load(crate::isa::Native, bytes)
+        }
+
+        /// Every lane zero.
+        #[inline]
+        #[must_use]
+        pub fn zero() -> Self {
+            <Self as Lanes>::zero(crate::isa::Native)
+        }
+
+        /// Lanes from two words: lanes `0..8` from `lo`, `8..16` from `hi`.
+        #[inline]
+        #[must_use]
+        pub fn from_halves(lo: u64, hi: u64) -> Self {
+            Self::from_halves_in(crate::isa::Native, lo, hi)
         }
     }
 }
 
-// --- U8x16: NEON --------------------------------------------------------
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
+pub use x86::X86x16;
+
+// --- 16 lanes on aarch64: NEON --------------------------------------------------------
 
 /// Same boundary as the SSSE3 module: the intrinsics are `unsafe` only for
 /// the feature requirement, and `cfg` settles that at compile time.
@@ -877,7 +1005,7 @@ mod x16 {
     not(feature = "portable")
 ))]
 #[allow(unsafe_code)]
-mod x16 {
+mod neon {
     use core::arch::aarch64::{
         uint8x16_t, uint8x16x2_t, vabdq_u8, vaddlvq_u8, vaddq_u8, vandq_u8, vceqq_u8, vcleq_u8,
         vcltzq_s8, vcombine_s16, vcombine_u8, vcreate_u8, vdupq_n_s8, vdupq_n_u8, veorq_u8,
@@ -890,12 +1018,13 @@ mod x16 {
     };
 
     use super::{Lanes, U8x8};
+    use crate::isa::Native;
 
     /// Sixteen lanes in a NEON register.
     #[derive(Clone, Copy)]
-    pub struct U8x16(uint8x16_t);
+    pub struct Neon16(uint8x16_t);
 
-    impl U8x16 {
+    impl Neon16 {
         /// Lanes from two words: lanes `0..8` from `lo`, `8..16` from `hi`.
         #[inline]
         #[must_use]
@@ -916,18 +1045,53 @@ mod x16 {
         }
     }
 
-    impl Lanes for U8x16 {
+    /// NEON in the build is the proof, so the plain constructors need no
+    /// token.
+    impl Neon16 {
+        /// `b` in every lane.
+        #[inline]
+        #[must_use]
+        pub fn splat(b: u8) -> Self {
+            <Self as Lanes>::splat(Native, b)
+        }
+
+        /// Lanes from 16 bytes, lane 0 first.
+        ///
+        /// # Panics
+        ///
+        /// If `bytes.len() != 16`.
+        #[inline]
+        #[must_use]
+        pub fn load(bytes: &[u8]) -> Self {
+            <Self as Lanes>::load(Native, bytes)
+        }
+
+        /// Every lane zero.
+        #[inline]
+        #[must_use]
+        pub fn zero() -> Self {
+            <Self as Lanes>::zero(Native)
+        }
+    }
+
+    impl Lanes for Neon16 {
         const LANES: usize = 16;
         type Bitmask = u16;
+        type Isa = Native;
 
         #[inline]
-        fn splat(b: u8) -> Self {
+        fn isa(self) -> Native {
+            Native
+        }
+
+        #[inline]
+        fn splat(_: Native, b: u8) -> Self {
             // SAFETY: NEON is enabled by cfg.
             Self(unsafe { vdupq_n_u8(b) })
         }
 
         #[inline]
-        fn load(bytes: &[u8]) -> Self {
+        fn load(_: Native, bytes: &[u8]) -> Self {
             assert!(
                 bytes.len() == 16,
                 "U8x16::load needs 16 bytes, got {}",
@@ -1160,31 +1324,36 @@ mod x16 {
         }
     }
 }
+#[cfg(all(
+    target_arch = "aarch64",
+    target_feature = "neon",
+    not(feature = "portable")
+))]
+pub use neon::Neon16;
 
-// --- U8x16: portable ----------------------------------------------------
+// --- 16 lanes anywhere: two SWAR words ----------------------------------
 
-#[cfg(not(any(
-    all(
-        target_arch = "x86_64",
-        target_feature = "ssse3",
-        not(feature = "portable")
-    ),
-    all(
-        target_arch = "aarch64",
-        target_feature = "neon",
-        not(feature = "portable")
-    )
-)))]
-mod x16 {
+mod swar {
+    use core::marker::PhantomData;
+
     use super::{Affine8, Lanes, U8x8};
+    use crate::isa::{Isa, Portable};
 
-    /// Sixteen lanes as two [`U8x8`] halves: the portable definition.
+    /// Sixteen lanes as two [`U8x8`] halves: sound on any CPU, so it
+    /// serves any level that can be made without asking the CPU
+    /// ([`Portable`], and [`Native`](crate::isa::Native) in a build without
+    /// SSSE3 or NEON).
     // One field, as on NEON: the public API may not depend on how many
-    // halves a target keeps (public-api.txt is diffed on both).
+    // halves a target keeps (public-api/ has a file for each).
     #[derive(Clone, Copy)]
-    pub struct U8x16([U8x8; 2]);
+    pub struct Swar16<I = Portable>([U8x8; 2], PhantomData<I>);
 
-    impl U8x16 {
+    impl<I: Isa + Default> Swar16<I> {
+        #[inline]
+        const fn r(halves: [U8x8; 2]) -> Self {
+            Self(halves, PhantomData)
+        }
+
         /// Lanes from two words: lanes `0..8` from `lo`, `8..16` from `hi`.
         // Not `const`: the SIMD carriers can't be, and an API that is
         // `const` on some targets compiles on some machines.
@@ -1192,7 +1361,7 @@ mod x16 {
         #[inline]
         #[must_use]
         pub fn from_halves(lo: u64, hi: u64) -> Self {
-            Self([U8x8::new(lo), U8x8::new(hi)])
+            Self::r([U8x8::new(lo), U8x8::new(hi)])
         }
 
         /// The two words, lanes `0..8` and `8..16`.
@@ -1203,29 +1372,65 @@ mod x16 {
             (self.0[0].bits(), self.0[1].bits())
         }
 
+        /// `b` in every lane. No token: SWAR runs anywhere.
         #[inline]
-        fn map(self, other: Self, f: impl Fn(U8x8, U8x8) -> U8x8) -> Self {
-            Self([f(self.0[0], other.0[0]), f(self.0[1], other.0[1])])
-        }
-    }
-
-    impl Lanes for U8x16 {
-        const LANES: usize = 16;
-        type Bitmask = u16;
-
-        #[inline]
-        fn splat(b: u8) -> Self {
-            Self([U8x8::splat(b), U8x8::splat(b)])
+        #[must_use]
+        pub fn splat(b: u8) -> Self {
+            Self::r([U8x8::splat(b), U8x8::splat(b)])
         }
 
+        /// Lanes from 16 bytes, lane 0 first.
+        ///
+        /// # Panics
+        ///
+        /// If `bytes.len() != 16`.
         #[inline]
-        fn load(bytes: &[u8]) -> Self {
+        #[must_use]
+        pub fn load(bytes: &[u8]) -> Self {
             assert!(
                 bytes.len() == 16,
                 "U8x16::load needs 16 bytes, got {}",
                 bytes.len()
             );
-            Self([U8x8::load(&bytes[..8]), U8x8::load(&bytes[8..])])
+            Self::r([U8x8::load(&bytes[..8]), U8x8::load(&bytes[8..])])
+        }
+
+        /// Every lane zero.
+        #[inline]
+        #[must_use]
+        pub fn zero() -> Self {
+            Self::splat(0)
+        }
+
+        #[inline]
+        fn map(self, other: Self, f: impl Fn(U8x8, U8x8) -> U8x8) -> Self {
+            Self::r([f(self.0[0], other.0[0]), f(self.0[1], other.0[1])])
+        }
+
+        #[inline]
+        fn each(self, f: impl Fn(U8x8) -> U8x8) -> Self {
+            Self::r([f(self.0[0]), f(self.0[1])])
+        }
+    }
+
+    impl<I: Isa + Default> Lanes for Swar16<I> {
+        const LANES: usize = 16;
+        type Bitmask = u16;
+        type Isa = I;
+
+        #[inline]
+        fn isa(self) -> I {
+            I::default()
+        }
+
+        #[inline]
+        fn splat(_: I, b: u8) -> Self {
+            Self::splat(b)
+        }
+
+        #[inline]
+        fn load(_: I, bytes: &[u8]) -> Self {
+            Self::load(bytes)
         }
 
         #[inline]
@@ -1254,7 +1459,7 @@ mod x16 {
 
         #[inline]
         fn not(self) -> Self {
-            Self([self.0[0].not(), self.0[1].not()])
+            self.each(U8x8::not)
         }
 
         #[inline]
@@ -1269,12 +1474,12 @@ mod x16 {
 
         #[inline]
         fn shl(self, n: u32) -> Self {
-            Self([self.0[0].shl(n), self.0[1].shl(n)])
+            self.each(|h| h.shl(n))
         }
 
         #[inline]
         fn shr(self, n: u32) -> Self {
-            Self([self.0[0].shr(n), self.0[1].shr(n)])
+            self.each(|h| h.shr(n))
         }
 
         #[inline]
@@ -1289,7 +1494,7 @@ mod x16 {
 
         #[inline]
         fn lut16(self, table: [u8; 16]) -> Self {
-            Self([self.0[0].lut16(table), self.0[1].lut16(table)])
+            self.each(|h| h.lut16(table))
         }
 
         #[inline]
@@ -1299,36 +1504,90 @@ mod x16 {
 
         #[inline]
         fn affine(self, map: Affine8) -> Self {
-            Self([self.0[0].affine(map), self.0[1].affine(map)])
+            self.each(|h| h.affine(map))
         }
 
         #[inline]
         fn reverse_bits(self) -> Self {
-            Self([self.0[0].reverse_bits(), self.0[1].reverse_bits()])
+            self.each(U8x8::reverse_bits)
         }
     }
 }
 
-pub use x16::U8x16;
+pub use swar::Swar16;
 
-// One `Eq` and one `Debug` for all three carriers, over `halves`: the
+/// The carrier of [`Native`](crate::isa::Native): SSSE3 or NEON when the
+/// build has it, two SWAR words otherwise. What [`U8x16`] is.
+#[cfg(all(
+    target_arch = "x86_64",
+    target_feature = "ssse3",
+    not(feature = "portable")
+))]
+pub type NativeU8x16 = X86x16<crate::isa::Native>;
+/// The carrier of [`Native`](crate::isa::Native): SSSE3 or NEON when the
+/// build has it, two SWAR words otherwise. What [`U8x16`] is.
+#[cfg(all(
+    target_arch = "aarch64",
+    target_feature = "neon",
+    not(feature = "portable")
+))]
+pub type NativeU8x16 = Neon16;
+/// The carrier of [`Native`](crate::isa::Native): SSSE3 or NEON when the
+/// build has it, two SWAR words otherwise. What [`U8x16`] is.
+#[cfg(not(any(
+    all(
+        target_arch = "x86_64",
+        target_feature = "ssse3",
+        not(feature = "portable")
+    ),
+    all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "portable")
+    )
+)))]
+pub type NativeU8x16 = Swar16<crate::isa::Native>;
+
+/// Sixteen lanes with the instructions the build proves: what
+/// `U8x16::splat(b)` and `U8x16::load(bytes)` make, no token asked. For
+/// another level, `I::U8x16` with that level's token.
+pub type U8x16 = NativeU8x16;
+
+// One `Eq` and one `Debug` for every 16-lane carrier, over `halves`: the
 // portable one used to derive its own and print two `U8x8`s where the
 // others printed sixteen bytes, so a failing test read differently on
 // every machine it failed on.
-impl PartialEq for U8x16 {
-    fn eq(&self, other: &Self) -> bool {
-        self.halves() == other.halves()
-    }
+macro_rules! halves_eq_debug {
+    ($([$($g:tt)*] $t:ty),*) => {$(
+        impl<$($g)*> PartialEq for $t {
+            #[inline]
+            fn eq(&self, other: &Self) -> bool {
+                self.halves() == other.halves()
+            }
+        }
+
+        impl<$($g)*> Eq for $t {}
+
+        impl<$($g)*> core::fmt::Debug for $t {
+            // Debug output, not a hot path.
+            #[allow(clippy::missing_inline_in_public_items)]
+            fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+                let (lo, hi) = self.halves();
+                let mut bytes = [0u8; 16];
+                bytes[..8].copy_from_slice(&lo.to_le_bytes());
+                bytes[8..].copy_from_slice(&hi.to_le_bytes());
+                f.debug_tuple("U8x16").field(&bytes).finish()
+            }
+        }
+    )*};
 }
 
-impl Eq for U8x16 {}
-
-impl core::fmt::Debug for U8x16 {
-    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
-        let (lo, hi) = self.halves();
-        let mut bytes = [0u8; 16];
-        bytes[..8].copy_from_slice(&lo.to_le_bytes());
-        bytes[8..].copy_from_slice(&hi.to_le_bytes());
-        f.debug_tuple("U8x16").field(&bytes).finish()
-    }
-}
+halves_eq_debug!([I: Isa + Default] Swar16<I>);
+#[cfg(all(target_arch = "x86_64", target_feature = "sse2"))]
+halves_eq_debug!([L: crate::isa::X86Level] X86x16<L>);
+#[cfg(all(
+    target_arch = "aarch64",
+    target_feature = "neon",
+    not(feature = "portable")
+))]
+halves_eq_debug!([] Neon16);

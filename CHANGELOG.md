@@ -194,13 +194,82 @@ the two chain block by block alike; `myers::Search::occurrences`, one
 walking back with the pattern reversed (the merge was the part the
 example got wrong first); and `alloc` on by default.
 
-The public API is checked in as `public-api.txt` and a nix check fails
-when the crate says otherwise, so a change to it is in the diff of the
+The public API is checked in under `public-api/`, one file per target
+(the instruction-set tokens differ by architecture), and a nix check
+fails when the crate says otherwise, so a change to it is in the diff of the
 commit that makes it; cargo-semver-checks runs against the last release
 in its own workflow. Methods answer to their instruction names in the
 docs search (`pext`, `pdep`, `popcnt`, `movemask`, `pshufb`, `z-order`),
 and the two claims that something does not compile are doctests that
 fail to, with the error code.
+
+`hakmem::isa`: instruction sets as values (design notes section 11).
+A caller that dispatched the usual way, a loop under
+`#[target_feature]` picked after a CPUID check, got the portable
+primitives anyway, since `cfg` is decided once per crate: 291
+instructions and no PEXT for a `compact`. A token (`Portable`,
+`Native`, `X86V2` for x86-64-v2, `X86V3` for x86-64-v3 with PCLMULQDQ,
+`X86V4` for x86-64-v4 with VBMI and GFNI) is a zero-sized proof that
+the CPU has its features; `dispatch!` detects once and runs a body
+compiled for the level it found, and `cpu.pext(x, m)` in it is a PEXT
+in a build without flags. `detect` takes the higher of the build and
+the CPU, so a build that already proves the level keeps `Native` and
+the dispatch folds away; `available` lists every level the machine
+can run.
+`Word` routes its five hardware primitives through `_in(…, isa)`
+forms, the plain methods being `Native`; `hakmem::x86` has the leaves,
+safe `#[target_feature]` functions with exactly the features they
+use, for code under someone else's dispatch. Sixteen lanes are per
+level: `X86x16<L>`, `Swar16`, `Neon16`, `I::U8x16` under a token and
+`U8x16` the build's; under `X86V4` a byte map is one `gf2p8affineqb`
+without flags. `Words::count_ones`, `rank`, `select` and the new
+`for_each_position`, and `Rank9::build`, `rank` and `select`, ask the
+CPU once a call: without flags, at 1024 words, 3.4 times the speed of
+`count_ones` and 3.5 of `select`, twice `Rank9`'s dense select, and
+no slower at one word or with `-C target-cpu=native`. `_in` forms take
+a token for loops that have chosen. The batch kernels take the level
+too, so a CPU with VBMI and no GFNI (Cannon Lake) now runs the AVX2
+ones. `tests/isa.rs` checks every level the machine has in one
+`cargo test`, where it used to take one build per `RUSTFLAGS`.
+Soft-float x86 targets (`x86_64-unknown-none`, kernels) build again:
+the tokens, `X86x16`, the batch kernels and the PCLMULQDQ leaf want
+SSE2 in the build, and `detect` there answers `Portable` without
+asking the CPU, whose answer is about userspace's registers. A kernel
+built with `+bmi2` still gets PEXT through `Native`.
+
+`codegen/` holds the README's claims about instructions as FileCheck
+directives next to the wrappers they are about, and the count of each
+mnemonic per function as a snapshot a nix check diffs, like the public
+API: a build without flags and one with `+bmi2,+pclmulqdq,+ssse3,+avx2`.
+It found `select` paying for its popcount in software under the flags
+the README recommended. A second pair of cells reads the benches' linked
+binaries, a release build with sixteen codegen units, and checks in the
+hakmem functions that survived there as functions of their own: a kernel
+that shows up has lost its inlining. It would have caught the
+out-of-line `Word::pext` that made the 2D Hilbert decode eight times
+slower before a release had it. A third reads every innermost loop the
+benches time and checks in what it is made of: its instructions by the
+hakmem function they were inlined from, the calls it still makes, and
+llvm-mca's cycles per iteration (`codegen/src/bin/loops.rs`, which
+reads objdump's listing with hakmem's own byte classifier and, as a
+draft of wider lanes for 0.3, 32- and 64-lane registers beside it). Miri runs its three cells side by side in two
+minutes where the old six took twenty; the AVX-512 cells wait for Miri
+to interpret AVX-512 (rust-lang/miri#5345).
+
+The README starts from the jobs people bring (spatial keys, succinct
+bit vectors, fuzzy text, bits and bytes), a table of each against the
+crate people use, and the laws as the reason to believe the table.
+`benches/hilbert.rs` races `Morton2` against the three most downloaded
+Morton crates, `morton`, `morton-encoding` and `zorder`: the columns
+win by five to ten times, and a point at a time it ties. It lost two
+rows first, and `Word::unzip` (with `Isa::unzip`) is what won them
+back: the even and the odd bits compacted, two PEXT of the code with
+BMI2, one ladder for both halves of a `u32` key without, the Morton
+decode on every carrier and held to two compresses by a law. Its
+inverse, `Word::zip` (`Isa::zip`), is the Morton encode by name, two
+PDEP or two expands, with laws of its own; without flags the `u64`
+`unzip` gathers by the shift ladder, and the 2D Hilbert decode, which
+inlines it, went from 2.9 to 2.6 µs for 1024 points.
 
 ### Changed, for anyone on 0.1
 
@@ -233,6 +302,17 @@ and the old names were wrong in ways an alias would have kept.
   crate with nothing that allocates, as it was.
 - `myers::search` borrows the pattern for as long as the text: the
   search keeps it, to find where each occurrence starts.
+- The `Lanes` constructors take the carrier's token, `splat(isa, b)`,
+  `load(isa, bytes)` and `zero(isa)`, and a carrier has `type Isa` and
+  `isa()`: a value of an SSSE3 carrier is the proof the CPU has SSSE3.
+  `U8x16::load(bytes)` and `U8x8::splat(b)` read as before, being
+  inherent; code generic over `L: Lanes` passes `x.isa()`.
+- `U8x16` is an alias for the build's carrier (`X86x16<Native>`,
+  `Neon16` or `Swar16<Native>`), not a type of its own.
+- `Word` gains `pext_in`, `pdep_in`, `select_lowest_in`, `xor_scan_in`
+  and `xor_scan_down_in`, with portable defaults, and the plain methods
+  call them with `Native`. A carrier of your own that overrode `pext`
+  for speed overrides `pext_in` now, or a token gets the default.
 
 ## 0.1.0, 2026-09-19
 

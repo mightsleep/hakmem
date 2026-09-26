@@ -49,6 +49,7 @@ pub trait Bits: Word {
     /// assert_eq!(x.run_starts(4), 0);
     /// ```
     #[must_use]
+    #[inline]
     fn run_starts(self, k: u32) -> Self {
         if k == 0 {
             return Self::ONES;
@@ -85,6 +86,7 @@ pub trait Bits: Word {
     /// assert_eq!(u64::MAX.longest_run(), 64);
     /// ```
     #[must_use]
+    #[inline]
     fn longest_run(self) -> u32 {
         // Invariant: has_run(lo) holds (lo = 0 trivially), has_run(hi + 1) fails.
         let (mut lo, mut hi) = (0, Self::BITS);
@@ -299,6 +301,7 @@ pub trait Bits: Word {
     /// assert!(!carry);
     /// ```
     #[must_use]
+    #[inline]
     fn find_escaped(self, prev_ends_odd: bool) -> (Self, bool) {
         let even = Self::splat_byte(0x55);
         let odd = even.not();
@@ -477,6 +480,7 @@ pub trait Bits: Word {
     /// Kindergarten factor is this with `place(i) = 56 + c_i`, the
     /// a-file again.
     #[must_use]
+    #[inline]
     fn gather_factor_by(mask: Self, place: impl Fn(u32) -> u32) -> Option<Self> {
         let mut factor = Self::ZERO;
         for (i, q) in (0..).zip(mask.positions()) {

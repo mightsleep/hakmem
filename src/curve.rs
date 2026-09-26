@@ -208,18 +208,24 @@ macro_rules! key_traits {
         }
 
         impl<W: Word> core::fmt::Binary for $curve<W> {
+            // Debug output, not a hot path.
+            #[allow(clippy::missing_inline_in_public_items)]
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 core::fmt::Binary::fmt(&self.$key(), f)
             }
         }
 
         impl<W: Word> core::fmt::LowerHex for $curve<W> {
+            // Debug output, not a hot path.
+            #[allow(clippy::missing_inline_in_public_items)]
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 core::fmt::LowerHex::fmt(&self.$key(), f)
             }
         }
 
         impl<W: Word> core::fmt::UpperHex for $curve<W> {
+            // Debug output, not a hot path.
+            #[allow(clippy::missing_inline_in_public_items)]
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 core::fmt::UpperHex::fmt(&self.$key(), f)
             }

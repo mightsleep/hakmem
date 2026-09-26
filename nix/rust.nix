@@ -28,6 +28,19 @@ in {
         type = t.package;
         description = "The nightly toolchain plus the aarch64 std, for the dev shell: cross `cargo check` of the NEON paths.";
       };
+      cross = lib.mkOption {
+        type = t.package;
+        description = "The nightly toolchain plus the std of every target in `apiTargets`: rustdoc for each target's public API from either host.";
+      };
+      apiTargets = lib.mkOption {
+        type = t.listOf t.str;
+        default = ["x86_64-unknown-linux-gnu" "aarch64-unknown-linux-gnu"];
+        description = "The targets whose public API is checked in, one file each under public-api/.";
+      };
+      bare = lib.mkOption {
+        type = t.package;
+        description = "Nightly rustc, cargo and clippy with the core and alloc of the bare-metal targets, for the soft-float check (nix/none.nix).";
+      };
       miri = lib.mkOption {
         type = t.package;
         description = "Nightly toolchain with the miri component.";
@@ -68,6 +81,21 @@ in {
         # of `lanes` type-checks locally instead of in CI. No linker, check
         # only; running the tests still needs the arm runner.
         fenixPkgs.targets.aarch64-unknown-linux-gnu.latest.rust-std
+      ];
+      # The host's own std is in `nightly` already; the others join it.
+      cross = fenixPkgs.combine (
+        [config.rust.nightly]
+        ++ map (target: fenixPkgs.targets.${target}.latest.rust-std)
+        (lib.remove pkgs.stdenv.hostPlatform.rust.rustcTarget config.rust.apiTargets)
+      );
+      # Prebuilt core and alloc: no `-Zbuild-std`, no rust-src in the build.
+      bare = fenixPkgs.combine [
+        fenixPkgs.latest.rustc
+        fenixPkgs.latest.cargo
+        fenixPkgs.latest.clippy
+        fenixPkgs.targets.x86_64-unknown-none.latest.rust-std
+        fenixPkgs.targets.aarch64-unknown-none-softfloat.latest.rust-std
+        fenixPkgs.targets.aarch64-unknown-none.latest.rust-std
       ];
       miri = fenixPkgs.latest.withComponents ["rustc" "cargo" "rust-src" "miri"];
       msrv =

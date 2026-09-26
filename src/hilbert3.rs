@@ -203,6 +203,7 @@ impl<W: Word> Hilbert3<W> {
     /// window with the window `s` levels above it, outer: `n_c = n ^ n'
     /// ^ n·n'`, `t_c = t ^ t' ^ n'·t`. The frame at a level is the
     /// product of the maps above it, the top frame being the identity.
+    #[inline]
     #[must_use]
     pub fn to_morton(self) -> Morton3<W> {
         let lane = Self::lane();
@@ -246,6 +247,7 @@ impl<W: Word> Hilbert3<W> {
     /// the curve is checked against rawrunprotected's published tables
     /// (`tests/hilbert3.rs`), whose state numbering needn't match ours. The machine
     /// itself is `laws::reference::hilbert3_index_machine`.
+    #[inline]
     #[must_use]
     pub fn from_morton(m: Morton3<W>) -> Self {
         let code = m.code();
@@ -355,7 +357,11 @@ const ENCODE_PADDED: [u8; 128] = {
 /// [`ENCODE_PADDED`].
 #[cfg_attr(
     not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -453,7 +459,11 @@ const fn m_bits(m: u8) -> u8 {
 /// the rotation's [`m_bits`] XOR the current one's: the state takes the
 /// entry by XOR, all of it relative.
 #[cfg_attr(
-    not(all(target_arch = "x86_64", not(feature = "portable"))),
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )),
     allow(dead_code)
 )]
 const fn shuffle_tables(decode: bool) -> [[u8; 16]; 2] {
@@ -497,6 +507,8 @@ macro_rules! hilbert3_batch {
             /// translations: 24 entries, two PSHUFB of 16 between XORs a
             /// level. Otherwise, and for the keys past the last whole
             /// batch, it is [`from_morton`](Self::from_morton) per key.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn from_morton_in_place(keys: &mut [$w]) {
                 let done = batch::$encode(keys);
                 for key in &mut keys[done..] {
@@ -516,6 +528,8 @@ macro_rules! hilbert3_batch {
             /// key it is the algebraic scan
             /// ([`to_morton`](Self::to_morton)), which beats a table
             /// walk, and that finishes the keys past the last whole batch.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place(keys: &mut [$w]) {
                 let done = batch::$decode(keys);
                 for key in &mut keys[done..] {
@@ -529,6 +543,8 @@ macro_rules! hilbert3_batch {
             /// (debug-asserted). The axes rotate by `LEVELS − order`
             /// modulo three, which in a Morton code rotates every triple of
             /// bits: one pass over the keys, then the full-width batch.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn from_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
@@ -542,6 +558,8 @@ macro_rules! hilbert3_batch {
             /// [`to_morton_in_place`](Self::to_morton_in_place) on the
             /// curve of `order` levels, as [`decode_order`](Self::decode_order)
             /// per key; indices below `8^order` (debug-asserted).
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place_order(keys: &mut [$w], order: u32) {
                 debug_assert!(order <= Self::LEVELS, "order {order} > {}", Self::LEVELS);
                 debug_assert!(
@@ -576,6 +594,8 @@ impl Hilbert3<u64> {
     /// # Panics
     ///
     /// If the four slices differ in length.
+    // A whole slice per call: the loop is inside, the call is paid once.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn encode_columns(xs: &[u64], ys: &[u64], zs: &[u64], out: &mut [u64]) {
         let n = out.len();
         assert!(
@@ -612,6 +632,8 @@ impl Hilbert3<u64> {
     /// # Panics
     ///
     /// If the four slices differ in length.
+    // A whole slice per call: the loop is inside, the call is paid once.
+    #[allow(clippy::missing_inline_in_public_items)]
     pub fn decode_columns(keys: &[u64], xs: &mut [u64], ys: &mut [u64], zs: &mut [u64]) {
         let n = keys.len();
         assert!(
@@ -635,9 +657,13 @@ impl Hilbert3<u64> {
 /// converted, a whole number of batches. The intrinsics are `unsafe`
 /// solely because they require the target feature: on `x86_64` a kernel
 /// carries its features in `target_feature` and is called only where
-/// `crate::cpu` found them; on `aarch64` NEON is a compile-time fact.
+/// `crate::isa` found them; on `aarch64` NEON is a compile-time fact.
 mod batch {
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod vbmi {
         use core::arch::x86_64::{
@@ -742,7 +768,11 @@ mod batch {
     /// count that matters is the first kind: about 5 a key here against
     /// 8 in the lane kernel. Eight groups of 64 keys go through the
     /// level loop together, or the loop waits on its own latency.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     // `inline(always)`: the planes are arrays of registers, and an
     // outlined helper takes them by memory.
     #[allow(unsafe_code, clippy::inline_always)]
@@ -1427,7 +1457,11 @@ mod batch {
     /// of 16 entries between XORs; the octants travel in the basis
     /// `to_x`, which the encode enters and the decode leaves once per
     /// key.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod avx2 {
         use core::arch::x86_64::{
@@ -1605,22 +1639,26 @@ mod batch {
 
     /// `x86_64` chooses among the kernels once a call. They are compiled
     /// whatever the build's target features, each under its own
-    /// `target_feature`; `crate::cpu` answers at compile time when the
+    /// `target_feature`; `crate::isa` answers at compile time when the
     /// build has the features, which makes the branch a constant, and at
     /// run time otherwise.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod dispatch {
         use super::{avx2, planes, vbmi};
-        use crate::cpu;
 
         macro_rules! keys {
             ($($name:ident: $w:ty, $wide:ident;)*) => {$(
                 pub(in crate::hilbert3) fn $name(keys: &mut [$w]) -> usize {
-                    if cpu::avx512vbmi() {
+                    let batch = crate::isa::batch();
+                    if batch.vbmi {
                         // SAFETY: AVX-512 F, BW and VBMI are present.
                         unsafe { $wide::$name(keys) }
-                    } else if cpu::avx2() {
+                    } else if batch.avx2 {
                         // SAFETY: AVX2 is present.
                         unsafe { avx2::$name(keys) }
                     } else {
@@ -1643,7 +1681,7 @@ mod batch {
             zs: &[u64],
             out: &mut [u64],
         ) -> usize {
-            if cpu::avx512vbmi_gfni() {
+            if crate::isa::batch().vbmi_gfni {
                 // SAFETY: AVX-512 F, BW, VBMI and GFNI are present.
                 unsafe { planes::encode_columns(xs, ys, zs, out) }
             } else {
@@ -1657,7 +1695,7 @@ mod batch {
             ys: &mut [u64],
             zs: &mut [u64],
         ) -> usize {
-            if cpu::avx512vbmi_gfni() {
+            if crate::isa::batch().vbmi_gfni {
                 // SAFETY: as above.
                 unsafe { planes::decode_columns(keys, xs, ys, zs) }
             } else {
@@ -1666,19 +1704,31 @@ mod batch {
         }
     }
 
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     pub(super) use dispatch::{
         decode_columns, encode_columns, from_morton_u32, from_morton_u64, to_morton_u32,
         to_morton_u64,
     };
 
     /// No column kernel: the caller goes through Morton codes.
-    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
     pub(super) const fn encode_columns(_: &[u64], _: &[u64], _: &[u64], _: &mut [u64]) -> usize {
         0
     }
 
-    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
     pub(super) const fn decode_columns(
         _: &[u64],
         _: &mut [u64],
@@ -1690,7 +1740,11 @@ mod batch {
 
     /// No batch path: the caller converts every key.
     #[cfg(not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",
@@ -1713,7 +1767,11 @@ mod batch {
     }
 
     #[cfg(not(any(
-        all(target_arch = "x86_64", not(feature = "portable")),
+        all(
+            target_arch = "x86_64",
+            target_feature = "sse2",
+            not(feature = "portable")
+        ),
         all(
             target_arch = "aarch64",
             target_feature = "neon",

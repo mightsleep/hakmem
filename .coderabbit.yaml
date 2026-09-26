@@ -1,0 +1,87 @@
+# CodeRabbit: advice on pull requests, never a gate. The gate is the Nix
+# checks (nix/, the README's Checks table); what they already catch,
+# this need not repeat.
+language: "en-US"
+
+reviews:
+  profile: "chill"
+  request_changes_workflow: false
+  high_level_summary: true
+  collapse_walkthrough: true
+  sequence_diagrams: false
+  poem: false
+  review_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+
+  # Generated, and checked by diffing against a Nix build: a change here
+  # is the build's, reviewed through the source that made it.
+  path_filters:
+    - "!codegen/*.txt"
+    - "!public-api/**"
+    - "!Cargo.lock"
+    - "!codegen/Cargo.lock"
+    - "!flake.lock"
+
+  path_instructions:
+    - path: "src/**"
+      instructions: |
+        A no_std bit-manipulation crate where every combinator has laws.
+        - A new public combinator needs a law in src/laws.rs and a
+          property test in tests/laws.rs; exhaustive at 8 and 16 bits in
+          tests/exhaustive.rs where the input space allows.
+        - Every public function is #[inline] or carries
+          #[allow(clippy::missing_inline_in_public_items)] with a comment
+          saying why (the crate enables that lint).
+        - No unsafe outside the intrinsics: lib.rs has deny(unsafe_code).
+        - A definition is total over its carrier where one exists; where
+          an argument has a domain, the docs state it and a
+          debug_assert! checks it.
+        - A hardware path and its portable definition must agree; the
+          laws are what hold them together, so a new fast path needs the
+          law to run on it (tests/isa.rs checks every CPU level).
+        - Doc examples are doctests and run in CI.
+    - path: "src/{isa,x86,lanes}.rs"
+      instructions: |
+        The only place with unsafe. Every unsafe block needs a SAFETY
+        comment that ties it to a token (a value proving the CPU feature)
+        or to a cfg on target_feature. Isa is sealed. Anything a closure
+        passed to Isa::run or dispatch! calls must inline into it: a
+        helper left out of line is compiled without the level's target
+        features and every primitive in it becomes a call. array::map
+        with a closure is a known way to lose that.
+    - path: "benches/**"
+      instructions: |
+        Benches race hakmem against the crates people use, and the README
+        quotes them. Before measuring, each group asserts that every
+        implementation computes the same results. Every row stores its
+        output at the same width, since a wider store alone moved a
+        result by ten percent here. Flag anything that makes a comparison
+        unfair to either side.
+    - path: "nix/**"
+      instructions: |
+        Every check is a Nix derivation built in a sandbox without
+        network. Snapshot checks diff a build against a checked-in file,
+        and their comments say how to regenerate it.
+    - path: "codegen/src/bin/loops/**"
+      instructions: |
+        A tool that checks hakmem's codegen and reads its input with
+        hakmem, so it must not trust hakmem: --check compares every mask
+        with a byte-by-byte scan. Its summary is a checked-in snapshot,
+        so output must be deterministic.
+    - path: "{README.md,CHANGELOG.md,docs/**}"
+      instructions: |
+        Numbers must match what the benches measure; claims about speed
+        or instructions should be traceable to a bench or to a codegen
+        snapshot. README code blocks are doctests.
+
+  tools:
+    # The README's layout and the prose are deliberate.
+    markdownlint:
+      enabled: false
+    languagetool:
+      enabled: false
+
+chat:
+  auto_reply: true

@@ -1,7 +1,8 @@
 //! Small deterministic checks aimed at Miri: every hardware-backed
 //! primitive (the only `unsafe` in the crate) on every carrier, against
-//! the bit-loop reference. Runs in seconds under the interpreter; the
-//! full law suite lives in `tests/laws.rs`.
+//! the bit-loop reference. A minute or two a cell under the interpreter,
+//! which is 100 times slower than a debug build; the full law suite
+//! lives in `tests/laws.rs`.
 
 use hakmem::laws::reference;
 use hakmem::{Bits, Wide, Word};
@@ -53,7 +54,7 @@ fn primitives_on_every_carrier() {
 /// against the per-lane definitions and the SWAR halves.
 #[test]
 fn lanes_hardware_paths() {
-    use hakmem::lanes::{Lanes, U8x8, U8x16};
+    use hakmem::lanes::{U8x8, U8x16};
     use hakmem::laws;
     let table = [
         9, 8, 7, 6, 5, 4, 3, 2, 1, 0, 0x80, 0x7F, 0xFF, 0x10, 0x20, 0x30,
@@ -81,15 +82,32 @@ fn lanes_hardware_paths() {
     ));
 }
 
-/// The batch Hilbert kernels (VBMI `vpermb` / `vpermi2b`, NEON `tbl`)
-/// against the per-key conversions, on lengths around every batch size.
+/// The batch Hilbert kernels (VBMI `vpermb` / `vpermi2b`, AVX2 `pshufb`,
+/// NEON `tbl`) against the per-key conversions, on lengths around every
+/// batch size. Only where a kernel is built in: under Miri the dispatch
+/// sees the compile-time features alone, and without one both sides are
+/// the per-key conversion, which is two minutes of Miri checking safe
+/// code against itself.
 #[test]
+#[cfg_attr(
+    not(any(
+        target_feature = "avx2",
+        target_feature = "avx512vbmi",
+        target_feature = "neon"
+    )),
+    ignore = "no batch kernel in this build"
+)]
 fn hilbert_batch_paths() {
     use hakmem::laws;
     let mut s = 0x9E37_79B9_7F4A_7C15u64;
-    // 583 = 512 + 64 + 7: a whole group of the 3D planes kernel, a block
-    // and a tail. Miri is slow; the kernel is slower to debug.
-    for n in [0usize, 1, 15, 16, 17, 32, 63, 64, 65, 130, 583] {
+    // Batches of 16 and 32 (NEON), 32 and 64 (AVX2), 64 (VBMI), each
+    // missed by one both ways. With VBMI also two blocks, and 583 = 512 +
+    // 64 + 7: a whole group of the 3D planes kernel, a block and a tail.
+    let mut lengths = vec![0usize, 1, 15, 16, 17, 31, 32, 33, 63, 64, 65];
+    if cfg!(target_feature = "avx512vbmi") {
+        lengths.extend([130, 583]);
+    }
+    for n in lengths {
         let codes: Vec<u64> = (0..n)
             .map(|_| {
                 s ^= s << 13;

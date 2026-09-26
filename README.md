@@ -1,5 +1,5 @@
 <h1 align="center">hakmem</h1>
-<p align="center">Bit tricks as a lawful algebra.</p>
+<p align="center">Space-filling curves, rank/select and edit distance, built from bit tricks with laws.</p>
 <p align="center">
   <a href="https://mightsleep.github.io/hakmem/doc/hakmem/">docs</a> ·
   <a href="https://github.com/mightsleep/hakmem/blob/main/docs/design.md">design</a> ·
@@ -16,64 +16,150 @@
   <img alt="license" src="https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-b4befe?style=for-the-badge&labelColor=313244">
 </p>
 
-Every fast codebase has a `bits.rs`: one-liners from Hacker's Delight,
-each under a comment that says `// do not touch`. This crate is that
-file with the comment replaced by a proof obligation. Every trick has a
-name, a type, a domain where it is defined, and the laws it obeys,
-property-tested on every carrier from `u8` to `[u64; N]` and
-exhaustively at 8 and 16 bits. The laws are exported, so your own
-backends can be held to them too.
+Space-filling curves, rank/select, bit-parallel edit distance, and the
+bit tricks they are made of. `no_std`, no dependencies, stable Rust, no
+`unsafe` outside the intrinsics.
 
-The plan was correctness. Speed turned up anyway:
+| job | `hakmem` | what people use |
+|---|---|---|
+| 2D Hilbert keys from coordinates, 1024 points | **1.3 µs** | `fast_hilbert` 12.2 µs |
+| 2D Morton keys from coordinates, 1024 points | **0.17 µs** | `zorder` 1.9 µs, 0.89 with its BMI2 path |
+| a rectangle as 16 sorted ranges of keys | 0.3 µs Morton, 1.1 µs Hilbert | |
+| can a block of keys hold a point of the rectangle | 10 to 100 ns | |
+| rank over 2^20 bits, 1024 queries | **1.3 µs** | `sux` 2.0 µs |
+| Levenshtein, 64-byte pattern over 1 KiB of text | **2.4 µs** | `strsim` 44 µs |
 
-- Hilbert encode at 1.3 ns a point in 2D, where `fast_hilbert` takes 12;
-  the 3D curve beats the 96-byte lookup tables it was derived from.
-- A rectangle becomes 16 sorted key ranges in 0.3 µs (Morton) or 1.1 µs
-  (Hilbert); "can this row group hold anything in the rectangle" takes
-  10 to 100 ns.
-- Levenshtein on a 64-byte pattern over 1 KiB of text in 2.4 µs, where
-  `strsim` takes 44 and `triple_accel` 235. Fuzzy search reports where
-  each match starts, too, which the bit-parallel column does not know.
-- Rank over 2^20 bits in two thirds of `sux`'s time, bounds checks
-  included.
+One thread of a Zen 5; the column rows pick AVX2 or AVX-512 at run
+time and need no build flags. Where this crate loses, and it does, the
+[tables below](#benchmarks-against-the-crates-people-use) say so.
 
-`no_std`, zero dependencies, stable Rust, no `unsafe` outside the
-intrinsics. Where it loses (and it does, see the tables), the tables
-say so.
+Every function comes with the laws it obeys, exported as property
+functions and checked on every width from `u8` to `u128` and
+`[u64; N]`, with and without the hardware paths, exhaustively at 8 and
+16 bits. CI also checks what the compiler makes of the loops that
+matter, down to which function each instruction was inlined from
+([Checks](#checks)). Named after
+[HAKMEM](https://en.wikipedia.org/wiki/HAKMEM) (MIT AI Memo 239,
+1972), items 161–180 of which are the first catalogue of these tricks.
+They still work; now a compiler checks.
 
-Named after [HAKMEM](https://en.wikipedia.org/wiki/HAKMEM) (MIT AI Memo
-239, 1972), items 161–180 of which are the first catalogue of these
-tricks. They still work; now a compiler checks.
+Every line of Rust in this README is a doctest, so if it lies, CI goes
+red.
 
-## A tour
+### Spatial keys
 
-Every line is a doctest, so if this README lies, CI goes red.
+Morton and Hilbert codes in 2D and 3D, a point at a time or a column
+at a time (`encode_columns`, `decode_columns`, `from_morton_in_place`),
+and the query side of a sorted key column: a rectangle as a few ranges
+to seek (`cover`), and whether a block of keys, a row group or a
+granule by its least and greatest key, can hold anything in it
+(`intersects`).
 
 ```rust
-use hakmem::{Bits, Hilbert2, Hilbert3, Morton2, Words};
+use hakmem::prelude::*;
+
+let points = [(10u64, 10u64), (11, 12), (500, 500), (12, 11)];
+let mut keys: Vec<u64> = points
+    .iter()
+    .map(|&(x, y)| Hilbert2::encode(x, y).index())
+    .collect();
+keys.sort_unstable();
+// The block 8..=15 × 8..=15 in at most four ranges, a seek each.
+let mut ranges = [(0u64, 0u64); 4];
+let hits: usize = Hilbert2::cover(8..=15, 8..=15, &mut ranges)
+    .iter()
+    .map(|&(a, b)| keys.partition_point(|&k| k <= b) - keys.partition_point(|&k| k < a))
+    .sum();
+assert_eq!(hits, 3);
+
+// Columns in, keys out; the kernel is chosen at run time.
+let (xs, ys) = ([3u64, 40_000, 1 << 31], [5u64, 7, 12]);
+let mut codes = [0u64; 3];
+Morton2::<u64>::encode_columns(&xs, &ys, &mut codes);
+assert_eq!(Morton2::from_code(codes[1]).decode(), (40_000, 7));
+```
+
+### Succinct bit vectors
+
+Rank and select over any `&[u64]`, in storage you provide: the rank9
+directory, and a select inventory that stores positions outright where
+the set bits are sparse.
+
+```rust
+use hakmem::rank9::Rank9;
+
+let bits = [0b1011u64, u64::MAX, 0];
+let mut counts = vec![0; Rank9::counts_len(bits.len())];
+let mut select = vec![0; Rank9::select_len(bits.len())];
+let dir = Rank9::build(&bits, &mut counts, &mut select);
+assert_eq!((dir.rank(64), dir.select(3)), (3, Some(64)));
+```
+
+### Fuzzy text
+
+Levenshtein distance by Myers' bit-parallel column, 64 cells a word,
+patterns longer than a register on `Wide<N>`; and search that reports
+where each match starts, which the column alone does not know.
+
+```rust
+use hakmem::myers::{distance, distance_in, search};
+
+assert_eq!(distance_in::<u64>(b"kitten", b"sitting"), Some(3));
+assert_eq!(distance(b"kitten", b"sitting"), Some(3)); // carrier by length
+// The typo is deliberate.
+let text = b"the quick brown fox and the quikc brown fox";
+let found: Vec<_> = search::<u64>(b"quick brown fox", text, 2)
+    .unwrap()
+    .occurrences()
+    .map(|o| (o.start(), o.distance()))
+    .collect();
+assert_eq!(found, [(4, 0), (28, 2)]);
+```
+
+### Bits and bytes
+
+PEXT and PDEP with a portable definition behind them, select in a word,
+runs, scans, and sixteen byte lanes (SSSE3, NEON, or SWAR) whose masks
+hand over to the word tricks: simdjson's first stage, as parts.
+
+```rust
+use hakmem::lanes::{Lanes, U8x16};
+use hakmem::{Bits, Words};
+
+assert_eq!(0b1001u32.compact(0b1010), 0b10); // PEXT
+assert_eq!(0b0111_0110u64.select(2), Some(4));
+assert_eq!([0xFFu64 << 56, u64::MAX].find_run(16), Some(56));
+
+let block = U8x16::load(b"{\"a\": [1, 2]}   ");
+let quotes = block.cmp_eq(U8x16::splat(b'"')).to_bitmask();
+assert_eq!(quotes.prefix_xor(), 0b0110); // inside the string
+```
+
+## Everything else, one screen
+
+Every fast codebase has a `bits.rs`: one-liners from Hacker's Delight,
+each under a comment that says `// do not touch`. This crate started as
+that file with the comment replaced by a proof obligation: every trick
+has a name, a type, a domain where it is defined, and the laws it
+obeys. The jobs above are what those tricks add up to; here is the rest.
+
+```rust
+use hakmem::{Bits, Hilbert2, Hilbert3, Morton2};
 
 // Runs: bit p set iff bits p..p+3 are all set (Hacker's Delight 6-5).
 let x: u64 = 0b0111_0110;
 assert_eq!(x.run_starts(3).first_set(), Some(4));
-
-// Rank / select / positions: succinct-structure primitives, O(1).
 assert_eq!(x.rank(4), 2);
-assert_eq!(x.select(2), Some(4));
 assert_eq!(x.positions().collect::<Vec<_>>(), [1, 2, 4, 5, 6]);
 
-// Scans: prefix XOR turns quote toggles into an inside-string mask;
 // Kogge–Stone fills slide along a stride through a propagation mask.
-assert_eq!(0b0100_0100u64.prefix_xor(), 0b0011_1100);
 assert_eq!(1u8.fill_up(0b0000_0111, 1), 0b0000_0111);
 
 // SWAR byte lanes: exact zero/equal/less-than tests, eight at a time.
 assert_eq!(0x41_0A_42_09u32.bytes_lt(0x20), 0x00_80_00_80);
 assert!(0x0012_0034u32.has_zero_byte());
 
-// Compact / expand: PEXT / PDEP with a portable fallback.
-assert_eq!(0b1001u32.compact(0b1010), 0b10);
-
-// Dilated integers and Morton codes for 2D addressing.
+// Morton neighbours without decoding.
 let m = Morton2::<u32>::encode(3, 5);
 assert_eq!(m.step_x().decode(), (4, 5));
 
@@ -100,22 +186,10 @@ assert_eq!(0b0111_0110u32.longest_run(), 3);
 let (escaped, _carry) = 0b01_1101_1010u16.find_escaped(false);
 assert_eq!(escaped, 0b10_0000_0100);
 
-// The carry chain as a dynamic-programming column (Myers 1999).
-use hakmem::myers::{distance, distance_in, search};
-assert_eq!(distance_in::<u64>(b"kitten", b"sitting"), Some(3));
-assert_eq!(distance(b"kitten", b"sitting"), Some(3)); // carrier by length
-// Fuzzy search, with where each match starts. The typo is deliberate.
-let text = b"the quick brown fox and the quikc brown fox";
-let found: Vec<_> = search::<u64>(b"quick brown fox", text, 2)
-    .unwrap()
-    .occurrences()
-    .map(|o| (o.start(), o.distance()))
-    .collect();
-assert_eq!(found, [(4, 0), (28, 2)]);
-
 // Patterns wider than a register: `Wide<N>` is `[u64; N]` as one word,
 // and the same Myers code runs on it unchanged.
 use hakmem::Wide;
+use hakmem::myers::distance_in;
 let long = [b'a'; 200];
 assert_eq!(distance_in::<Wide<4>>(&long, &long[..190]), Some(10));
 
@@ -124,38 +198,22 @@ assert_eq!(distance_in::<Wide<4>>(&long, &long[..190]), Some(10));
 let rows = [0b0111_1000u8, 0b0111_1100, 0b0011_1100, 0];
 let mut scratch = [0u8; 4];
 assert_eq!(hakmem::grid::find_block(&rows, 2, 2, &mut scratch), Some((0, 3)));
-
-// Slices of words, no index needed.
-assert_eq!([0xFFu64 << 56, u64::MAX].find_run(16), Some(56));
-
-// Byte lanes, the SIMD half: sixteen bytes to a mask, then back to `Bits`.
-use hakmem::lanes::{Lanes, U8x16};
-let block = U8x16::load(b"{\"a\": [1, 2]}   ");
-let quotes = block.cmp_eq(U8x16::splat(b'"')).to_bitmask();
-assert_eq!(quotes, 0b1010);
-assert_eq!(quotes.prefix_xor(), 0b0110); // inside the string
-
-// A rank/select directory over any `&[u64]`, storage you provide.
-use hakmem::rank9::Rank9;
-let bits = [0b1011u64, u64::MAX, 0];
-let mut counts = vec![0; Rank9::counts_len(bits.len())];
-let mut select = vec![0; Rank9::select_len(bits.len())];
-let dir = Rank9::build(&bits, &mut counts, &mut select);
-assert_eq!((dir.rank(64), dir.select(3)), (3, Some(64)));
 ```
 
 ## Status
 
-One person's learning project, and far from production. I am working
-through the broadword literature by giving each trick a type, a law and
-a test; the crate is what that leaves behind. Definitions were chosen
-for lawfulness first and speed second, and it shows in places: the
+Young, and one person's: I am working through the broadword
+literature by giving each trick a type, a law and a test, and the crate
+is what that leaves behind. What is here is checked harder than most
+crates check anything; what is not here yet, and the API's habit of
+moving, are the reasons to pin a version. Definitions were chosen for
+lawfulness first and speed second, and it shows in places: the
 portable `select` loses to a plain loop for small `k`, the portable
 `compact` to one over sparse masks.
 
 The API will change between minor versions (0.2 broke 0.1 without
-apology). It changes on purpose, though: `public-api.txt` is checked in
-and diffed in CI, and cargo-semver-checks says whether the version
+apology). It changes on purpose, though: `public-api/` is checked in,
+one file per target, and diffed in CI, and cargo-semver-checks says whether the version
 number admits it.
 
 What I do take seriously is finding bugs. Every combinator ships
@@ -269,9 +327,37 @@ of words, wins:
 cut-off over the active blocks) is the obvious next step for long
 similar strings and is not implemented.
 
+| Morton code in 2D, `u32` coordinates (1024 points) | encode, portable | encode, `+bmi2` | decode, portable | decode, `+bmi2` |
+|---|---|---|---|---|
+| `hakmem` `Morton2`, columns | **0.17 µs** | **0.17 µs** | **0.22 µs** | **0.22 µs** |
+| `hakmem` `Morton2`, per point | 1.81 µs | 0.47 µs | 1.39 µs | 0.44 µs |
+| `zorder`, with its BMI2 path where the CPU has it | 0.89 µs | 0.47 µs | 0.95 µs | 0.44 µs |
+| `zorder`, portable | 1.88 µs | 1.87 µs | 1.36 µs | 1.36 µs |
+| `morton-encoding` (also `lindel`'s Morton) | 37 µs | 36 µs | 36 µs | 36 µs |
+
+| Morton code in 2D, `u16` coordinates (1024 points) | encode, portable | encode, `+bmi2` | decode, portable | decode, `+bmi2` |
+|---|---|---|---|---|
+| `hakmem` `Morton2<u32>`, columns | **0.09 µs** | **0.09 µs** | **0.11 µs** | **0.11 µs** |
+| `hakmem` `Morton2<u32>`, per point | 1.52 µs | 0.58 µs | 1.15 µs | 0.39 µs |
+| `morton` | 1.52 µs | 1.52 µs | 1.15 µs | 1.16 µs |
+
+The columns win because they choose AVX2 at run time and spread a
+coordinate's nibbles with one PSHUFB. A point at a time, a Morton code
+is a shift ladder or one PDEP each way, and it ties with the crates
+that do the same: the decode is `Word::unzip`, two PEXT of the code
+with BMI2, and without it, on a `u32` key, one ladder over a `u64`
+holding both halves, which is `morton`'s trick. Every per-point row
+writes its coordinates at the coordinates' width; the columns write
+them as wide as the key, since that is their API, and lead anyway. The
+one column this crate does
+not take is the per-point form without build flags, where `zorder`
+checks for BMI2 on every call and this crate uses what the build
+proves: ask once instead, with the columns or `dispatch!`
+([Hardware paths](#hardware-paths)).
+
 | Hilbert curve, 32 levels, `u32` coordinates (1024 points) | decode, portable | decode, `+pclmulqdq` | encode, portable | encode, `+bmi2,+pclmulqdq` |
 |---|---|---|---|---|
-| `hakmem` `Hilbert2` | **3.0 µs** | **1.7 µs** | **10.9 µs** | **5.4 µs** |
+| `hakmem` `Hilbert2` | **2.6 µs** | **1.7 µs** | **10.9 µs** | **5.4 µs** |
 | `fast_hilbert` (512-byte transition table) | 12.8 µs | 12.7 µs | 11.5 µs | 11.4 µs |
 | `lindel` (Skilling) | 66 µs | 71 µs | 70 µs | 76 µs |
 | `Morton2`, for the price of the frames | 1.6 µs | 0.56 µs | 1.6 µs | 0.46 µs |
@@ -353,24 +439,6 @@ interval of keys and a square of cells at once. 40 to 90 ns when the
 answer is yes, 100 when a granule just misses, 10 when it is nowhere
 near.
 
-```rust
-use hakmem::prelude::*;
-
-let points = [(10u64, 10u64), (11, 12), (500, 500), (12, 11)];
-let mut keys: Vec<u64> = points
-    .iter()
-    .map(|&(x, y)| Hilbert2::encode(x, y).index())
-    .collect();
-keys.sort_unstable();
-// The block 8..=15 × 8..=15 in at most four ranges, a seek each.
-let mut ranges = [(0u64, 0u64); 4];
-let hits: usize = Hilbert2::cover(8..=15, 8..=15, &mut ranges)
-    .iter()
-    .map(|&(a, b)| keys.partition_point(|&k| k <= b) - keys.partition_point(|&k| k < a))
-    .sum();
-assert_eq!(hits, 3);
-```
-
 ## Cookbook
 
 `hakmem::cookbook` explains how the shipped kernels were composed:
@@ -385,15 +453,31 @@ unbuilt (banded Myers over `Wide<N>`), sketched so you can.
 The batch conversions (`from_morton_in_place`, `to_morton_in_place`,
 `encode_columns`, `decode_columns`, the last two on `Morton2` and
 `Hilbert2` too) choose their kernel at run time on
-`x86_64`: AVX-512 VBMI (and GFNI), else AVX2, else the per-key form,
+`x86_64`: AVX-512 VBMI and GFNI (the `X86V4` level), else AVX2 (`X86V3`), else the per-key form,
 with no build flags and still `no_std`; the `portable` feature turns
-that off. Everything else is chosen at compile time, never at run
-time: build with
+that off. The methods on words and lanes use what the build proves:
+build with
 `-C target-feature=+bmi2,+pclmulqdq` (or `-C target-cpu=native`) and
 `pext`/`pdep`/`select`/`prefix_xor`/`suffix_xor` become single
 instructions; without
 them every combinator has a portable definition with the same
-contract. `pext` and `pdep` fall back to Hacker's Delight's
+contract. A hot loop that should not depend on the build asks once
+instead (`hakmem::isa`, design notes section 11):
+
+```rust
+use hakmem::isa::Isa;
+
+fn gather<I: Isa>(cpu: I, xs: &[u64], mask: u64) -> u64 {
+    xs.iter().fold(0, |a, &x| a ^ cpu.pext(x, mask))
+}
+// One CPUID, then the loop compiled for the level it found: PEXT here
+// even in a build without flags.
+let n = hakmem::dispatch!(|cpu| gather(cpu, &[0b1011, 0b0110], 0b0110));
+assert_eq!(n, 0b01 ^ 0b11);
+```
+
+Anything the loop calls has to inline into it, or it is compiled
+without the level's features and each primitive in it is a call. `pext` and `pdep` fall back to Hacker's Delight's
 parallel-suffix compress and expand (7-4, 7-5), `log₂ w` rounds of one
 prefix-XOR scan each, constant time. The `portable` cargo feature turns
 the hardware paths off even when the target feature is present, for the
@@ -402,7 +486,10 @@ microarchitectures where the instruction exists but is microcoded
 For the lanes, `+ssse3` (NEON on aarch64) makes `U8x16` a vector
 register, and `+gfni` makes every byte map, `affine` and the shifts,
 rotates and bit reversal built on it, one `gf2p8affineqb`; without it
-a byte map is two nibble lookups.
+a byte map is two nibble lookups. Under a token the level's own
+carrier is `I::U8x16`, made with `I::U8x16::load(cpu, bytes)`: a value
+of it is the proof the CPU has its instructions, which is why the
+constructor asks for the token.
 
 ## Laws
 
@@ -446,12 +533,44 @@ input in 65 536 is the bug they exist for.
 | clippy, `+bmi2` | [![hakmem-clippy-bmi2-default](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-default.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 | clippy, `+bmi2` with feature `portable` | [![hakmem-clippy-bmi2-portable-feature](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-clippy-bmi2-portable-feature.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 | rustdoc, warnings as errors | [![hakmem-doc](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-doc.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-doc](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-doc.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
-| public API matches `public-api.txt` | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| public API matches `public-api/` | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-public-api](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-public-api.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
+| instructions, `+bmi2,+pclmulqdq,+ssse3,+avx2` (`codegen/`) | [![hakmem-codegen-bmi2](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-codegen-bmi2.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| instructions, no flags (`codegen/`) | [![hakmem-codegen-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-codegen-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| inlining in the benches' binaries, no flags (`codegen/`) | [![hakmem-codegen-outlined-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-codegen-outlined-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| inlining in the benches' binaries, `x86-64-v3` (`codegen/`) | [![hakmem-codegen-outlined-v3](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-codegen-outlined-v3.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| innermost bench loops by hakmem function, llvm-mca cycles, no flags (`codegen/`) | [![hakmem-codegen-loops-portable](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-codegen-loops-portable.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| innermost bench loops by hakmem function, llvm-mca cycles, `x86-64-v3` (`codegen/`) | [![hakmem-codegen-loops-v3](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-codegen-loops-v3.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+| bare metal and kernels: `x86_64-unknown-none`, `aarch64-unknown-none{,-softfloat}` | [![hakmem-none](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-none.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
 | MSRV 1.89 build of the packaged tarball | [![hakmem-msrv](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-msrv.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-msrv](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-msrv.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | cargo-deny (licences, bans, sources) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-deny](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-deny.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | cargo-audit (advisories, offline) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![hakmem-audit](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-audit.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | treefmt | [![treefmt](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Ftreefmt.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | [![treefmt](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Ftreefmt.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain) |
 | Miri over the intrinsics, both paths | [![miri](https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fmiri.json&style=flat-square)](https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain) | n/a |
+
+### How the checks got here
+
+Each row answers a question a green test suite did not. The laws came
+first: every combinator against a bit-loop model, on every carrier, with
+and without the hardware paths. The `public-api/` files are one per
+target since the instruction-set tokens made `x86_64` and `aarch64`
+export different things. The instruction cells hold the README's claims
+to the compiler's output, and the first one found `select` paying for
+its popcount in software under the flags the README recommended.
+
+The last four rows came from a regression nothing saw. Routing `Word`
+through the tokens left `pext`'s `#[inline]` behind, and the 2D Hilbert
+decode ran eight times slower in a build without flags, with every
+check green: the tracked benches build with `target-cpu=native`, where
+PEXT is one instruction however it inlines, and the instruction cells
+compile one codegen unit, where everything inlines. `perf` found it.
+Now two cells read the benches' linked binaries, built the way a
+dependency is, and check in the hakmem functions that survived there as
+functions of their own; two more take every loop a bench times apart by
+the hakmem function behind each instruction, with llvm-mca's cycles.
+Put the missing `#[inline]` back and both fail with the line that says
+why. Clippy's `missing_inline_in_public_items` now asks before the fact,
+and on its first run it found `Rank9::rank` and `select` out of reach of
+any caller outside the crate: 6 to 39 % back.
 
 Design: [`docs/design.md`](https://github.com/mightsleep/hakmem/blob/main/docs/design.md),
 the decisions behind the API, the hardware policy, how the laws are

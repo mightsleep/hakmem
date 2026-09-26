@@ -6,13 +6,13 @@ edition = "2024"
 # intrinsics 1.89. Checked in CI
 # against the `cargo package` tarball (nix/msrv.nix).
 rust-version = "1.89"
-description = "Bit tricks as a lawful algebra: rank/select, runs, PEXT/PDEP, Morton codes, byte lanes (SWAR, SSSE3, GFNI, NEON), Myers edit distance, property-tested laws, no_std."
+description = "Hilbert and Morton curves with range covers, rank/select, Myers edit distance, PEXT/PDEP and byte lanes, built from bit tricks with property-tested laws. no_std, no dependencies."
 license = "MIT OR Apache-2.0"
 authors = ["Michal <acannix@proton.me>"]
 repository = "https://github.com/mightsleep/hakmem"
-keywords = ["bit-manipulation", "rank-select", "edit-distance", "swar", "no-std"]
-categories = ["algorithms", "no-std"]
-exclude = ["/.github", "/nix", "/flake.*"]
+keywords = ["hilbert-curve", "morton", "rank-select", "levenshtein", "bit-manipulation"]
+categories = ["algorithms", "data-structures", "no-std"]
+exclude = ["/.github", "/nix", "/flake.*", "/codegen"]
 
 [features]
 default = ["alloc"]
@@ -42,6 +42,10 @@ vers-vecs = "1"          # RsVec
 # Incumbents for benches/hilbert.rs: 2D Hilbert curves.
 fast_hilbert = "2.1"     # 512-byte transition table, three levels a step
 lindel = "0.1"           # Skilling's transpose, one bit a step
+# Incumbents for the Morton rows of benches/hilbert.rs: the most downloaded.
+morton = "0.3"           # u16 pairs, both spread at once in a u64
+morton-encoding = "2"    # any count and width, halving shifts (lindel's Morton)
+zorder = "0.2"           # PDEP behind a token, shifts otherwise
 [[bench]]
 name = "select"
 harness = false
@@ -72,6 +76,10 @@ pedantic = { level = "warn", priority = -1 }
 nursery = { level = "warn", priority = -1 }
 missing_errors_doc = "allow"
 module_name_repetitions = "allow"
+# A generic or a provided method that is not `#[inline]` can stay a call in
+# a user's crate however small it is (docs/design.md 11.11): every
+# public function says which it wants.
+missing_inline_in_public_items = "warn"
 
 [package.metadata.docs.rs]
 all-features = true

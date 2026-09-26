@@ -48,6 +48,8 @@ impl<W: Word, const D: u32> Default for Dilated<W, D> {
 }
 
 impl<W: Word, const D: u32> core::fmt::Binary for Dilated<W, D> {
+    // Debug output, not a hot path.
+    #[allow(clippy::missing_inline_in_public_items)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         core::fmt::Binary::fmt(&self.0, f)
     }
@@ -152,21 +154,21 @@ impl<W: Word> Morton2<W> {
     /// Levels: `BITS / 2`.
     pub const LEVELS: u32 = W::BITS / 2;
 
-    /// Interleaves `x` (even bits) and `y` (odd bits). Coordinates
-    /// above `BITS / 2` bits are dropped.
+    /// Interleaves `x` (even bits) and `y` (odd bits): [`Word::zip`],
+    /// two PDEP with BMI2 and the shift ladder without. Coordinates above
+    /// `BITS / 2` bits are dropped.
     #[inline]
     #[must_use]
     pub fn encode(x: W, y: W) -> Self {
-        let xd = Dilated::<W, 2>::from_int(x).bits();
-        let yd = Dilated::<W, 2>::from_int(y).bits();
-        Self(xd.or(yd.shl(1)))
+        Self(x.zip(y))
     }
 
-    /// Splits the code back into `(x, y)`.
+    /// Splits the code back into `(x, y)`: [`Word::unzip`], two PEXT of
+    /// the code itself with BMI2, one ladder for both on a `u32` without.
     #[inline]
     #[must_use]
     pub fn decode(self) -> (W, W) {
-        (self.x().to_int(), self.y().to_int())
+        self.0.unzip()
     }
 
     /// Wraps an existing code.
@@ -296,6 +298,8 @@ macro_rules! morton2_columns {
             /// # Panics
             ///
             /// If the three slices differ in length.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn encode_columns(xs: &[$w], ys: &[$w], out: &mut [$w]) {
                 let n = out.len();
                 assert!(
@@ -320,6 +324,8 @@ macro_rules! morton2_columns {
             /// # Panics
             ///
             /// If the three slices differ in length.
+            // A whole slice per call: the loop is inside, the call is paid once.
+            #[allow(clippy::missing_inline_in_public_items)]
             pub fn decode_columns(codes: &[$w], xs: &mut [$w], ys: &mut [$w]) {
                 let n = codes.len();
                 assert!(
@@ -449,6 +455,7 @@ impl<W: Word> Morton2<W> {
     /// # Panics
     ///
     /// If the rectangle is not empty and `out` is.
+    #[inline]
     pub fn cover(x: impl RangeBounds<W>, y: impl RangeBounds<W>, out: &mut [(W, W)]) -> &[(W, W)] {
         crate::cover::cover_ranges::<W, ZQuadrants>(Self::LEVELS, x, y, out)
     }
@@ -464,6 +471,7 @@ impl<W: Word> Morton2<W> {
     /// assert!(Morton2::<u8>::intersects(4..=11, 0..=2, 0..=1));
     /// ```
     #[must_use]
+    #[inline]
     pub fn intersects(
         keys: impl RangeBounds<W>,
         x: impl RangeBounds<W>,
@@ -481,7 +489,11 @@ morton2_columns!(
 /// The Morton batch kernels; each returns how many points from the front
 /// it converted, a whole number of batches.
 mod batch {
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     // `inline(always)` on the table load: a helper without the kernel's
     // `target_feature` must be inlined into it for the intrinsics to be.
     #[allow(unsafe_code, clippy::inline_always)]
@@ -638,16 +650,19 @@ mod batch {
     }
 
     /// `x86_64` chooses once a call, as the Hilbert batches do.
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     #[allow(unsafe_code)]
     mod dispatch {
         use super::avx2;
-        use crate::cpu;
 
         macro_rules! pick {
             ($($name:ident($a:ident: $ta:ty, $b:ident: $tb:ty, $c:ident: $tc:ty);)*) => {$(
                 pub(in crate::dilated) fn $name($a: $ta, $b: $tb, $c: $tc) -> usize {
-                    if cpu::avx2() {
+                    if crate::isa::batch().avx2 {
                         // SAFETY: AVX2 is present.
                         unsafe { avx2::$name($a, $b, $c) }
                     } else {
@@ -665,11 +680,19 @@ mod batch {
         }
     }
 
-    #[cfg(all(target_arch = "x86_64", not(feature = "portable")))]
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
     pub(super) use dispatch::{decode_u32, decode_u64, encode_u32, encode_u64};
 
     /// No batch path: the caller converts every point.
-    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
     mod none {
         pub(in crate::dilated) const fn encode_u32(_: &[u32], _: &[u32], _: &mut [u32]) -> usize {
             0
@@ -693,6 +716,10 @@ mod batch {
         }
     }
 
-    #[cfg(not(all(target_arch = "x86_64", not(feature = "portable"))))]
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
     pub(super) use none::{decode_u32, decode_u64, encode_u32, encode_u64};
 }

@@ -1,0 +1,282 @@
+hilbert hilbert.rs:159  43 insns  znver5 7.5  x86-64-v3 12.0
+   34  dilated::encode<u64> → word::zip<u64> → word::zip_in<u64, isa::Native>
+   30    word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+   13      word::and
+   10      word::or
+    7      word::shl
+    3    word::or
+    1    word::shl
+    9  (not hakmem)
+hilbert hilbert.rs:175  179 insns  znver5 31.3  x86-64-v3 53.2
+  169  hilbert::encode<u64>
+  139    hilbert::from_morton<u64>
+   51      word::xor
+   40      word::and
+   39      word::shr
+    8      word::or
+    1      word::shl
+   30    dilated::encode<u64> → word::zip<u64> → word::zip_in<u64, isa::Native> → word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+   13      word::and
+   10      word::or
+    7      word::shl
+   10  (not hakmem)
+hilbert hilbert.rs:212  35 insns  znver5 6.2  x86-64-v3 9.6
+   23  dilated::encode<u32> → word::zip<u32> → word::zip_in<u32, isa::Native>
+   19    word::pdep_in<isa::Native> → isa::pdep_u32 → word::expand_broadword<u32>
+   10      word::and
+    5      word::shl
+    4      word::or
+    3    word::or
+    1    word::shl
+   12  (not hakmem)
+hilbert hilbert.rs:222  141 insns  znver5 24.3  x86-64-v3 43.2
+  130  hilbert::encode<u32>
+  108    hilbert::from_morton<u32>
+   41      word::xor
+   30      word::shr
+   29      word::and
+    7      word::or
+    1      word::shl
+   22    dilated::encode<u32> → word::zip<u32> → word::zip_in<u32, isa::Native> → word::pdep_in<isa::Native> → isa::pdep_u32 → word::expand_broadword<u32>
+   10      word::and
+    8      word::shl
+    4      word::or
+   11  (not hakmem)
+hilbert hilbert.rs:867  16 insns  znver5 4.1  x86-64-v3 5.1
+       calls cover::cover_ranges
+    4  dilated::cover
+   12  (not hakmem)
+hilbert hilbert.rs:876  16 insns  znver5 4.1  x86-64-v3 5.1
+       calls cover::cover_ranges
+    4  hilbert::cover
+   12  (not hakmem)
+hilbert hilbert.rs:326  69 insns  znver5 11.5  x86-64-v3 17.6
+   62  dilated::decode<u64>
+   60    dilated::{closure#0}<u64> ×3 → dilated::to_int<u64, 3> → word::pext<u64> → word::pext_in<isa::Native> → isa::pext_u64 → word::compress_broadword<u64>
+   26      word::shr
+   19      word::xor
+   11      word::or
+    4      word::and
+    2    word::shr
+    7  (not hakmem)
+hilbert hilbert.rs:326  98 insns  znver5 23.2  x86-64-v3 29.9
+   61  dilated::decode<u64>
+   59    dilated::{closure#0}<u64> ×3 → dilated::to_int<u64, 3> → word::pext<u64> → word::pext_in<isa::Native> → isa::pext_u64 → word::compress_broadword<u64>
+   25      word::shr
+   20      word::xor
+   12      word::or
+    2      word::and
+    2    word::shr
+   37  (not hakmem)
+hilbert hilbert.rs:334  290 insns  znver5 54.2  x86-64-v3 73.7
+  277  hilbert3::decode<u64>
+  208    hilbert3::to_morton<u64>
+   86      word::xor
+   55      hilbert3::gf4_mul<u64> ×3
+   42      word::shr
+   16      hilbert3::level_maps<u64>
+    5      word::and
+    2      word::or
+    2      word::shl
+   69    dilated::decode<u64>
+   67      dilated::{closure#0}<u64> ×3 → dilated::to_int<u64, 3> → word::pext<u64> → word::pext_in<isa::Native> → isa::pext_u64 → word::compress_broadword<u64>
+    2      word::shr
+    1  hilbert3::from_index<u64>
+   12  (not hakmem)
+hilbert hilbert.rs:351  16 insns  znver5 13.4  x86-64-v3 12.3
+       calls <hilbert3::Hilbert3<u64>>::decode_columns
+   16  (not hakmem)
+hilbert hilbert.rs:362  72 insns  znver5 12.3  x86-64-v3 18.3
+   60  dilated::encode<u64>
+   52    dilated::{closure#0}<u64> ×2
+   45      dilated::from_int<u64, 3> → word::pdep<u64> → word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+    7      word::and
+    5    word::or
+    3    word::shl
+   12  (not hakmem)
+hilbert hilbert.rs:371  103 insns  znver5 17.2  x86-64-v3 25.4
+       calls <hilbert3::Hilbert3<u64>>::from_morton
+   83  hilbert3::encode<u64>
+   62    dilated::encode<u64>
+   50      dilated::{closure#0}<u64> ×2
+    9      word::or
+    3      word::shl
+   20  (not hakmem)
+hilbert hilbert.rs:390  14 insns  znver5 13.3  x86-64-v3 10.8
+       calls <hilbert3::Hilbert3<u64>>::encode_columns
+   14  (not hakmem)
+hilbert hilbert.rs:577  40 insns  znver5 7.1  x86-64-v3 12.2
+   31  dilated::encode<u64> → word::zip<u64> → word::zip_in<u64, isa::Native>
+   27    word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+   14      word::and
+    9      word::shl
+    4      word::or
+    3    word::or
+    1    word::shl
+    9  (not hakmem)
+hilbert hilbert.rs:717  35 insns  znver5 6.2  x86-64-v3 9.6
+   23  dilated::encode<u32> → word::zip<u32> → word::zip_in<u32, isa::Native>
+   19    word::pdep_in<isa::Native> → isa::pdep_u32 → word::expand_broadword<u32>
+   10      word::and
+    5      word::shl
+    4      word::or
+    3    word::or
+    1    word::shl
+   12  (not hakmem)
+hilbert hilbert.rs:748  29 insns  znver5 4.9  x86-64-v3 7.2
+   22  dilated::decode<u32> → word::unzip<u32> → word::unzip_in<isa::Native> → isa::unzip_u32
+   21    word::unzip_broadword
+    7  (not hakmem)
+hilbert hilbert.rs:456  42 insns  znver5 7.3  x86-64-v3 11.7
+   34  dilated::encode<u64> → word::zip<u64> → word::zip_in<u64, isa::Native>
+   30    word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+   13      word::and
+   10      word::or
+    7      word::shl
+    3    word::or
+    1    word::shl
+    8  (not hakmem)
+hilbert hilbert.rs:475  39 insns  znver5 6.6  x86-64-v3 10.3
+   31  dilated::decode<u64> → word::unzip<u64> → word::unzip_in<isa::Native>
+   30    isa::unzip_u64
+   29      word::gather_even_u64
+    8  (not hakmem)
+hilbert hilbert.rs:630  40 insns  znver5 6.7  x86-64-v3 10.8
+   32  dilated::decode<u64> → word::unzip<u64> → word::unzip_in<isa::Native>
+   31    isa::unzip_u64
+   30      word::gather_even_u64
+    8  (not hakmem)
+hilbert hilbert.rs:58  82 insns  znver5 13.8  x86-64-v3 24.3
+   75  hilbert::decode<u64>
+   51    hilbert::to_morton<u64>
+   30      bits::suffix_xor<u64> ×2 → word::xor_scan_down<u64> → word::xor_scan_down_in<isa::Native> → isa::xor_scan_down_u64 → word::xor_smear_down<u64>
+   10      word::shr
+    7      word::xor
+    4      word::and
+   24    dilated::decode<u64> → word::unzip<u64> → word::unzip_in<isa::Native> → isa::unzip_u64 → word::gather_even_u64
+    1  hilbert::from_index<u64>
+    6  (not hakmem)
+hilbert hilbert.rs:86  31 insns  znver5 5.5  x86-64-v3 9.2
+   25  dilated::decode<u64> → word::unzip<u64> → word::unzip_in<isa::Native> → isa::unzip_u64 → word::gather_even_u64
+    6  (not hakmem)
+hilbert hilbert.rs:98  175 insns  znver5 30.9  x86-64-v3 54.2
+  167  hilbert::encode<u64>
+  137    hilbert::from_morton<u64>
+   53      word::xor
+   39      word::and
+   38      word::shr
+    6      word::or
+    1      word::shl
+   30    dilated::encode<u64> → word::zip<u64> → word::zip_in<u64, isa::Native> → word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+   13      word::and
+   10      word::or
+    7      word::shl
+    8  (not hakmem)
+hilbert hilbert.rs:133  42 insns  znver5 7.3  x86-64-v3 11.7
+   34  dilated::encode<u64> → word::zip<u64> → word::zip_in<u64, isa::Native>
+   30    word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+   13      word::and
+   10      word::or
+    7      word::shl
+    3    word::or
+    1    word::shl
+    8  (not hakmem)
+hilbert hilbert.rs:255  288 insns  znver5 55.7  x86-64-v3 73.2
+  278  hilbert3::decode<u64>
+  210    hilbert3::to_morton<u64>
+   87      word::xor
+   55      hilbert3::gf4_mul<u64> ×3
+   42      word::shr
+   17      hilbert3::level_maps<u64>
+    5      word::and
+    2      word::or
+    2      word::shl
+   68    dilated::decode<u64>
+   66      dilated::{closure#0}<u64> ×3 → dilated::to_int<u64, 3> → word::pext<u64> → word::pext_in<isa::Native> → isa::pext_u64 → word::compress_broadword<u64>
+    2      word::shr
+    1  hilbert3::from_index<u64>
+    9  (not hakmem)
+hilbert hilbert.rs:269  78 insns  znver5 13.0  x86-64-v3 19.7
+   68  dilated::decode<u64>
+   66    dilated::{closure#0}<u64> ×3 → dilated::to_int<u64, 3> → word::pext<u64> → word::pext_in<isa::Native> → isa::pext_u64 → word::compress_broadword<u64>
+   25      word::shr
+   20      word::xor
+   12      word::or
+    9      word::and
+    2    word::shr
+    1  dilated::from_code<u64>
+    9  (not hakmem)
+hilbert hilbert.rs:280  92 insns  znver5 15.4  x86-64-v3 23.2
+       calls <hilbert3::Hilbert3<u64>>::from_morton
+   79  hilbert3::encode<u64>
+   61    dilated::encode<u64>
+   50      dilated::{closure#0}<u64> ×2
+    8      word::or
+    3      word::shl
+   13  (not hakmem)
+hilbert hilbert.rs:298  69 insns  znver5 11.7  x86-64-v3 18.2
+   58  dilated::encode<u64>
+   50    dilated::{closure#0}<u64> ×2
+   43      dilated::from_int<u64, 3> → word::pdep<u64> → word::pdep_in<isa::Native> → isa::pdep_u64 → word::expand_broadword<u64>
+    7      word::and
+    5    word::or
+    3    word::shl
+   11  (not hakmem)
+incumbents incumbents.rs:90  12 insns  znver5 2.6  x86-64-v3 6.1
+   12  myers::distance_in<u64> → myers::new<u64> → myers::fill
+    5    word::shl
+incumbents incumbents.rs:90  32 insns  znver5 12.1  x86-64-v3 13.1
+   32  myers::distance_in<u64>
+   22    myers::step<u64>
+    9      word::or
+    4      word::and
+    2      word::not
+    1      word::is_zero<u64>
+    1      word::shl
+    1      word::wrapping_add
+    1      word::xor
+incumbents incumbents.rs:108  13 insns  znver5 4.1  x86-64-v3 4.1
+       calls myers::distance_in::<wide::Wide<4>>
+   13  (not hakmem)
+incumbents incumbents.rs:116  13 insns  znver5 4.1  x86-64-v3 4.1
+       calls myers::distance_in::<wide::Wide<8>>
+   13  (not hakmem)
+incumbents incumbents.rs:99  27 insns  znver5 6.6  x86-64-v3 14.1
+   27  myers::distance_in<u128> → myers::new<u128> → myers::fill
+   16    word::shl
+incumbents incumbents.rs:99  64 insns  znver5 14.3  x86-64-v3 19.7
+   63  myers::distance_in<u128>
+   52    myers::step<u128>
+   19      word::or
+   13      word::and
+    4      word::not
+    3      word::shl
+    2      word::wrapping_add
+    2      word::xor
+    1      word::is_zero<u128>
+    1  (not hakmem)
+incumbents incumbents.rs:42  91 insns  znver5 26.5  x86-64-v3 35.5
+   85  bits::select<u64>
+   65    word::select_lowest<u64> → word::select_lowest_in<isa::Native> → isa::select_u64 → word::select_broadword64
+   18    word::count_ones
+    6  (not hakmem)
+rank9 rank9.rs:81  90 insns  znver5 35.8  x86-64-v3 40.0
+       calls <isa::x86v2::X86V2 as isa::Isa>::run::trampoline::<usize, <rank9::Rank9, <isa::x86v3::X86V3 as isa::Isa>::run::trampoline::<usize, <rank9::Rank9, <isa::x86v4::X86V4 as isa::Isa>::run::trampoline::<usize, <rank9::Rank9, cpu::detect
+   85  isa::rank
+   68    isa::run ×4
+   57      rank9::{closure#0} → rank9::rank_in<isa::Portable> → isa::run → rank9::{closure#0}<isa::Portable> → rank9::rank_word
+   17    isa::detect
+    8      cpu::levels
+    5  (not hakmem)
+rank9 rank9.rs:113  16 insns  znver5 11.0  x86-64-v3 15.1
+   16  isa::select → isa::run → rank9::{closure#0} → rank9::select_in<isa::Portable> → isa::run → rank9::{closure#0}<isa::Portable> → rank9::select_with<isa::Portable> → rank9::search
+rank9 rank9.rs:113  16 insns  znver5 11.0  x86-64-v3 15.1
+   16  isa::select → isa::run → rank9::{closure#0} → rank9::select_in<isa::Portable> → isa::run → rank9::{closure#0}<isa::Portable> → rank9::select_with<isa::Portable> → rank9::search
+select select.rs:64  91 insns  znver5 26.5  x86-64-v3 35.5
+   85  word::select_broadword64
+    6  (not hakmem)
+select select.rs:55  91 insns  znver5 26.5  x86-64-v3 35.5
+   85  bits::select<u64>
+   65    word::select_lowest<u64> → word::select_lowest_in<isa::Native> → isa::select_u64 → word::select_broadword64
+   18    word::count_ones
+    6  (not hakmem)

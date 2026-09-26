@@ -106,6 +106,18 @@ macro_rules! laws_for {
                 fn compact_composes(x in $strategy, m in $strategy, n in $strategy) {
                     prop_assert!(laws::compact_composes(x, m, n));
                 }
+                #[test]
+                fn unzip_is_two_compacts(x in $strategy) {
+                    prop_assert!(laws::unzip_is_two_compacts(x));
+                }
+                #[test]
+                fn zip_is_two_expands(a in $strategy, b in $strategy) {
+                    prop_assert!(laws::zip_is_two_expands(a, b));
+                }
+                #[test]
+                fn unzip_after_zip(a in $strategy, b in $strategy) {
+                    prop_assert!(laws::unzip_after_zip(a, b));
+                }
                 // reduces / positions
                 #[test]
                 fn small_reduces_match_reference(x in $strategy) {
@@ -735,7 +747,7 @@ mod board8 {
 // pits the vector instructions against the scalar definitions).
 mod lanes {
     use hakmem::affine::Affine8;
-    use hakmem::lanes::{Lanes, U8x8, U8x16};
+    use hakmem::lanes::{U8x8, U8x16};
     use hakmem::laws;
     use proptest::prelude::*;
 

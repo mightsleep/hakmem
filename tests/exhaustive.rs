@@ -50,6 +50,7 @@ macro_rules! for_all {
 #[test]
 #[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
 fn u8_unary_laws() {
+    for_all!(u8, x => laws::unzip_is_two_compacts(x));
     for_all!(u8, x => laws::run_starts_one_is_identity(x));
     for_all!(u8, x => laws::prefix_xor_after_delta_is_identity(x));
     for_all!(u8, x => laws::delta_after_prefix_xor_is_identity(x));
@@ -127,6 +128,7 @@ fn u8_compact_composes_all_triples() {
 #[test]
 #[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
 fn u16_unary_laws() {
+    for_all!(u16, x => laws::unzip_is_two_compacts(x));
     for_all!(u16, x => laws::run_starts_one_is_identity(x));
     for_all!(u16, x => laws::prefix_xor_after_delta_is_identity(x));
     for_all!(u16, x => laws::delta_after_prefix_xor_is_identity(x));
@@ -499,7 +501,7 @@ fn u8_u16_broadword_compress_expand_match_loop() {
 #[test]
 #[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
 fn u8x8_lanes_all_byte_pairs() {
-    use hakmem::lanes::{Lanes, U8x8};
+    use hakmem::lanes::U8x8;
     let table = [
         0x00, 0x81, 0x7F, 0x10, 0xFF, 0x0F, 0x80, 0x01, 0x55, 0xAA, 0x3C, 0xC3, 0x02, 0x40, 0xFE,
         0x7E,
@@ -694,4 +696,50 @@ fn intersects_u8_every_rectangle() {
             }
         }
     }
+}
+
+/// `unzip` on `u32` and `u64` without PEXT is a bit permutation: every
+/// ladder step ORs bits the mask keeps apart, so it moves bits and never
+/// mixes them, and the image of a word is the XOR of the images of its
+/// bits. Every single bit, then, is every word.
+#[test]
+fn unzip_moves_every_bit() {
+    for i in 0..32 {
+        assert!(laws::unzip_is_two_compacts(1u32 << i), "u32 bit {i}");
+    }
+    for i in 0..64 {
+        assert!(laws::unzip_is_two_compacts(1u64 << i), "u64 bit {i}");
+    }
+    for x in [0u32, u32::MAX, 0x5555_5555, 0xAAAA_AAAA] {
+        assert!(laws::unzip_is_two_compacts(x), "u32 {x:x}");
+    }
+}
+
+/// `zip` on every pair of `u8`s.
+#[test]
+#[cfg_attr(debug_assertions, ignore = "exhaustive sweep: run with --release")]
+fn u8_zip_pairs() {
+    for a in u8::MIN..=u8::MAX {
+        for b in u8::MIN..=u8::MAX {
+            assert!(laws::zip_is_two_expands(a, b), "a={a} b={b}");
+            assert!(laws::unzip_after_zip(a, b), "a={a} b={b}");
+        }
+    }
+}
+
+/// `zip` under its fixed mask is linear over GF(2) in the pair, PDEP or
+/// not: the image of `(a, b)` is the XOR of the images of their bits,
+/// and every single bit of either is every pair.
+#[test]
+fn zip_moves_every_bit() {
+    for i in 0..32 {
+        assert!(laws::zip_is_two_expands(1u32 << i, 0), "u32 a bit {i}");
+        assert!(laws::zip_is_two_expands(0, 1u32 << i), "u32 b bit {i}");
+    }
+    for i in 0..64 {
+        assert!(laws::zip_is_two_expands(1u64 << i, 0), "u64 a bit {i}");
+        assert!(laws::zip_is_two_expands(0, 1u64 << i), "u64 b bit {i}");
+    }
+    assert!(laws::zip_is_two_expands(u32::MAX, u32::MAX));
+    assert!(laws::zip_is_two_expands(u64::MAX, u64::MAX));
 }

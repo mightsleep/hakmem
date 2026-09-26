@@ -1,0 +1,12 @@
+[package]
+name = "hakmem-codegen"
+version = "0.0.0"
+edition = "2024"
+publish = false
+description = "What the compiler makes of hakmem: wrappers to read the asm of, and the claims about it (nix/codegen.nix)."
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+hakmem = { path = ".." }

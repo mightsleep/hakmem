@@ -106,6 +106,8 @@ impl<W: Word> Column<W> {
 /// assert_eq!(distance_in::<u8>(b"123456789", b""), None);
 /// ```
 #[must_use]
+// A whole pattern and text per call: the loop is inside, the call is paid once.
+#[allow(clippy::missing_inline_in_public_items)]
 pub fn distance_in<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
     let peq = Peq::<W>::new(pattern)?;
     if peq.m == 0 {
@@ -143,6 +145,8 @@ pub fn distance_in<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
 /// A run of ends is one occurrence; [`Search::occurrences`] keeps its
 /// best end and finds where it starts.
 #[must_use]
+// A whole pattern and text per call: the loop is inside, the call is paid once.
+#[allow(clippy::missing_inline_in_public_items)]
 pub fn search<'t, W: Word>(
     pattern: &'t [u8],
     text: &'t [u8],
@@ -168,6 +172,8 @@ pub fn search<'t, W: Word>(
 /// Smallest edit distance between `pattern` and any substring of
 /// `text` (including the empty one, so at most `pattern.len()`).
 #[must_use]
+// A whole pattern and text per call: the loop is inside, the call is paid once.
+#[allow(clippy::missing_inline_in_public_items)]
 pub fn substring_distance<W: Word>(pattern: &[u8], text: &[u8]) -> Option<u32> {
     let peq = Peq::<W>::new(pattern)?;
     if peq.m == 0 {
@@ -198,6 +204,8 @@ pub struct Search<'t, W: Word> {
 // The pattern tables are 256 words of noise to a reader; where the
 // search stands is what a failing test wants to see.
 impl<W: Word> core::fmt::Debug for Search<'_, W> {
+    // Debug output, not a hot path.
+    #[allow(clippy::missing_inline_in_public_items)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Search")
             .field("pos", &self.pos)
@@ -211,6 +219,7 @@ impl<W: Word> core::fmt::Debug for Search<'_, W> {
 impl<W: Word> Iterator for Search<'_, W> {
     type Item = (usize, u32);
 
+    #[inline]
     fn next(&mut self) -> Option<(usize, u32)> {
         while let Some(&c) = self.text.get(self.pos) {
             self.pos += 1;
@@ -253,6 +262,7 @@ impl<'t, W: Word> Search<'t, W> {
     ///     [(&b"quick brown fox"[..], 0), (&b"quikc brown fox"[..], 2)]
     /// );
     /// ```
+    #[inline]
     pub fn occurrences(self) -> Occurrences<'t, W> {
         let reversed = self.peq.reversed(self.pattern);
         Occurrences {
@@ -276,24 +286,28 @@ pub struct Occurrence {
 impl Occurrence {
     /// Where the occurrence starts in the text.
     #[must_use]
+    #[inline]
     pub const fn start(&self) -> usize {
         self.start
     }
 
     /// Where it ends, exclusive.
     #[must_use]
+    #[inline]
     pub const fn end(&self) -> usize {
         self.end
     }
 
     /// Edits between `text[start..end]` and the pattern.
     #[must_use]
+    #[inline]
     pub const fn distance(&self) -> u32 {
         self.distance
     }
 
     /// `start..end`, to index the text with.
     #[must_use]
+    #[inline]
     pub const fn range(&self) -> core::ops::Range<usize> {
         self.start..self.end
     }
@@ -343,6 +357,7 @@ impl<W: Word> Occurrences<'_, W> {
 impl<W: Word> Iterator for Occurrences<'_, W> {
     type Item = Occurrence;
 
+    #[inline]
     fn next(&mut self) -> Option<Occurrence> {
         for (end, distance) in self.search.by_ref() {
             match self.best {
@@ -369,6 +384,8 @@ impl<W: Word> Iterator for Occurrences<'_, W> {
 impl<W: Word> core::iter::FusedIterator for Occurrences<'_, W> {}
 
 impl<W: Word> core::fmt::Debug for Occurrences<'_, W> {
+    // Debug output, not a hot path.
+    #[allow(clippy::missing_inline_in_public_items)]
     fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
         f.debug_struct("Occurrences")
             .field("search", &self.search)
@@ -393,6 +410,8 @@ impl<W: Word> core::fmt::Debug for Occurrences<'_, W> {
 /// ```
 #[must_use]
 #[doc(alias("levenshtein", "edit distance"))]
+// A whole pattern and text per call: the loop is inside, the call is paid once.
+#[allow(clippy::missing_inline_in_public_items)]
 pub fn distance(pattern: &[u8], text: &[u8]) -> Option<u32> {
     match pattern.len() {
         0..=64 => distance_in::<u64>(pattern, text),

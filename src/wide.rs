@@ -13,6 +13,7 @@
 //! smallest instance of the carrier-over-carrier idea from the design
 //! doc: a "word" need not be one register.
 
+use crate::isa::Isa;
 use crate::word::Word;
 
 /// `N` little-endian limbs of 64 bits: limb 0 holds bits `0..64`.
@@ -22,12 +23,14 @@ pub struct Wide<const N: usize>([u64; N]);
 /// As an unsigned integer: the top limb decides first. The derived order
 /// would have compared limb 0 first, which is the order of nothing.
 impl<const N: usize> Ord for Wide<N> {
+    #[inline]
     fn cmp(&self, other: &Self) -> core::cmp::Ordering {
         self.0.iter().rev().cmp(other.0.iter().rev())
     }
 }
 
 impl<const N: usize> PartialOrd for Wide<N> {
+    #[inline]
     fn partial_cmp(&self, other: &Self) -> Option<core::cmp::Ordering> {
         Some(self.cmp(other))
     }
@@ -39,6 +42,8 @@ impl<const N: usize> PartialOrd for Wide<N> {
 macro_rules! wide_fmt {
     ($($trait:ident, $prefix:literal, $digits:literal, $top:literal, $rest:literal);*) => {$(
         impl<const N: usize> core::fmt::$trait for Wide<N> {
+            // Debug output, not a hot path.
+            #[allow(clippy::missing_inline_in_public_items)]
             fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
                 if f.alternate() {
                     f.write_str($prefix)?;
@@ -63,18 +68,21 @@ wide_fmt!(
 );
 
 impl<const N: usize> Default for Wide<N> {
+    #[inline]
     fn default() -> Self {
         Self([0; N])
     }
 }
 
 impl<const N: usize> From<[u64; N]> for Wide<N> {
+    #[inline]
     fn from(limbs: [u64; N]) -> Self {
         Self(limbs)
     }
 }
 
 impl<const N: usize> From<Wide<N>> for [u64; N] {
+    #[inline]
     fn from(w: Wide<N>) -> Self {
         w.0
     }
@@ -263,12 +271,12 @@ impl<const N: usize> Word for Wide<N> {
     }
 
     #[inline]
-    fn select_lowest(self, mut k: u32) -> u32 {
+    fn select_lowest_in<I: Isa>(self, mut k: u32, isa: I) -> u32 {
         let mut base = 0;
         for limb in self.0 {
             let n = limb.count_ones();
             if k < n {
-                return base + limb.select_lowest(k);
+                return base + limb.select_lowest_in(k, isa);
             }
             k -= n;
             base += 64;
@@ -279,22 +287,22 @@ impl<const N: usize> Word for Wide<N> {
     /// Per-limb prefix XOR, with the parity of all lower limbs folded
     /// into every bit of the limb above.
     #[inline]
-    fn xor_scan(self) -> Self {
+    fn xor_scan_in<I: Isa>(self, isa: I) -> Self {
         let mut out = [0; N];
         let mut parity = 0u64;
         for (o, limb) in out.iter_mut().zip(self.0) {
-            *o = limb.xor_scan() ^ parity;
+            *o = limb.xor_scan_in(isa) ^ parity;
             parity ^= 0u64.wrapping_sub(u64::from(limb.count_ones() & 1));
         }
         Self(out)
     }
 
     #[inline]
-    fn xor_scan_down(self) -> Self {
+    fn xor_scan_down_in<I: Isa>(self, isa: I) -> Self {
         let mut out = [0; N];
         let mut parity = 0u64;
         for (o, limb) in out.iter_mut().zip(self.0).rev() {
-            *o = limb.xor_scan_down() ^ parity;
+            *o = limb.xor_scan_down_in(isa) ^ parity;
             parity ^= 0u64.wrapping_sub(u64::from(limb.count_ones() & 1));
         }
         Self(out)

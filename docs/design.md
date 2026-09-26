@@ -68,6 +68,11 @@ such as the stride of a dilated integer.
 
 ### 2.2 Selection at compile time per word, at run time per batch
 
+This was the whole rule in 0.1, and it is still the rule for a method
+on a word. Since 0.2 the instruction set is also a value the caller
+can hold, pass and choose (section 11): `dispatch!` asks the CPU once
+above a loop, and the slice operations and `Rank9` ask once a call.
+
 For an operation of one to three cycles, run-time dispatch costs more
 than the operation. There is no branch per combinator on a CPUID
 result:
@@ -626,6 +631,572 @@ What is and is not a breaking change:
   coarser), or the Hilbert counts at `s` and `s − 1` sharing their
   path (a third of the time at 16 ranges). Open, to come back to.
 
+## 11. Instruction sets as values (built in 0.2)
+
+Built in 0.2. What follows is the proposal as it was written before
+the code, so the code could disagree with it in public, and it is kept
+as written; 11.10 lists what is still open and 11.11 what the
+prototype changed.
+
+### 11.1 What 2.2 gets wrong
+
+The usual way to dispatch at run time in Rust is to compile a hot loop
+under `#[target_feature]` and pick the copy after a CPUID check. In a
+build without `-C target-feature`, a user function marked
+`#[target_feature(enable = "bmi2,popcnt")]` that calls `x.compact(m)`
+compiles to 291 instructions and no PEXT. `cfg(target_feature)` is
+evaluated once for the whole crate, and the caller's attribute never
+reaches it. The idiomatic dispatch gets the portable path.
+
+The same function gets POPCNT for `Words::rank` and TZCNT and BLSR for
+`positions`: plain Rust follows the features of whatever it inlines
+into. The damage is confined to where hakmem chooses by `cfg`: the
+five primitives of section 5, and `U8x16`, whose representation
+changes with the build. sux and vers-vecs choose the same way and
+say so in their documentation ("enable BMI2 and popcnt").
+
+Three more things are hidden that a library of instructions should
+hand over. The batch kernels choose through `cpu.rs`, and nobody can
+ask what was chosen or choose instead. The `portable` feature switches
+the whole dependency graph at once. And a test run sees one path per
+build, so the CI matrix multiplies builds to see the rest.
+
+### 11.2 Constraints
+
+- `no_std`, no dependencies, stable Rust. Safe `#[target_feature]`
+  functions are stable since 1.86; the MSRV (1.89) already covers them.
+- No dispatch per word. A predicted branch and a call around a
+  three-cycle instruction lose to the portable code they replace. The
+  choice is made at run time only where one call covers a slice or a
+  batch, and there it is free next to the kernel.
+- `x.select(k)` stays what it is. Nothing below is required reading
+  for someone who wants a select.
+
+### 11.3 Three layers, one implementation
+
+1. **Native.** The instruction set the build proves, as today. The
+   default for methods on a word and for external iterators.
+2. **Tokens.** A zero-sized value per instruction-set level, `I: Isa`.
+   The caller dispatches once at the top of a hot loop and passes the
+   token down; primitives are methods on it and carriers are its
+   associated types. Methods on slices and batches dispatch
+   internally once per call and have an `_in(isa, ..)` form for code
+   that has already chosen.
+3. **Leaves.** `hakmem::x86::bmi2::pdep` and its kind: safe
+   `#[target_feature]` functions tagged with exactly the features they
+   use, for code under somebody else's dispatch (a `multiversion`
+   clone, pulp, fearless_simd, a hand-written CPUID check). LLVM
+   inlines such a function only into a caller whose features include
+   its own, so a leaf tagged with all of x86-64-v3 would stay a call
+   inside a clone that lacks F16C. Tagged `bmi2`, it inlines into
+   anything that has BMI2.
+
+Tokens call leaves and Native is the token of its level, so each path
+has one implementation.
+
+### 11.4 The trait
+
+```rust
+pub trait Isa: Copy + Send + Sync + core::fmt::Debug + 'static {
+    type U8x16: Lanes<Isa = Self, Bitmask = u16>;
+    fn pext<W: Word>(self, x: W, mask: W) -> W;
+    fn pdep<W: Word>(self, x: W, mask: W) -> W;
+    fn select_lowest<W: Word>(self, x: W, k: u32) -> u32;
+    fn xor_scan<W: Word>(self, x: W) -> W;
+    fn xor_scan_down<W: Word>(self, x: W) -> W;
+    /// `f` compiled with this level's target features.
+    fn run<R>(self, f: impl FnOnce(Self) -> R) -> R;
+}
+
+hakmem::isa::dispatch!(|cpu| stage1(cpu, input, &mut out));
+```
+
+`run` is a trampoline: an inner function under the level's
+`#[target_feature]` that calls the closure. Measured on a two-crate
+test, the closure and everything it inlines get the instructions: a
+PEXT loop through a token inside `run` compiles to nine unrolled PEXT,
+and `iter().map(..).fold(..)` inside it keeps them. `dispatch!` is a
+`macro_rules!` over `isa::detect()` that repeats the body once per
+level, which is the price in code size and compile time. No procedural
+macro: that would be the crate's first dependency.
+
+### 11.5 Levels, not features
+
+A token is a level: the psABI levels plus the extensions hakmem uses,
+the way Google Highway adds AES and CLMUL to its AVX2 target.
+PCLMULQDQ, GFNI and VBMI are in no psABI level (LLVM's `X86.td`).
+
+| token | features | primitives | `U8x16` | batch kernels |
+|---|---|---|---|---|
+| `Portable` | none | broadword | two SWAR halves | per key |
+| `X86V2` | x86-64-v2 (POPCNT, SSE4.2 and so SSSE3) | broadword | SSSE3 | per key |
+| `X86V3` | x86-64-v3 and PCLMULQDQ | PEXT, PDEP, CLMUL | SSSE3 | AVX2 |
+| `X86V4` | x86-64-v4, VBMI, GFNI | as `X86V3` | SSSE3, GFNI byte maps | VBMI |
+| `Neon` | the aarch64 baseline | broadword | NEON | NEON |
+
+Levels, because every added feature doubles the combinations a
+dispatch has to monomorphise, and pulp, fearless_simd, multiversion
+and Highway all settled on levels for that reason. Exact features stay
+where they matter, on the leaves. `Native` is not a level: it is its
+own token, choosing primitive by primitive what the build proves, which
+is what 0.2 does (section 11.11 says why).
+
+### 11.6 Carriers as associated types
+
+`U8x16` becomes `I::U8x16`: `Swar16<I>` for `Portable`, `X86x16<L>`
+for the x86 levels, `Neon16`. `X86x16<L>` holds the register and
+`PhantomData<L>`; the byte maps pick GFNI when `L::GFNI` says so, an
+associated constant, so the choice folds at compile time where 0.2
+had a `cfg`.
+
+A value of an SSSE3 carrier is a proof that the CPU has SSSE3: its
+methods wrap the intrinsics and are sound because the value exists,
+and `isa()` hands the token back out of it. So the `Lanes`
+constructors take the token: `Lanes` gains `type Isa` and `isa()`,
+and `splat`, `load` and `zero` take `Self::Isa`. A constructor without
+one would let `X86x16::splat` run on a CPU without SSSE3.
+
+The plain user does not see this. A carrier that is sound anywhere
+(`U8x8`, `Swar16`) or proven by the build (`X86x16<Native>` with SSSE3
+in it, `Neon16`) also has inherent `splat`, `load` and `zero` without a
+token, and inherent methods win the lookup, so `U8x16::load(bytes)`
+compiles as before and `U8x16` is simply the carrier of `Native`.
+Generic code says `I::U8x16::load(cpu, bytes)` and gets the trait's.
+`Swar16<I>` takes any level with a `Default` (`Portable`, `Native`),
+since `Native`'s carrier in a build without SSSE3 is SWAR, and
+`Isa::U8x16` insists on `Lanes<Isa = Self>`.
+
+Wider carriers (`U8x32` for AVX2, `U8x64` for AVX-512) fit later as
+more associated types of the levels that have them.
+
+### 11.7 Where tokens come from
+
+`isa::detect()` (the CPUID and XCR0 check `cpu.rs` does now, cached,
+`no_std`; under Miri the compile-time answer), `Native` and `Portable`
+(always), `unsafe fn new_unchecked()`, and a safe
+`#[target_feature(enable = "..")] fn assume()` that can only be
+called where the features are already proven (fearless_simd #293).
+`isa::available()` lists every level the CPU has.
+
+### 11.8 Where it breaks
+
+- **The generic cliff.** Code generic over `I: Isa` has to inline
+  into the trampoline. A helper marked `#[inline(never)]`, or one LLVM
+  finds too big, is compiled without the level's features, and every
+  primitive in it becomes a call: measured, one `call _pext_u64` a
+  word. Trait methods cannot be safe `#[target_feature]` functions, so
+  for generic code the compiler cannot catch it; for leaves on a
+  concrete path it can, since calling one outside a matching context
+  needs `unsafe`. fearless_simd reports the same trap (#338, #380).
+  The guard is the codegen check: a `dispatch!` body whose asm must
+  hold instructions, not calls.
+- **External iterators.** `next()` belongs to the caller, so
+  `positions()` stays Native. Internal iteration
+  (`for_each_position(|p| ..)`) and `positions_into(&mut buf)`
+  dispatch once, with the closure monomorphised inside `run`.
+- **Structures queried per word.** A `Rank9` is built once and asked
+  a million times, and a query is one select in a word. The plan was
+  a type parameter chosen at construction, `Rank9<'a, I = Native>`;
+  the measurement in 11.11 made it unnecessary. Each query asks per
+  call, which already beats today everywhere, and the caller who wants
+  the last quarter wraps the query loop in one `dispatch!` and calls
+  `select_in(k, cpu)`: the level lives in the caller's dispatch, not
+  in the type.
+- **Zen 1 and Zen 2.** They report BMI2 and run PDEP and PEXT in
+  microcode, about 18 cycles. `detect()` cannot see that from the
+  feature bits; it can from the family (AMD 17h), which is what the
+  `portable` feature is for today.
+
+### 11.9 What it buys besides speed
+
+- `for level in isa::available()` runs every path the machine has in
+  one `cargo test`. On the Zen 5 this is written on that is
+  `Portable`, `X86V2`, `X86V3` and `X86V4` in one run, where today it
+  takes one build per `RUSTFLAGS`.
+- The laws take a level, so a backend is checked against `Portable`
+  inside one binary.
+- The codegen checks see every level in every build, since the level
+  code is compiled regardless of `RUSTFLAGS`.
+
+### 11.10 Open
+
+- How `Word` carriers route to leaves: `u32` and `u64` directly,
+  `u128` and `Wide<N>` by limbs, `u8` and `u16` widened.
+- Zen 1 and 2 as a level of their own, or a flag in `detect()`.
+- An aarch64 level with PMULL for the scans (11.11), detected through
+  libc's `getauxval` or Windows' `IsProcessorFeaturePresent` by
+  `extern`, and never in a kernel.
+- `Isa` sealed (hakmem's levels only) or open to user levels. Sealed
+  first; opening it later breaks nothing.
+- Where slices stop detecting. Measured in 11.11: nowhere, the check
+  is lost in one word.
+- `Rank9::select` keeps eight bounds checks and five slice-range checks
+  in every build (`annotated.s` of the outlined cells, 11.11). Three
+  are the `Tiny` span's `next[0]`, `next[2]` and `next[4]`: the last
+  two are read under `hi - lo >= 2` and `>= 3`, which LLVM does not
+  relate to `next.len() == 2 * (hi - lo)`, so one assert up front
+  (what `clippy::missing_asserts_for_indexing` suggests) does not
+  remove them. A fixed window into `counts`, if its padding always
+  covers it, would; `Flat`, `Two` and the `Pos` spans have one each on
+  `counts[2 * lo]` and `pool`. For 0.3, with the scan engines, measured
+  on the `select` bench.
+- `Rank9::rank` detects the level on every query. Its loop in the
+  portable build (`codegen/x86_64-linux-loops-portable.txt`) is 90
+  instructions: 57 of the portable rank, 17 of `detect`'s cached read,
+  and calls to the `run` trampolines of three levels. Choosing the
+  level once, when the directory is built or borrowed, would leave the
+  rank; whether the token belongs in `Rank9` or in a `rank_in` the
+  caller hoists is the question. Measure on the `rank9` bench.
+- `array::map` with a closure over `Lanes` inside `dispatch!` can stay
+  out of line and lose the level's target features (11.11, the
+  `loops` classifier). Worth a sentence in the `isa` docs next to
+  "everything `f` inlines gets them too", which is true only of what
+  inlines.
+- Wider lanes, for the scan engines: 64-byte blocks are simdjson's and
+  every engine's unit, and with sixteen lanes a class costs four
+  extractions a block. `scan.rs` in `codegen/src/bin/loops/` is the
+  draft: `U8x32` and `U8x64` behind `Avx2` and `Avx512` tokens, the
+  `Lanes` methods a classifier needs, one trait over every width, 1.7
+  times the sixteen-lane speed on a full classification (11.11). What
+  it lacks for hakmem: the tokens as `Isa` levels (`X86V3` has AVX2
+  already, `X86V4` AVX-512BW), NEON's pairs of `uint8x16_t`, and a
+  SWAR fallback worth the name.
+- Under `X86V2`, which has no BMI2, the `pext` in a `dispatch!` body
+  is `compress_broadword`, and in the codegen cell it stays a call out
+  of the trampoline (`cg_dispatch_gather`'s `X86V2` arm): compiled
+  without the level's features, which it needs none of, so the cost is
+  the call. Found when the `CHECK-NOT: call` lines moved ahead of the
+  instruction they guard; that arm checks only that no PEXT is there.
+  Whether a broadword leaf this big belongs inlined into every
+  trampoline is the question.
+- `Swar16::lut16_nibbles` runs at a tenth of PSHUFB (1.2 against
+  12 GB/s classifying, 11.11): x86 and aarch64 never use it, but an
+  engine on anything else would. A nibble lookup in a `u64` has better
+  shapes than sixteen table reads.
+- The Morton columns on AVX-512, for 0.3 with the wider lanes. The
+  kernel is AVX2 on every level that has it: PSHUFB, four `u64` keys a
+  register, 0.17 ns a point, about 0.8 cycles on Zen 5. With VBMI and
+  GFNI a register holds eight keys, `vpermb` puts each byte in its
+  slot and one lookup or affine spreads it: about twelve operations for
+  eight points, 0.4 cycles, which L1 carries. It pays only in cache:
+  a point is 24 bytes of traffic, and past a million points one core
+  reads memory at about 1 ns a point, five times what the AVX2 kernel
+  already takes. In cache is where the scan engines work, block by
+  block, which is why it goes with them and `scan.rs`.
+
+### 11.11 What the prototype changed
+
+The first cut (`isa.rs`, `x86.rs`, the `_in` methods on `Word`, the
+`X86V3` token) disagreed with the text above twice, and the text lost.
+
+- `Native` was going to be an alias for the highest level the build
+  proves. Builds are not levels: `+bmi2,+pclmulqdq,+ssse3,+avx2`, the
+  test matrix's cell, lacks BMI1, LZCNT, FMA and more of x86-64-v3, so
+  the alias would have been `Portable` and PEXT would have gone
+  broadword in a build that asked for BMI2. `Native` stayed a token of
+  its own with a `cfg` per primitive.
+- A target feature enabled for the whole build does not make a call to
+  a `#[target_feature]` function safe; rustc wants the feature on the
+  calling function and says so (E0133). `Native` calls the leaves in
+  `unsafe` with the `cfg` as the proof, and a user who builds with
+  `-C target-cpu` and calls a leaf from a plain function does the same.
+
+Measured, in a build without flags: a `dispatch!` body folding `pext`
+over a slice is five PEXT and no call (codegen cell `portable`), where
+`x.compact(m)` is a jump to the broadword definition. `tests/isa.rs`
+checks `Portable` and `X86V3` in one run. Routing the plain methods
+through `Native` cost one register move in
+`Hilbert3::from_morton_in_place`, which the `bmi2` snapshot showed.
+
+The carriers followed without a change to any function already in the
+snapshots: `U8x16` over `Native` compiles as it did. Under a token, the
+quote mask of a 16-byte block is six instructions (two moves, an
+unpack, PCMPEQB, PMOVMSKB, return) in the build without flags, where
+the plain `U8x16` there is 38 instructions of SWAR; the unpack is a
+load assembled from two halves, which one MOVDQU would replace.
+`tests/isa.rs` runs the lane laws on `Swar16` and `X86x16<X86V3>` in
+the same run, and flipping the SSSE3 shift fails it. `Isa` gained
+`Eq` and `Hash`: a carrier hands its token back, and a test wants to
+compare it.
+
+The slices were the third cut, and the measurement decided what the
+plain methods do. In a build without flags, ns a call on Zen 5:
+
+| words | `count_ones` Native / plain | `rank` Native / plain | `select` Native / plain |
+|---|---|---|---|
+| 1 | 1.05 / 1.26 | 1.50 / 1.48 | 5.69 / 1.39 |
+| 16 | 6.51 / 2.48 | 6.50 / 3.11 | 14.12 / 2.93 |
+| 1024 | 396.6 / 114.8 | 397.5 / 117.2 | 480.7 / 135.4 |
+
+Plain is `dispatch!` on every call; the detection is one relaxed load
+and a predicted branch, lost in the noise of a single word, where
+POPCNT already beats the SWAR count. So `count_ones`, `rank`,
+`select` and `for_each_position` ask per call, and section 11.10's
+question of where slices stop detecting has the answer: nowhere.
+
+The same run with `-C target-cpu=native` found the one mistake. A
+token held outside, `select_in(k, X86V3)`, was half again as slow at
+1024 words as `Native`: the trampoline compiles the loop for
+x86-64-v3, and the build had AVX-512, which LLVM uses for the count.
+A token below the build is a downgrade, so `detect()` answers
+`Level::Native` when the build already proves x86-64-v3, and the
+dispatch changes nothing there: `xs.select(k)` and
+`xs.select_in(k, Native)` compile to one function (LLVM aliases the
+symbols). The benchmark still shows them apart at some lengths, by
+the same amount on every run; that is the timing loop inlining the
+call differently at two call sites, not the library.
+
+`Rank9` was the fourth cut and overturned 11.8's plan for it. Over
+2^20 bits, 1024 random queries, ns a query, in the build without flags:
+
+| query | `Native` | `dispatch!` per query | one `dispatch!` for the loop |
+|---|---|---|---|
+| `rank` | 2.25 | 1.63 | 1.27 |
+| `select`, dense | 14.90 | 7.30 | 6.92 |
+| `select`, sparse | 2.29 | 1.93 | 1.33 |
+
+With `-C target-cpu=native` the three columns are the same to the
+hundredth, the dispatch having folded to `Native`. So per-query
+dispatch beats the old default in every build, and costs a third of a
+nanosecond against the loop-wide one; plain `rank` and `select` ask
+per call, `rank_in` and `select_in` take a token for the loop, and no
+type parameter was needed. `build` is one pass over every word and
+asks once: 20.4 µs to 12.5 on the dense bitmap, 34.4 to 25.6 on the
+sparse, with the pass marked `inline(always)` so it compiles inside
+the trampoline and not beside it.
+
+`X86V4` was the fifth: x86-64-v4, VBMI and GFNI, from the same macro
+as `X86V3`, since the two differ in their feature string and in
+GFNI. Two consequences. The lanes under the token are GFNI's, so a
+build without flags reverses the bits of sixteen bytes with one
+`gf2p8affineqb` (codegen cell `portable`), and `tests/isa.rs` runs the
+GFNI byte maps on this machine without a special build. And the batch
+kernels stopped asking `cpu.rs` feature by feature: `cpu.rs` knows two
+levels now, and the kernels take the level `detect` found, or what
+the build proves on its own (the Miri cell with `+avx2` alone still
+runs the AVX2 kernel). A CPU with VBMI and no GFNI, Cannon Lake and
+nothing since, now gets the AVX2 kernels; the price of one level where
+there were three flags.
+
+`detect` answers with the higher of the build and the CPU: `Native`
+where the build proves v4, `X86V4` where the CPU has it and the build
+does not, then the same for v3. The first cut read the cache once per
+question and asked twice per call; the `bmi2` snapshot showed three
+extra calls in `Hilbert3::from_morton_in_place`, and one read of both
+levels took them out and ten instructions more than the old code had.
+
+`X86V2` is the macro once more, with BMI2 and PCLMULQDQ off: x86-64-v2
+has POPCNT and PSHUFB and neither of those, so its primitives stay
+broadword and it runs no batch kernel. What it buys is every count the
+compiler derives (`Words`, `Rank9`) and the SSSE3 lanes, on Nehalem to
+Ivy Bridge and the Atoms. Its detection comes before the XSAVE check,
+since Nehalem has none. The one mistake it could make, a PEXT under a
+v2 token, would run on every machine this is tested on and fault on
+the ones it is for; the codegen cell asserts there is no PEXT under it,
+which is the only place that can see it. FileCheck also taught that
+a prefix and a colon in a comment's prose are a directive.
+
+`Neon` stays out. NEON is in the baseline of every aarch64 target that
+has it, so `Native` proves it already; where it is off
+(`aarch64-unknown-none-softfloat`) there is no operating system to ask,
+and the token could only come from `unsafe`. The aarch64 level worth
+having is a different one: PMULL (the `aes` feature) is a carry-less
+multiply, which would give `xor_scan` there what PCLMULQDQ gives it on
+x86. Asking for it needs no `std`: `getauxval` is libc's, and an
+`extern` declaration reaches it on Linux, as `IsProcessorFeaturePresent`
+does on Windows. In a kernel nothing may ask, for the reason below.
+
+Soft-float targets. `x86_64-unknown-none` and the kernels' targets
+turn SSE off, and rustc refuses a `#[target_feature]` that implies it
+there: the crate did not build. It was also wrong where the compiler
+could not see it. CPUID and XCR0 in a kernel describe what userspace
+may use, and an `xmm` written outside `kernel_fpu_begin` belongs to
+whichever process the scheduler returns to next. The tokens,
+`X86x16`, the batch kernels and the PCLMULQDQ leaf now want `sse2` in
+the build, which every hard-float `x86_64` target has and no
+soft-float one does, and `detect` there answers `Portable` without
+asking. BMI2 touches general registers only, so a kernel built with
+`+bmi2` keeps PEXT through `Native`: 52 of them in the crate, and no
+`xmm`. `aarch64-unknown-none-softfloat` already built, since NEON off
+in the build means none in `Native` and nothing asks. A token in a
+kernel will come from `new_unchecked`, whose safety will then have to
+say the caller holds the vector state, not only that the CPU has it.
+The `hakmem-none` check builds the three bare-metal targets, since
+nothing on a host would notice them breaking, and wants a PEXT in the
+`+bmi2` kernel build; its first version grepped for `pext` as a word
+and found none, AT&T syntax spelling it `pextq`.
+
+Routing `Word` through the token cost the 2D Hilbert decode eight times
+its speed in a build without flags, 25 µs for 1024 points where the
+README said 3.0, and no check noticed: the tracked benches build with
+`-C target-cpu=native`, where PEXT is one instruction however it
+inlines. `u64` had its own `#[inline] fn pext`; the routing made `pext`
+a provided method of the trait, forwarding to `pext_in(mask, Native)`,
+and the attribute stayed behind with the deleted impl. In the bench
+crate LLVM kept the forwarder out of line, so the Morton decode's
+constant mask never reached `compress_broadword`, and the shift ladder
+it folds to became the whole parallel-suffix compress, twice a point. `perf` found it (88 % in
+`<u64 as Word>::pext`); every provided method of `Word` is `#[inline]`
+now. Bisecting the rest of the gap found the same bug in an older
+shape: the batch conversions call `Hilbert2::from_morton` for their
+tails, a second caller made LLVM outline it, and the 2D encode lost 10 %
+and its lead over `fast_hilbert`. The per-key cores are `#[inline]` too.
+The codegen cell saw neither: it compiles one codegen unit, which
+inlines what the sixteen of a release build do not, and its wrappers
+each have one caller. Its snapshots did not move when the fix went in.
+
+The cell that sees it reads the benches instead of wrappers. They are
+a crate that calls hakmem the way a user's does, release, sixteen
+codegen units, one kernel from several places, and their linked
+binaries say what survived: `llvm-objdump` lists every function, and
+the hakmem ones that are still functions go into
+`codegen/x86_64-linux-outlined-{portable,v3}.txt`. Sixty-odd lines,
+all of them things that should be calls (`cover`, the column
+conversions, the batch kernels, `isa::run`'s trampolines, `detect`).
+On the commit before the fix the list had four more:
+`<u64 as Word>::pext` and `::pdep` twice each, `pdep` on `u32` and
+`Hilbert2::from_morton`. Dropping the one `#[inline]` again fails the
+check with `+hilbert <u64 as hakmem::word::Word>::pext ×2`. Names
+only: instruction counts move with every edit, so they sit next to
+the list for reading, with the disassembly of every hakmem and bench
+function and the source lines the line tables give (which do not
+move an inlining decision; the list is the same without them).
+Calls through the GOT carry the name of the function they reach, not
+the dynamic symbol objdump guesses (`codegen/got.awk`).
+
+The cell catches a lost inlining after the fact; clippy's
+`missing_inline_in_public_items` asks before. It is on for the crate,
+and every public function either is `#[inline]` or says why not: the
+`Debug` impls, the slice conversions whose loop is inside, the
+constructors, the Myers entry points, and `laws` as a whole. The
+first pass found `Rank9::rank`, `rank0` and `select` without it:
+not generic, so no caller outside the crate could inline them, and
+the outlined list had both. With it, `rank` is 6 to 8 % faster in
+the bench and `select` 7 % on dense bits, 39 % on sparse. The same
+pass taught why the lint cannot be satisfied by `#[inline]`
+everywhere: on the Myers entry points it moved LLVM's split of the
+function, `Peq::new` went out of line instead, and short patterns got
+13 % slower. They are exempt with that reason.
+
+The outlined list says which kernels left their callers; it cannot say
+what the ones that stayed turned into. `codegen/src/bin/loops.rs` does,
+for every innermost loop a bench times. Blocks, dominators as bitsets
+and natural loops come from the same linked binaries; `llvm-symbolizer
+--inlining` names the hakmem function behind each instruction, since
+line tables keep the inline stack; `llvm-mca` gives cycles per
+iteration on Zen 5 and on a generic `x86-64-v3`. The 2D decode reads:
+
+```text
+hilbert hilbert.rs:58  89 insns  znver5 15.3  x86-64-v3 24.8
+   82  hilbert::decode<u64>
+   54    hilbert::to_morton<u64>
+   30      bits::suffix_xor<u64> → … → word::xor_smear_down<u64>
+   28    dilated::decode<u64> → … → word::compress_broadword<u64>
+    1  hilbert::from_index<u64>
+    6  (not hakmem)
+```
+
+The bench measures 2.93 ns a point, about 14.7 cycles at a 5 GHz
+boost, against the model's 15.3. With `Word::pext` back out of line the
+3D Morton decode's loop goes from 78 instructions to 27 and a line
+`calls <u64 as word::Word>::pext`, which is the line to read: mca
+prices only the loop, so a call makes it look cheaper. The summary is
+`codegen/x86_64-linux-loops-{portable,v3}.txt`, its own check; the
+whole tree and every instruction with its function are in the output.
+A loop counts as hakmem's when a quarter of it is, or when it calls
+into hakmem, since DWARF drops an inline record now and then and an
+incumbent's loop shows a stray line; `laws` counts as the incumbent it
+is. `compact`'s bench calls its kernels through a table of function
+pointers, so its loops name nothing and the outlined list covers it.
+
+The tool reads objdump's text the way the scan engines will read
+theirs: two nibble lookups classify a register of bytes into the six
+characters the grammar turns on, fields are `trailing_zeros` on those
+masks, and an address is one `compact` of eight hex digits. `--check`
+holds every level's masks to a byte-by-byte scan, so a bug in hakmem
+cannot pass as a clean snapshot.
+
+Classifying every block into every class topped out at 14 GB/s on
+Zen 5 with hakmem's sixteen lanes, and the first step there taught
+something the crate's users will meet: building the four registers
+with `[0, 1, 2, 3].map(|i| load(..))` left `array::map`'s closure out
+of line, outside `Isa::run`'s target features, so every lookup was a
+call; written out, the loop ran 2.5 times faster. The ceiling was the
+extractions: a class is one movemask a register, four registers a
+block, and a movemask issues about once a cycle. Two things moved it.
+Less work: the line walk needs only the newline mask, the other five
+classes are computed for a block when a line in it is read (8 199 of
+557 213 blocks for the `hilbert` bench), and a function header needs
+none, its name sitting at a fixed offset. Wider registers:
+`codegen/src/bin/loops/scan.rs` has `U8x32` for AVX2 and `U8x64` for
+AVX-512BW behind tokens like hakmem's, with the `Lanes` methods the
+kernels use, and hakmem's `U8x16` implements the same trait, so one
+kernel runs at every width. On the 34 MB listing of the `hilbert`
+bench, best of twenty:
+
+| lanes | newlines | every class |
+|---|---|---|
+| 64, AVX-512BW | 40 GB/s | 21 GB/s |
+| 32, AVX2 | 36 GB/s | 19 GB/s |
+| 16, hakmem at v3 or v4 | 34 GB/s | 12 GB/s |
+| 16, hakmem portable (SWAR) | 11 GB/s | 1.2 GB/s |
+
+The newline pass is at the memory's speed on every width; the full
+classification is where width pays, one extraction a block instead of
+four. The pass the tool makes now takes 2.2 ms.
+
+Which was never the time. For the `hilbert` bench the cell spent 2.5 s:
+1.27 in `objdump -d -l` of the whole binary for `outlined.awk`, 0.43
+in a second `objdump -d` for `loops`, 0.74 in 46 runs of llvm-mca, and
+0.06 in everything `loops` does itself. Now nm names the functions
+anything reads, hakmem's and the bench's, one objdump disassembles only
+those (369 of 4 686, through a response file, the mangled list being
+too long for one argument), and both readers take its output: 0.24 s.
+llvm-mca runs once a CPU with every loop as a code region, which it
+simulates alone with the numbers of a run of its own, the two CPUs side
+by side: 0.25 s for the whole of `loops`. 0.5 s in all, and every
+snapshot the same byte for byte. The tool's own bookkeeping is hakmem's
+too: the dominator sets are `Words` (`bit`, `set_bit`, `positions`),
+lines are the newline mask's `positions`, and llvm-symbolizer's
+records, split on blank lines, are `nl & nl >> 1` with the next word's
+first bit carried in, whose popcount counts the records before a line
+is read.
+
+The Morton decode lost two rows when the README's table got
+incumbents, and the loops tool said why before the profiler had to.
+With BMI2 the loop was 14 instructions where `zorder`'s is 10:
+`Morton2::decode` took `x()` and `y()`, a mask and a shift and a mask,
+and only then two PEXT, which ignore the bits outside their mask
+anyway. Without flags on a `u32` key it was 42 instructions, two
+compresses of 16 bits, where `morton` spreads both halves of the key
+into a `u64` and runs one ladder for the two. Both are `Word::unzip`
+now, the even and the odd bits compacted, with a leaf per width like
+`pext`: two PEXT of the code itself, or on `u32` the one ladder, its
+last mask left to the truncation to 16 bits; 10 and 29 instructions.
+On `u64` without PEXT the odd bits are shifted down first, since a
+compress under the odd mask itself takes a round more and was the
+slower by 70 %. What remained of the gap after that was the bench:
+this crate's rows wrote coordinates twice as wide as the incumbents',
+a tenth of the time, and now every row writes them at their width. A
+law holds `unzip` to two compresses on every carrier, and the ladder,
+being a bit permutation, is checked on every single bit of a `u32`
+and a `u64`, which is every word.
+
+The next estimate was wrong, and the tool was how. Its tree said the
+portable Morton encode spent 30 instructions in `expand_broadword` and
+the decode 33 in `compress_broadword`, where the classic ladder takes
+15 or 16 for 32 bits, so a leaf per width promised twice the speed.
+The ladders went in as `zip` and as the portable `unzip` on `u64`, and
+the encode came out 11 % slower. The 30 had been two calls, `x` and
+`y`, whose inline frames share a name and summed into one node:
+the general expand and compress under the Morton mask fold to the
+ladder already. What stayed is what measured: `unzip` on `u64` keeps
+the gathering ladder, which schedules better inside the Hilbert decode
+(2.94 to 2.62 µs for 1024 points, no flags); `Word::zip` is the pair of
+PDEP or expands it always was, the encode's name for it. And the tree
+keys a node's calls by where each was inlined from, the caller's line
+and column, and prints `×2` when two calls share it.
+
 ## Sources
 
 - Beeler, Gosper, Schroeppel. *HAKMEM*. MIT AI Memo 239, 1972.
@@ -658,6 +1229,13 @@ What is and is not a breaking change:
 - Isenberg et al. *Chess Programming Wiki*: *Kindergarten Bitboards*,
   *Traversing Subsets of a Set*, *Obstruction Difference*.
   <https://www.chessprogramming.org/>
+- Section 11, dispatch: pulp, <https://github.com/sarah-quinones/pulp>;
+  fearless_simd, <https://github.com/linebender/fearless_simd>, and
+  Shnatsel, *Safe SIMD in Rust, even on the inside*, 2026,
+  <https://shnatsel.github.io/safe-simd-in-rust-even-on-the-inside/>;
+  multiversion, <https://github.com/calebzulawski/multiversion>; Google
+  Highway, <https://github.com/google/highway>; safe
+  `#[target_feature]`, Rust 1.86 release notes, 2025.
 - Langdale, Lemire. *Parsing Gigabytes of JSON per Second*. The VLDB
   Journal, 2019.
 - Kogge, Stone. *A Parallel Algorithm for the Efficient Solution of a
