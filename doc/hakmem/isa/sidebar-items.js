@@ -1,0 +1,1 @@
+window.SIDEBAR_ITEMS = {"enum":["Level"],"fn":["available","detect"],"struct":["Native","Portable","X86V2","X86V3","X86V4"],"trait":["Isa","X86Level"]};

@@ -1,1 +1,1 @@
-window.SIDEBAR_ITEMS = {"struct":["U8x16","U8x8"],"trait":["Lanes"]};
+window.SIDEBAR_ITEMS = {"struct":["Swar16","U8x8","X86x16"],"trait":["Lanes"],"type":["NativeU8x16","U8x16"]};

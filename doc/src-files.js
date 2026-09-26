@@ -1,2 +1,2 @@
-createSrcSidebar('[["hakmem",["",[],["affine.rs","bits.rs","cookbook.rs","cover.rs","cpu.rs","curve.rs","dilated.rs","grid.rs","hilbert.rs","hilbert3.rs","lanes.rs","laws.rs","lib.rs","myers.rs","permute.rs","rank9.rs","set.rs","slice.rs","wide.rs","word.rs"]]]]');
-//{"start":19,"fragment_lengths":[242]}
+createSrcSidebar('[["hakmem",["",[],["affine.rs","bits.rs","cookbook.rs","cover.rs","cpu.rs","curve.rs","dilated.rs","grid.rs","hilbert.rs","hilbert3.rs","isa.rs","lanes.rs","laws.rs","lib.rs","myers.rs","permute.rs","rank9.rs","set.rs","slice.rs","wide.rs","word.rs","x86.rs"]]]]');
+//{"start":19,"fragment_lengths":[260]}

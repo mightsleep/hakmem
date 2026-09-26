@@ -208,29 +208,35 @@
 <a href=#208 id=208 data-nosnippet>208</a>        }
 <a href=#209 id=209 data-nosnippet>209</a>
 <a href=#210 id=210 data-nosnippet>210</a>        <span class="kw">impl</span>&lt;W: Word&gt; core::fmt::Binary <span class="kw">for </span><span class="macro-nonterminal">$curve</span>&lt;W&gt; {
-<a href=#211 id=211 data-nosnippet>211</a>            <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; core::fmt::Result {
-<a href=#212 id=212 data-nosnippet>212</a>                core::fmt::Binary::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="macro-nonterminal">$key</span>(), f)
-<a href=#213 id=213 data-nosnippet>213</a>            }
-<a href=#214 id=214 data-nosnippet>214</a>        }
-<a href=#215 id=215 data-nosnippet>215</a>
-<a href=#216 id=216 data-nosnippet>216</a>        <span class="kw">impl</span>&lt;W: Word&gt; core::fmt::LowerHex <span class="kw">for </span><span class="macro-nonterminal">$curve</span>&lt;W&gt; {
-<a href=#217 id=217 data-nosnippet>217</a>            <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; core::fmt::Result {
-<a href=#218 id=218 data-nosnippet>218</a>                core::fmt::LowerHex::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="macro-nonterminal">$key</span>(), f)
-<a href=#219 id=219 data-nosnippet>219</a>            }
-<a href=#220 id=220 data-nosnippet>220</a>        }
-<a href=#221 id=221 data-nosnippet>221</a>
-<a href=#222 id=222 data-nosnippet>222</a>        <span class="kw">impl</span>&lt;W: Word&gt; core::fmt::UpperHex <span class="kw">for </span><span class="macro-nonterminal">$curve</span>&lt;W&gt; {
-<a href=#223 id=223 data-nosnippet>223</a>            <span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; core::fmt::Result {
-<a href=#224 id=224 data-nosnippet>224</a>                core::fmt::UpperHex::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="macro-nonterminal">$key</span>(), f)
-<a href=#225 id=225 data-nosnippet>225</a>            }
-<a href=#226 id=226 data-nosnippet>226</a>        }
-<a href=#227 id=227 data-nosnippet>227</a>    )<span class="kw-2">*</span>};
-<a href=#228 id=228 data-nosnippet>228</a>}
-<a href=#229 id=229 data-nosnippet>229</a>
-<a href=#230 id=230 data-nosnippet>230</a><span class="macro">key_traits!</span>(
-<a href=#231 id=231 data-nosnippet>231</a>    Morton2.code.from_code;
-<a href=#232 id=232 data-nosnippet>232</a>    Morton3.code.from_code;
-<a href=#233 id=233 data-nosnippet>233</a>    Hilbert2.index.from_index;
-<a href=#234 id=234 data-nosnippet>234</a>    Hilbert3.index.from_index
-<a href=#235 id=235 data-nosnippet>235</a>);
+<a href=#211 id=211 data-nosnippet>211</a>            <span class="comment">// Debug output, not a hot path.
+<a href=#212 id=212 data-nosnippet>212</a>            </span><span class="attr">#[allow(clippy::missing_inline_in_public_items)]
+<a href=#213 id=213 data-nosnippet>213</a>            </span><span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; core::fmt::Result {
+<a href=#214 id=214 data-nosnippet>214</a>                core::fmt::Binary::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="macro-nonterminal">$key</span>(), f)
+<a href=#215 id=215 data-nosnippet>215</a>            }
+<a href=#216 id=216 data-nosnippet>216</a>        }
+<a href=#217 id=217 data-nosnippet>217</a>
+<a href=#218 id=218 data-nosnippet>218</a>        <span class="kw">impl</span>&lt;W: Word&gt; core::fmt::LowerHex <span class="kw">for </span><span class="macro-nonterminal">$curve</span>&lt;W&gt; {
+<a href=#219 id=219 data-nosnippet>219</a>            <span class="comment">// Debug output, not a hot path.
+<a href=#220 id=220 data-nosnippet>220</a>            </span><span class="attr">#[allow(clippy::missing_inline_in_public_items)]
+<a href=#221 id=221 data-nosnippet>221</a>            </span><span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; core::fmt::Result {
+<a href=#222 id=222 data-nosnippet>222</a>                core::fmt::LowerHex::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="macro-nonterminal">$key</span>(), f)
+<a href=#223 id=223 data-nosnippet>223</a>            }
+<a href=#224 id=224 data-nosnippet>224</a>        }
+<a href=#225 id=225 data-nosnippet>225</a>
+<a href=#226 id=226 data-nosnippet>226</a>        <span class="kw">impl</span>&lt;W: Word&gt; core::fmt::UpperHex <span class="kw">for </span><span class="macro-nonterminal">$curve</span>&lt;W&gt; {
+<a href=#227 id=227 data-nosnippet>227</a>            <span class="comment">// Debug output, not a hot path.
+<a href=#228 id=228 data-nosnippet>228</a>            </span><span class="attr">#[allow(clippy::missing_inline_in_public_items)]
+<a href=#229 id=229 data-nosnippet>229</a>            </span><span class="kw">fn </span>fmt(<span class="kw-2">&amp;</span><span class="self">self</span>, f: <span class="kw-2">&amp;mut </span>core::fmt::Formatter&lt;<span class="lifetime">'_</span>&gt;) -&gt; core::fmt::Result {
+<a href=#230 id=230 data-nosnippet>230</a>                core::fmt::UpperHex::fmt(<span class="kw-2">&amp;</span><span class="self">self</span>.<span class="macro-nonterminal">$key</span>(), f)
+<a href=#231 id=231 data-nosnippet>231</a>            }
+<a href=#232 id=232 data-nosnippet>232</a>        }
+<a href=#233 id=233 data-nosnippet>233</a>    )<span class="kw-2">*</span>};
+<a href=#234 id=234 data-nosnippet>234</a>}
+<a href=#235 id=235 data-nosnippet>235</a>
+<a href=#236 id=236 data-nosnippet>236</a><span class="macro">key_traits!</span>(
+<a href=#237 id=237 data-nosnippet>237</a>    Morton2.code.from_code;
+<a href=#238 id=238 data-nosnippet>238</a>    Morton3.code.from_code;
+<a href=#239 id=239 data-nosnippet>239</a>    Hilbert2.index.from_index;
+<a href=#240 id=240 data-nosnippet>240</a>    Hilbert3.index.from_index
+<a href=#241 id=241 data-nosnippet>241</a>);
 </code></pre></div></section></main></body></html>

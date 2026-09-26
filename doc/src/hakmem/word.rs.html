@@ -7,791 +7,741 @@
 <a href=#7 id=7 data-nosnippet>7</a>//!
 <a href=#8 id=8 data-nosnippet>8</a>//! This module is the **only** place hardware selection happens. Each
 <a href=#9 id=9 data-nosnippet>9</a>//! primitive with a fast path ([`pext`](Word::pext), [`pdep`](Word::pdep),
-<a href=#10 id=10 data-nosnippet>10</a>//! [`select_lowest`](Word::select_lowest), [`xor_scan`](Word::xor_scan),
-<a href=#11 id=11 data-nosnippet>11</a>//! [`xor_scan_down`](Word::xor_scan_down))
-<a href=#12 id=12 data-nosnippet>12</a>//! picks the instruction when the matching `target_feature` is enabled
-<a href=#13 id=13 data-nosnippet>13</a>//! at compile time and the `portable` cargo feature is off; otherwise a
-<a href=#14 id=14 data-nosnippet>14</a>//! broadword definition with the same contract. The laws in
-<a href=#15 id=15 data-nosnippet>15</a>//! [`crate::laws`] are what make the two interchangeable.
-<a href=#16 id=16 data-nosnippet>16</a>
-<a href=#17 id=17 data-nosnippet>17</a>/// A fixed-width word of `BITS` bits, bit 0 least significant: the
-<a href=#18 id=18 data-nosnippet>18</a>/// carrier every combinator and every law is written against.
-<a href=#19 id=19 data-nosnippet>19</a>///
-<a href=#20 id=20 data-nosnippet>20</a>/// Open to implementors. A carrier supplies the constants and the
-<a href=#21 id=21 data-nosnippet>21</a>/// required primitives; the provided ones have portable definitions
-<a href=#22 id=22 data-nosnippet>22</a>/// and are overridden only for speed (`u64` routes `pext` to BMI2 and
-<a href=#23 id=23 data-nosnippet>23</a>/// `xor_scan` to PCLMULQDQ). What an implementation must uphold is
-<a href=#24 id=24 data-nosnippet>24</a>/// what the laws in [`crate::laws`] check: run them over the new
-<a href=#25 id=25 data-nosnippet>25</a>/// carrier as its acceptance test, the way `tests/laws.rs` does for
-<a href=#26 id=26 data-nosnippet>26</a>/// [`Wide&lt;N&gt;`](crate::Wide).
-<a href=#27 id=27 data-nosnippet>27</a>///
-<a href=#28 id=28 data-nosnippet>28</a>/// Shift amounts passed to [`shl`](Word::shl) / [`shr`](Word::shr)
-<a href=#29 id=29 data-nosnippet>29</a>/// must be `&lt; BITS`; combinators in this crate uphold that by
-<a href=#30 id=30 data-nosnippet>30</a>/// construction and debug-assert it, and a carrier may assume it.
-<a href=#31 id=31 data-nosnippet>31</a>///
-<a href=#32 id=32 data-nosnippet>32</a>/// `BITS` is a multiple of 8 and at most `2^16`: the byte combinators
-<a href=#33 id=33 data-nosnippet>33</a>/// read bytes, and [`expand_broadword`] keeps one mask per halving
-<a href=#34 id=34 data-nosnippet>34</a>/// round. A wider carrier is a compile error, not a surprise:
-<a href=#35 id=35 data-nosnippet>35</a>///
-<a href=#36 id=36 data-nosnippet>36</a>/// ```compile_fail,E0080
-<a href=#37 id=37 data-nosnippet>37</a>/// use hakmem::prelude::*;
+<a href=#10 id=10 data-nosnippet>10</a>//! [`zip`](Word::zip), [`unzip`](Word::unzip),
+<a href=#11 id=11 data-nosnippet>11</a>//! [`select_lowest`](Word::select_lowest),
+<a href=#12 id=12 data-nosnippet>12</a>//! [`xor_scan`](Word::xor_scan), [`xor_scan_down`](Word::xor_scan_down))
+<a href=#13 id=13 data-nosnippet>13</a>//! picks the instruction when the matching `target_feature` is enabled
+<a href=#14 id=14 data-nosnippet>14</a>//! at compile time and the `portable` cargo feature is off; otherwise a
+<a href=#15 id=15 data-nosnippet>15</a>//! broadword definition with the same contract. The laws in
+<a href=#16 id=16 data-nosnippet>16</a>//! [`crate::laws`] are what make the two interchangeable.
+<a href=#17 id=17 data-nosnippet>17</a>
+<a href=#18 id=18 data-nosnippet>18</a></span><span class="kw">use </span><span class="kw">crate</span>::isa::{Isa, Native};
+<a href=#19 id=19 data-nosnippet>19</a>
+<a href=#20 id=20 data-nosnippet>20</a><span class="doccomment">/// A fixed-width word of `BITS` bits, bit 0 least significant: the
+<a href=#21 id=21 data-nosnippet>21</a>/// carrier every combinator and every law is written against.
+<a href=#22 id=22 data-nosnippet>22</a>///
+<a href=#23 id=23 data-nosnippet>23</a>/// Open to implementors. A carrier supplies the constants and the
+<a href=#24 id=24 data-nosnippet>24</a>/// required primitives; the provided ones have portable definitions
+<a href=#25 id=25 data-nosnippet>25</a>/// and are overridden only for speed (`u64` routes `pext` to BMI2 and
+<a href=#26 id=26 data-nosnippet>26</a>/// `xor_scan` to PCLMULQDQ). What an implementation must uphold is
+<a href=#27 id=27 data-nosnippet>27</a>/// what the laws in [`crate::laws`] check: run them over the new
+<a href=#28 id=28 data-nosnippet>28</a>/// carrier as its acceptance test, the way `tests/laws.rs` does for
+<a href=#29 id=29 data-nosnippet>29</a>/// [`Wide&lt;N&gt;`](crate::Wide).
+<a href=#30 id=30 data-nosnippet>30</a>///
+<a href=#31 id=31 data-nosnippet>31</a>/// Shift amounts passed to [`shl`](Word::shl) / [`shr`](Word::shr)
+<a href=#32 id=32 data-nosnippet>32</a>/// must be `&lt; BITS`; combinators in this crate uphold that by
+<a href=#33 id=33 data-nosnippet>33</a>/// construction and debug-assert it, and a carrier may assume it.
+<a href=#34 id=34 data-nosnippet>34</a>///
+<a href=#35 id=35 data-nosnippet>35</a>/// `BITS` is a multiple of 8 and at most `2^16`: the byte combinators
+<a href=#36 id=36 data-nosnippet>36</a>/// read bytes, and [`expand_broadword`] keeps one mask per halving
+<a href=#37 id=37 data-nosnippet>37</a>/// round. A wider carrier is a compile error, not a surprise:
 <a href=#38 id=38 data-nosnippet>38</a>///
-<a href=#39 id=39 data-nosnippet>39</a>/// // 1025 limbs, 65 600 bits: the halving rounds would need a 17th mask.
-<a href=#40 id=40 data-nosnippet>40</a>/// let x = Wide::&lt;1025&gt;::ONES;
-<a href=#41 id=41 data-nosnippet>41</a>/// let _ = hakmem::word::expand_broadword(x, x);
-<a href=#42 id=42 data-nosnippet>42</a>/// ```
-<a href=#43 id=43 data-nosnippet>43</a>///
-<a href=#44 id=44 data-nosnippet>44</a>/// A word is a plain value: ordered as the unsigned integer it spells,
-<a href=#45 id=45 data-nosnippet>45</a>/// printable in binary and hex (`{:b}` is how bits want to be read),
-<a href=#46 id=46 data-nosnippet>46</a>/// hashable, shareable, `'static`. Asked for now because asking later
-<a href=#47 id=47 data-nosnippet>47</a>/// would break every carrier written meanwhile.
-<a href=#48 id=48 data-nosnippet>48</a></span><span class="kw">pub trait </span>Word:
-<a href=#49 id=49 data-nosnippet>49</a>    Copy
-<a href=#50 id=50 data-nosnippet>50</a>    + Ord
-<a href=#51 id=51 data-nosnippet>51</a>    + core::hash::Hash
-<a href=#52 id=52 data-nosnippet>52</a>    + core::fmt::Debug
-<a href=#53 id=53 data-nosnippet>53</a>    + core::fmt::Binary
-<a href=#54 id=54 data-nosnippet>54</a>    + core::fmt::LowerHex
-<a href=#55 id=55 data-nosnippet>55</a>    + core::fmt::UpperHex
-<a href=#56 id=56 data-nosnippet>56</a>    + Send
-<a href=#57 id=57 data-nosnippet>57</a>    + Sync
-<a href=#58 id=58 data-nosnippet>58</a>    + <span class="lifetime">'static
-<a href=#59 id=59 data-nosnippet>59</a></span>{
-<a href=#60 id=60 data-nosnippet>60</a>    <span class="doccomment">/// Width in bits.
-<a href=#61 id=61 data-nosnippet>61</a>    </span><span class="kw">const </span>BITS: u32;
-<a href=#62 id=62 data-nosnippet>62</a>    <span class="doccomment">/// All bits clear.
-<a href=#63 id=63 data-nosnippet>63</a>    </span><span class="kw">const </span>ZERO: <span class="self">Self</span>;
-<a href=#64 id=64 data-nosnippet>64</a>    <span class="doccomment">/// Only bit 0 set.
-<a href=#65 id=65 data-nosnippet>65</a>    </span><span class="kw">const </span>ONE: <span class="self">Self</span>;
-<a href=#66 id=66 data-nosnippet>66</a>    <span class="doccomment">/// All bits set.
-<a href=#67 id=67 data-nosnippet>67</a>    </span><span class="kw">const </span>ONES: <span class="self">Self</span>;
-<a href=#68 id=68 data-nosnippet>68</a>
-<a href=#69 id=69 data-nosnippet>69</a>    <span class="doccomment">/// Bitwise AND.
-<a href=#70 id=70 data-nosnippet>70</a>    </span><span class="attr">#[must_use]
-<a href=#71 id=71 data-nosnippet>71</a>    </span><span class="kw">fn </span>and(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
-<a href=#72 id=72 data-nosnippet>72</a>    <span class="doccomment">/// Bitwise OR.
+<a href=#39 id=39 data-nosnippet>39</a>/// ```compile_fail,E0080
+<a href=#40 id=40 data-nosnippet>40</a>/// use hakmem::prelude::*;
+<a href=#41 id=41 data-nosnippet>41</a>///
+<a href=#42 id=42 data-nosnippet>42</a>/// // 1025 limbs, 65 600 bits: the halving rounds would need a 17th mask.
+<a href=#43 id=43 data-nosnippet>43</a>/// let x = Wide::&lt;1025&gt;::ONES;
+<a href=#44 id=44 data-nosnippet>44</a>/// let _ = hakmem::word::expand_broadword(x, x);
+<a href=#45 id=45 data-nosnippet>45</a>/// ```
+<a href=#46 id=46 data-nosnippet>46</a>///
+<a href=#47 id=47 data-nosnippet>47</a>/// A word is a plain value: ordered as the unsigned integer it spells,
+<a href=#48 id=48 data-nosnippet>48</a>/// printable in binary and hex (`{:b}` is how bits want to be read),
+<a href=#49 id=49 data-nosnippet>49</a>/// hashable, shareable, `'static`. Asked for now because asking later
+<a href=#50 id=50 data-nosnippet>50</a>/// would break every carrier written meanwhile.
+<a href=#51 id=51 data-nosnippet>51</a></span><span class="kw">pub trait </span>Word:
+<a href=#52 id=52 data-nosnippet>52</a>    Copy
+<a href=#53 id=53 data-nosnippet>53</a>    + Ord
+<a href=#54 id=54 data-nosnippet>54</a>    + core::hash::Hash
+<a href=#55 id=55 data-nosnippet>55</a>    + core::fmt::Debug
+<a href=#56 id=56 data-nosnippet>56</a>    + core::fmt::Binary
+<a href=#57 id=57 data-nosnippet>57</a>    + core::fmt::LowerHex
+<a href=#58 id=58 data-nosnippet>58</a>    + core::fmt::UpperHex
+<a href=#59 id=59 data-nosnippet>59</a>    + Send
+<a href=#60 id=60 data-nosnippet>60</a>    + Sync
+<a href=#61 id=61 data-nosnippet>61</a>    + <span class="lifetime">'static
+<a href=#62 id=62 data-nosnippet>62</a></span>{
+<a href=#63 id=63 data-nosnippet>63</a>    <span class="doccomment">/// Width in bits.
+<a href=#64 id=64 data-nosnippet>64</a>    </span><span class="kw">const </span>BITS: u32;
+<a href=#65 id=65 data-nosnippet>65</a>    <span class="doccomment">/// All bits clear.
+<a href=#66 id=66 data-nosnippet>66</a>    </span><span class="kw">const </span>ZERO: <span class="self">Self</span>;
+<a href=#67 id=67 data-nosnippet>67</a>    <span class="doccomment">/// Only bit 0 set.
+<a href=#68 id=68 data-nosnippet>68</a>    </span><span class="kw">const </span>ONE: <span class="self">Self</span>;
+<a href=#69 id=69 data-nosnippet>69</a>    <span class="doccomment">/// All bits set.
+<a href=#70 id=70 data-nosnippet>70</a>    </span><span class="kw">const </span>ONES: <span class="self">Self</span>;
+<a href=#71 id=71 data-nosnippet>71</a>
+<a href=#72 id=72 data-nosnippet>72</a>    <span class="doccomment">/// Bitwise AND.
 <a href=#73 id=73 data-nosnippet>73</a>    </span><span class="attr">#[must_use]
-<a href=#74 id=74 data-nosnippet>74</a>    </span><span class="kw">fn </span>or(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
-<a href=#75 id=75 data-nosnippet>75</a>    <span class="doccomment">/// Bitwise XOR.
+<a href=#74 id=74 data-nosnippet>74</a>    </span><span class="kw">fn </span>and(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
+<a href=#75 id=75 data-nosnippet>75</a>    <span class="doccomment">/// Bitwise OR.
 <a href=#76 id=76 data-nosnippet>76</a>    </span><span class="attr">#[must_use]
-<a href=#77 id=77 data-nosnippet>77</a>    </span><span class="kw">fn </span>xor(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
-<a href=#78 id=78 data-nosnippet>78</a>    <span class="doccomment">/// Bitwise NOT.
+<a href=#77 id=77 data-nosnippet>77</a>    </span><span class="kw">fn </span>or(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
+<a href=#78 id=78 data-nosnippet>78</a>    <span class="doccomment">/// Bitwise XOR.
 <a href=#79 id=79 data-nosnippet>79</a>    </span><span class="attr">#[must_use]
-<a href=#80 id=80 data-nosnippet>80</a>    </span><span class="kw">fn </span>not(<span class="self">self</span>) -&gt; <span class="self">Self</span>;
-<a href=#81 id=81 data-nosnippet>81</a>    <span class="doccomment">/// Logical shift left by `n &lt; BITS`.
+<a href=#80 id=80 data-nosnippet>80</a>    </span><span class="kw">fn </span>xor(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
+<a href=#81 id=81 data-nosnippet>81</a>    <span class="doccomment">/// Bitwise NOT.
 <a href=#82 id=82 data-nosnippet>82</a>    </span><span class="attr">#[must_use]
-<a href=#83 id=83 data-nosnippet>83</a>    </span><span class="kw">fn </span>shl(<span class="self">self</span>, n: u32) -&gt; <span class="self">Self</span>;
-<a href=#84 id=84 data-nosnippet>84</a>    <span class="doccomment">/// Logical shift right by `n &lt; BITS`.
+<a href=#83 id=83 data-nosnippet>83</a>    </span><span class="kw">fn </span>not(<span class="self">self</span>) -&gt; <span class="self">Self</span>;
+<a href=#84 id=84 data-nosnippet>84</a>    <span class="doccomment">/// Logical shift left by `n &lt; BITS`.
 <a href=#85 id=85 data-nosnippet>85</a>    </span><span class="attr">#[must_use]
-<a href=#86 id=86 data-nosnippet>86</a>    </span><span class="kw">fn </span>shr(<span class="self">self</span>, n: u32) -&gt; <span class="self">Self</span>;
-<a href=#87 id=87 data-nosnippet>87</a>
-<a href=#88 id=88 data-nosnippet>88</a>    <span class="doccomment">/// The carry chain: wrapping addition.
-<a href=#89 id=89 data-nosnippet>89</a>    </span><span class="attr">#[must_use]
-<a href=#90 id=90 data-nosnippet>90</a>    </span><span class="kw">fn </span>wrapping_add(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
-<a href=#91 id=91 data-nosnippet>91</a>    <span class="doccomment">/// The borrow chain: wrapping subtraction.
+<a href=#86 id=86 data-nosnippet>86</a>    </span><span class="kw">fn </span>shl(<span class="self">self</span>, n: u32) -&gt; <span class="self">Self</span>;
+<a href=#87 id=87 data-nosnippet>87</a>    <span class="doccomment">/// Logical shift right by `n &lt; BITS`.
+<a href=#88 id=88 data-nosnippet>88</a>    </span><span class="attr">#[must_use]
+<a href=#89 id=89 data-nosnippet>89</a>    </span><span class="kw">fn </span>shr(<span class="self">self</span>, n: u32) -&gt; <span class="self">Self</span>;
+<a href=#90 id=90 data-nosnippet>90</a>
+<a href=#91 id=91 data-nosnippet>91</a>    <span class="doccomment">/// The carry chain: wrapping addition.
 <a href=#92 id=92 data-nosnippet>92</a>    </span><span class="attr">#[must_use]
-<a href=#93 id=93 data-nosnippet>93</a>    </span><span class="kw">fn </span>wrapping_sub(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
-<a href=#94 id=94 data-nosnippet>94</a>    <span class="doccomment">/// Wrapping multiplication: the carry chain applied to every
-<a href=#95 id=95 data-nosnippet>95</a>    /// shifted copy at once; the SWAR way to sum or broadcast lanes.
-<a href=#96 id=96 data-nosnippet>96</a>    </span><span class="attr">#[must_use]
-<a href=#97 id=97 data-nosnippet>97</a>    </span><span class="kw">fn </span>wrapping_mul(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
-<a href=#98 id=98 data-nosnippet>98</a>    <span class="doccomment">/// The byte `b` repeated in every 8-bit lane.
+<a href=#93 id=93 data-nosnippet>93</a>    </span><span class="kw">fn </span>wrapping_add(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
+<a href=#94 id=94 data-nosnippet>94</a>    <span class="doccomment">/// The borrow chain: wrapping subtraction.
+<a href=#95 id=95 data-nosnippet>95</a>    </span><span class="attr">#[must_use]
+<a href=#96 id=96 data-nosnippet>96</a>    </span><span class="kw">fn </span>wrapping_sub(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
+<a href=#97 id=97 data-nosnippet>97</a>    <span class="doccomment">/// Wrapping multiplication: the carry chain applied to every
+<a href=#98 id=98 data-nosnippet>98</a>    /// shifted copy at once; the SWAR way to sum or broadcast lanes.
 <a href=#99 id=99 data-nosnippet>99</a>    </span><span class="attr">#[must_use]
-<a href=#100 id=100 data-nosnippet>100</a>    </span><span class="kw">fn </span>splat_byte(b: u8) -&gt; <span class="self">Self</span>;
-<a href=#101 id=101 data-nosnippet>101</a>    <span class="doccomment">/// The lowest 8 bits.
+<a href=#100 id=100 data-nosnippet>100</a>    </span><span class="kw">fn </span>wrapping_mul(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self</span>;
+<a href=#101 id=101 data-nosnippet>101</a>    <span class="doccomment">/// The byte `b` repeated in every 8-bit lane.
 <a href=#102 id=102 data-nosnippet>102</a>    </span><span class="attr">#[must_use]
-<a href=#103 id=103 data-nosnippet>103</a>    </span><span class="kw">fn </span>low_byte(<span class="self">self</span>) -&gt; u8;
-<a href=#104 id=104 data-nosnippet>104</a>
-<a href=#105 id=105 data-nosnippet>105</a>    <span class="doccomment">/// Number of set bits (POPCNT).
-<a href=#106 id=106 data-nosnippet>106</a>    </span><span class="attr">#[must_use]
-<a href=#107 id=107 data-nosnippet>107</a>    #[doc(alias(<span class="string">"popcount"</span>, <span class="string">"popcnt"</span>))]
-<a href=#108 id=108 data-nosnippet>108</a>    </span><span class="kw">fn </span>count_ones(<span class="self">self</span>) -&gt; u32;
-<a href=#109 id=109 data-nosnippet>109</a>    <span class="doccomment">/// Index of the lowest set bit; `BITS` when zero (TZCNT).
-<a href=#110 id=110 data-nosnippet>110</a>    </span><span class="attr">#[must_use]
-<a href=#111 id=111 data-nosnippet>111</a>    #[doc(alias(<span class="string">"tzcnt"</span>, <span class="string">"ctz"</span>))]
-<a href=#112 id=112 data-nosnippet>112</a>    </span><span class="kw">fn </span>trailing_zeros(<span class="self">self</span>) -&gt; u32;
-<a href=#113 id=113 data-nosnippet>113</a>    <span class="doccomment">/// Number of leading zero bits; `BITS` when zero (LZCNT).
-<a href=#114 id=114 data-nosnippet>114</a>    </span><span class="attr">#[must_use]
-<a href=#115 id=115 data-nosnippet>115</a>    #[doc(alias(<span class="string">"lzcnt"</span>, <span class="string">"clz"</span>))]
-<a href=#116 id=116 data-nosnippet>116</a>    </span><span class="kw">fn </span>leading_zeros(<span class="self">self</span>) -&gt; u32;
-<a href=#117 id=117 data-nosnippet>117</a>    <span class="doccomment">/// Clears the lowest set bit (BLSR); identity on zero.
-<a href=#118 id=118 data-nosnippet>118</a>    </span><span class="attr">#[must_use]
-<a href=#119 id=119 data-nosnippet>119</a>    #[doc(alias(<span class="string">"blsr"</span>))]
-<a href=#120 id=120 data-nosnippet>120</a>    </span><span class="kw">fn </span>clear_lowest_set(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#121 id=121 data-nosnippet>121</a>        <span class="self">self</span>.and(<span class="self">self</span>.wrapping_sub(<span class="self">Self</span>::ONE))
-<a href=#122 id=122 data-nosnippet>122</a>    }
-<a href=#123 id=123 data-nosnippet>123</a>
-<a href=#124 id=124 data-nosnippet>124</a>    <span class="doccomment">/// Parallel bit extract (PEXT): gathers the bits of `self` at the
-<a href=#125 id=125 data-nosnippet>125</a>    /// set positions of `mask` into the low `count_ones(mask)` bits,
-<a href=#126 id=126 data-nosnippet>126</a>    /// preserving order. BMI2: one instruction; portable:
-<a href=#127 id=127 data-nosnippet>127</a>    /// [`compress_broadword`].
-<a href=#128 id=128 data-nosnippet>128</a>    </span><span class="attr">#[must_use]
-<a href=#129 id=129 data-nosnippet>129</a>    </span><span class="kw">fn </span>pext(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#130 id=130 data-nosnippet>130</a>        compress_broadword(<span class="self">self</span>, mask)
-<a href=#131 id=131 data-nosnippet>131</a>    }
-<a href=#132 id=132 data-nosnippet>132</a>    <span class="doccomment">/// Parallel bit deposit (PDEP): scatters the low `count_ones(mask)`
-<a href=#133 id=133 data-nosnippet>133</a>    /// bits of `self` to the set positions of `mask`, preserving order.
-<a href=#134 id=134 data-nosnippet>134</a>    /// BMI2: one instruction; portable: [`expand_broadword`].
-<a href=#135 id=135 data-nosnippet>135</a>    </span><span class="attr">#[must_use]
-<a href=#136 id=136 data-nosnippet>136</a>    </span><span class="kw">fn </span>pdep(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#137 id=137 data-nosnippet>137</a>        expand_broadword(<span class="self">self</span>, mask)
-<a href=#138 id=138 data-nosnippet>138</a>    }
-<a href=#139 id=139 data-nosnippet>139</a>
-<a href=#140 id=140 data-nosnippet>140</a>    <span class="doccomment">/// Position of the `k`-th set bit (from 0), or `BITS` when there is
-<a href=#141 id=141 data-nosnippet>141</a>    /// none: the answer `trailing_zeros` gives for zero, which is where
-<a href=#142 id=142 data-nosnippet>142</a>    /// clearing `k` lowest set bits leaves you. The provided loop takes `k`
-<a href=#143 id=143 data-nosnippet>143</a>    /// steps, so a carrier overrides it. BMI2: `trailing_zeros(pdep(1 &lt;&lt; k,
-<a href=#144 id=144 data-nosnippet>144</a>    /// self))`; portable: Vigna's broadword select.
-<a href=#145 id=145 data-nosnippet>145</a>    </span><span class="attr">#[must_use]
-<a href=#146 id=146 data-nosnippet>146</a>    </span><span class="kw">fn </span>select_lowest(<span class="self">self</span>, k: u32) -&gt; u32 {
-<a href=#147 id=147 data-nosnippet>147</a>        <span class="kw">let </span><span class="kw-2">mut </span>x = <span class="self">self</span>;
-<a href=#148 id=148 data-nosnippet>148</a>        <span class="kw">for _ in </span><span class="number">0</span>..k {
-<a href=#149 id=149 data-nosnippet>149</a>            x = x.clear_lowest_set();
-<a href=#150 id=150 data-nosnippet>150</a>        }
-<a href=#151 id=151 data-nosnippet>151</a>        x.trailing_zeros()
-<a href=#152 id=152 data-nosnippet>152</a>    }
-<a href=#153 id=153 data-nosnippet>153</a>
-<a href=#154 id=154 data-nosnippet>154</a>    <span class="doccomment">/// Prefix XOR: bit `i` of the result is the parity of bits `0..=i`.
-<a href=#155 id=155 data-nosnippet>155</a>    /// PCLMULQDQ: carry-less multiply by all-ones; portable: log-depth
-<a href=#156 id=156 data-nosnippet>156</a>    /// smear.
-<a href=#157 id=157 data-nosnippet>157</a>    </span><span class="attr">#[must_use]
-<a href=#158 id=158 data-nosnippet>158</a>    </span><span class="kw">fn </span>xor_scan(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#159 id=159 data-nosnippet>159</a>        xor_smear(<span class="self">self</span>)
-<a href=#160 id=160 data-nosnippet>160</a>    }
-<a href=#161 id=161 data-nosnippet>161</a>
-<a href=#162 id=162 data-nosnippet>162</a>    <span class="doccomment">/// Suffix XOR: bit `i` of the result is the parity of bits
-<a href=#163 id=163 data-nosnippet>163</a>    /// `i..BITS`. The Gray decode. PCLMULQDQ: the high half of the
-<a href=#164 id=164 data-nosnippet>164</a>    /// carry-less multiply by all-ones is the exclusive suffix parity,
-<a href=#165 id=165 data-nosnippet>165</a>    /// one XOR from the inclusive; portable: log-depth smear downward.
-<a href=#166 id=166 data-nosnippet>166</a>    </span><span class="attr">#[must_use]
-<a href=#167 id=167 data-nosnippet>167</a>    </span><span class="kw">fn </span>xor_scan_down(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#168 id=168 data-nosnippet>168</a>        xor_smear_down(<span class="self">self</span>)
-<a href=#169 id=169 data-nosnippet>169</a>    }
-<a href=#170 id=170 data-nosnippet>170</a>
-<a href=#171 id=171 data-nosnippet>171</a>    <span class="doccomment">/// Mask with the `n` lowest bits set, `n &lt;= BITS`.
+<a href=#103 id=103 data-nosnippet>103</a>    </span><span class="kw">fn </span>splat_byte(b: u8) -&gt; <span class="self">Self</span>;
+<a href=#104 id=104 data-nosnippet>104</a>    <span class="doccomment">/// The lowest 8 bits.
+<a href=#105 id=105 data-nosnippet>105</a>    </span><span class="attr">#[must_use]
+<a href=#106 id=106 data-nosnippet>106</a>    </span><span class="kw">fn </span>low_byte(<span class="self">self</span>) -&gt; u8;
+<a href=#107 id=107 data-nosnippet>107</a>
+<a href=#108 id=108 data-nosnippet>108</a>    <span class="doccomment">/// Number of set bits (POPCNT).
+<a href=#109 id=109 data-nosnippet>109</a>    </span><span class="attr">#[must_use]
+<a href=#110 id=110 data-nosnippet>110</a>    #[doc(alias(<span class="string">"popcount"</span>, <span class="string">"popcnt"</span>))]
+<a href=#111 id=111 data-nosnippet>111</a>    </span><span class="kw">fn </span>count_ones(<span class="self">self</span>) -&gt; u32;
+<a href=#112 id=112 data-nosnippet>112</a>    <span class="doccomment">/// Index of the lowest set bit; `BITS` when zero (TZCNT).
+<a href=#113 id=113 data-nosnippet>113</a>    </span><span class="attr">#[must_use]
+<a href=#114 id=114 data-nosnippet>114</a>    #[doc(alias(<span class="string">"tzcnt"</span>, <span class="string">"ctz"</span>))]
+<a href=#115 id=115 data-nosnippet>115</a>    </span><span class="kw">fn </span>trailing_zeros(<span class="self">self</span>) -&gt; u32;
+<a href=#116 id=116 data-nosnippet>116</a>    <span class="doccomment">/// Number of leading zero bits; `BITS` when zero (LZCNT).
+<a href=#117 id=117 data-nosnippet>117</a>    </span><span class="attr">#[must_use]
+<a href=#118 id=118 data-nosnippet>118</a>    #[doc(alias(<span class="string">"lzcnt"</span>, <span class="string">"clz"</span>))]
+<a href=#119 id=119 data-nosnippet>119</a>    </span><span class="kw">fn </span>leading_zeros(<span class="self">self</span>) -&gt; u32;
+<a href=#120 id=120 data-nosnippet>120</a>    <span class="doccomment">/// Clears the lowest set bit (BLSR); identity on zero.
+<a href=#121 id=121 data-nosnippet>121</a>    </span><span class="attr">#[must_use]
+<a href=#122 id=122 data-nosnippet>122</a>    #[doc(alias(<span class="string">"blsr"</span>))]
+<a href=#123 id=123 data-nosnippet>123</a>    #[inline]
+<a href=#124 id=124 data-nosnippet>124</a>    </span><span class="kw">fn </span>clear_lowest_set(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
+<a href=#125 id=125 data-nosnippet>125</a>        <span class="self">self</span>.and(<span class="self">self</span>.wrapping_sub(<span class="self">Self</span>::ONE))
+<a href=#126 id=126 data-nosnippet>126</a>    }
+<a href=#127 id=127 data-nosnippet>127</a>
+<a href=#128 id=128 data-nosnippet>128</a>    <span class="doccomment">/// Parallel bit extract (PEXT): gathers the bits of `self` at the
+<a href=#129 id=129 data-nosnippet>129</a>    /// set positions of `mask` into the low `count_ones(mask)` bits,
+<a href=#130 id=130 data-nosnippet>130</a>    /// preserving order. BMI2: one instruction; portable:
+<a href=#131 id=131 data-nosnippet>131</a>    /// [`compress_broadword`].
+<a href=#132 id=132 data-nosnippet>132</a>    </span><span class="attr">#[must_use]
+<a href=#133 id=133 data-nosnippet>133</a>    #[inline]
+<a href=#134 id=134 data-nosnippet>134</a>    </span><span class="kw">fn </span>pext(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#135 id=135 data-nosnippet>135</a>        <span class="self">self</span>.pext_in(mask, Native)
+<a href=#136 id=136 data-nosnippet>136</a>    }
+<a href=#137 id=137 data-nosnippet>137</a>    <span class="doccomment">/// Parallel bit deposit (PDEP): scatters the low `count_ones(mask)`
+<a href=#138 id=138 data-nosnippet>138</a>    /// bits of `self` to the set positions of `mask`, preserving order.
+<a href=#139 id=139 data-nosnippet>139</a>    /// BMI2: one instruction; portable: [`expand_broadword`].
+<a href=#140 id=140 data-nosnippet>140</a>    </span><span class="attr">#[must_use]
+<a href=#141 id=141 data-nosnippet>141</a>    #[inline]
+<a href=#142 id=142 data-nosnippet>142</a>    </span><span class="kw">fn </span>pdep(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#143 id=143 data-nosnippet>143</a>        <span class="self">self</span>.pdep_in(mask, Native)
+<a href=#144 id=144 data-nosnippet>144</a>    }
+<a href=#145 id=145 data-nosnippet>145</a>    <span class="doccomment">/// The even bits and the odd bits, each compacted to the low half:
+<a href=#146 id=146 data-nosnippet>146</a>    /// `(pext(0x55…), pext(0xAA…))`, the Morton decode, and Hacker's
+<a href=#147 id=147 data-nosnippet>147</a>    /// Delight's outer unshuffle (7-2) with its halves in two words.
+<a href=#148 id=148 data-nosnippet>148</a>    /// BMI2: two PEXT; portable: the shift ladder, once over a `u64`
+<a href=#149 id=149 data-nosnippet>149</a>    /// holding both halves for `u32` and narrower, twice for `u64`;
+<a href=#150 id=150 data-nosnippet>150</a>    /// wider carriers, two compresses.
+<a href=#151 id=151 data-nosnippet>151</a>    </span><span class="attr">#[must_use]
+<a href=#152 id=152 data-nosnippet>152</a>    #[inline]
+<a href=#153 id=153 data-nosnippet>153</a>    </span><span class="kw">fn </span>unzip(<span class="self">self</span>) -&gt; (<span class="self">Self</span>, <span class="self">Self</span>) {
+<a href=#154 id=154 data-nosnippet>154</a>        <span class="self">self</span>.unzip_in(Native)
+<a href=#155 id=155 data-nosnippet>155</a>    }
+<a href=#156 id=156 data-nosnippet>156</a>    <span class="doccomment">/// The low halves of `self` and `other` interleaved, `self` on the
+<a href=#157 id=157 data-nosnippet>157</a>    /// even bits and `other` on the odd: the Morton encode, and Hacker's
+<a href=#158 id=158 data-nosnippet>158</a>    /// Delight's outer shuffle (7-2) with its halves from two words; the
+<a href=#159 id=159 data-nosnippet>159</a>    /// inverse of [`unzip`](Word::unzip). BMI2: two PDEP; portable: two
+<a href=#160 id=160 data-nosnippet>160</a>    /// expands, which under this mask fold to the shift ladder already.
+<a href=#161 id=161 data-nosnippet>161</a>    </span><span class="attr">#[must_use]
+<a href=#162 id=162 data-nosnippet>162</a>    #[inline]
+<a href=#163 id=163 data-nosnippet>163</a>    </span><span class="kw">fn </span>zip(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#164 id=164 data-nosnippet>164</a>        <span class="self">self</span>.zip_in(other, Native)
+<a href=#165 id=165 data-nosnippet>165</a>    }
+<a href=#166 id=166 data-nosnippet>166</a>
+<a href=#167 id=167 data-nosnippet>167</a>    <span class="doccomment">/// Position of the `k`-th set bit (from 0), or `BITS` when there is
+<a href=#168 id=168 data-nosnippet>168</a>    /// none: the answer `trailing_zeros` gives for zero, which is where
+<a href=#169 id=169 data-nosnippet>169</a>    /// clearing `k` lowest set bits leaves you. The provided loop takes `k`
+<a href=#170 id=170 data-nosnippet>170</a>    /// steps, so a carrier overrides it. BMI2: `trailing_zeros(pdep(1 &lt;&lt; k,
+<a href=#171 id=171 data-nosnippet>171</a>    /// self))`; portable: Vigna's broadword select.
 <a href=#172 id=172 data-nosnippet>172</a>    </span><span class="attr">#[must_use]
-<a href=#173 id=173 data-nosnippet>173</a>    </span><span class="kw">fn </span>low_ones(n: u32) -&gt; <span class="self">Self </span>{
-<a href=#174 id=174 data-nosnippet>174</a>        <span class="kw">if </span>n &gt;= <span class="self">Self</span>::BITS {
-<a href=#175 id=175 data-nosnippet>175</a>            <span class="self">Self</span>::ONES
-<a href=#176 id=176 data-nosnippet>176</a>        } <span class="kw">else </span>{
-<a href=#177 id=177 data-nosnippet>177</a>            <span class="self">Self</span>::ONE.shl(n).wrapping_sub(<span class="self">Self</span>::ONE)
-<a href=#178 id=178 data-nosnippet>178</a>        }
-<a href=#179 id=179 data-nosnippet>179</a>    }
-<a href=#180 id=180 data-nosnippet>180</a>
-<a href=#181 id=181 data-nosnippet>181</a>    <span class="doccomment">/// `true` when no bit is set.
-<a href=#182 id=182 data-nosnippet>182</a>    </span><span class="attr">#[inline]
-<a href=#183 id=183 data-nosnippet>183</a>    #[must_use]
-<a href=#184 id=184 data-nosnippet>184</a>    </span><span class="kw">fn </span>is_zero(<span class="self">self</span>) -&gt; bool {
-<a href=#185 id=185 data-nosnippet>185</a>        <span class="self">self </span>== <span class="self">Self</span>::ZERO
-<a href=#186 id=186 data-nosnippet>186</a>    }
-<a href=#187 id=187 data-nosnippet>187</a>
-<a href=#188 id=188 data-nosnippet>188</a>    <span class="doccomment">/// `true` when bit `i &lt; BITS` is set.
-<a href=#189 id=189 data-nosnippet>189</a>    </span><span class="attr">#[inline]
-<a href=#190 id=190 data-nosnippet>190</a>    #[must_use]
-<a href=#191 id=191 data-nosnippet>191</a>    </span><span class="kw">fn </span>bit(<span class="self">self</span>, i: u32) -&gt; bool {
-<a href=#192 id=192 data-nosnippet>192</a>        !<span class="self">self</span>.shr(i).and(<span class="self">Self</span>::ONE).is_zero()
-<a href=#193 id=193 data-nosnippet>193</a>    }
-<a href=#194 id=194 data-nosnippet>194</a>
-<a href=#195 id=195 data-nosnippet>195</a>    <span class="doccomment">/// `true` when an odd number of bits is set.
-<a href=#196 id=196 data-nosnippet>196</a>    </span><span class="attr">#[inline]
-<a href=#197 id=197 data-nosnippet>197</a>    #[must_use]
-<a href=#198 id=198 data-nosnippet>198</a>    </span><span class="kw">fn </span>parity(<span class="self">self</span>) -&gt; bool {
-<a href=#199 id=199 data-nosnippet>199</a>        <span class="self">self</span>.count_ones() &amp; <span class="number">1 </span>== <span class="number">1
-<a href=#200 id=200 data-nosnippet>200</a>    </span>}
-<a href=#201 id=201 data-nosnippet>201</a>
-<a href=#202 id=202 data-nosnippet>202</a>    <span class="doccomment">/// Number of consecutive set bits from bit 0 upward.
-<a href=#203 id=203 data-nosnippet>203</a>    </span><span class="attr">#[inline]
-<a href=#204 id=204 data-nosnippet>204</a>    #[must_use]
-<a href=#205 id=205 data-nosnippet>205</a>    </span><span class="kw">fn </span>trailing_ones(<span class="self">self</span>) -&gt; u32 {
-<a href=#206 id=206 data-nosnippet>206</a>        <span class="self">self</span>.not().trailing_zeros()
-<a href=#207 id=207 data-nosnippet>207</a>    }
-<a href=#208 id=208 data-nosnippet>208</a>
-<a href=#209 id=209 data-nosnippet>209</a>    <span class="doccomment">/// Number of consecutive set bits from the top downward.
-<a href=#210 id=210 data-nosnippet>210</a>    </span><span class="attr">#[inline]
-<a href=#211 id=211 data-nosnippet>211</a>    #[must_use]
-<a href=#212 id=212 data-nosnippet>212</a>    </span><span class="kw">fn </span>leading_ones(<span class="self">self</span>) -&gt; u32 {
-<a href=#213 id=213 data-nosnippet>213</a>        <span class="self">self</span>.not().leading_zeros()
-<a href=#214 id=214 data-nosnippet>214</a>    }
-<a href=#215 id=215 data-nosnippet>215</a>}
-<a href=#216 id=216 data-nosnippet>216</a>
-<a href=#217 id=217 data-nosnippet>217</a><span class="comment">// --- portable definitions ----------------------------------------------
-<a href=#218 id=218 data-nosnippet>218</a>
-<a href=#219 id=219 data-nosnippet>219</a></span><span class="doccomment">/// Portable PEXT: compress by parallel suffix (Hacker's Delight 7-4).
-<a href=#220 id=220 data-nosnippet>220</a>///
-<a href=#221 id=221 data-nosnippet>221</a>/// `log₂ BITS` rounds. Round `i` moves every selected bit right by
-<a href=#222 id=222 data-nosnippet>222</a>/// `2^i` exactly when the number of unselected bits below it has bit
-<a href=#223 id=223 data-nosnippet>223</a>/// `i` set; that count's parity, for every bit at once, is one
-<a href=#224 id=224 data-nosnippet>224</a>/// prefix-XOR scan ([`Word::xor_scan`]) of the "zeros to the right"
-<a href=#225 id=225 data-nosnippet>225</a>/// mask. Constant time, no table, no data-dependent branch: about
-<a href=#226 id=226 data-nosnippet>226</a>/// `log₂ BITS × (9 + cost of a scan)` operations, where a scan is one
-<a href=#227 id=227 data-nosnippet>227</a>/// PCLMULQDQ on targets that have it and a log-depth smear otherwise.
-<a href=#228 id=228 data-nosnippet>228</a>/// `benches/compact.rs` compares it with PEXT and with a loop over the
-<a href=#229 id=229 data-nosnippet>229</a>/// mask's set bits.
-<a href=#230 id=230 data-nosnippet>230</a>///
-<a href=#231 id=231 data-nosnippet>231</a>/// ```
-<a href=#232 id=232 data-nosnippet>232</a>/// use hakmem::word::compress_broadword;
-<a href=#233 id=233 data-nosnippet>233</a>/// assert_eq!(compress_broadword(0b1001u32, 0b1010), 0b10);
-<a href=#234 id=234 data-nosnippet>234</a>/// ```
-<a href=#235 id=235 data-nosnippet>235</a></span><span class="attr">#[inline]
-<a href=#236 id=236 data-nosnippet>236</a>#[must_use]
-<a href=#237 id=237 data-nosnippet>237</a></span><span class="kw">pub fn </span>compress_broadword&lt;W: Word&gt;(x: W, <span class="kw-2">mut </span>mask: W) -&gt; W {
-<a href=#238 id=238 data-nosnippet>238</a>    <span class="kw">let </span><span class="kw-2">mut </span>x = x.and(mask);
-<a href=#239 id=239 data-nosnippet>239</a>    <span class="kw">let </span><span class="kw-2">mut </span>mk = mask.not().shl(<span class="number">1</span>); <span class="comment">// zeros to the right of each bit
-<a href=#240 id=240 data-nosnippet>240</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>i = <span class="number">0</span>;
-<a href=#241 id=241 data-nosnippet>241</a>    <span class="kw">while </span>(<span class="number">1u32 </span>&lt;&lt; i) &lt; W::BITS {
-<a href=#242 id=242 data-nosnippet>242</a>        <span class="kw">let </span>mp = mk.xor_scan(); <span class="comment">// parity of those zeros, per bit
-<a href=#243 id=243 data-nosnippet>243</a>        </span><span class="kw">let </span>mv = mp.and(mask); <span class="comment">// bits that move this round
-<a href=#244 id=244 data-nosnippet>244</a>        </span>mask = mask.xor(mv).or(mv.shr(<span class="number">1u32 </span>&lt;&lt; i));
-<a href=#245 id=245 data-nosnippet>245</a>        <span class="kw">let </span>t = x.and(mv);
-<a href=#246 id=246 data-nosnippet>246</a>        x = x.xor(t).or(t.shr(<span class="number">1u32 </span>&lt;&lt; i));
-<a href=#247 id=247 data-nosnippet>247</a>        mk = mk.and(mp.not());
-<a href=#248 id=248 data-nosnippet>248</a>        i += <span class="number">1</span>;
-<a href=#249 id=249 data-nosnippet>249</a>    }
-<a href=#250 id=250 data-nosnippet>250</a>    x
-<a href=#251 id=251 data-nosnippet>251</a>}
-<a href=#252 id=252 data-nosnippet>252</a>
-<a href=#253 id=253 data-nosnippet>253</a><span class="doccomment">/// Portable PDEP: expand by parallel suffix (Hacker's Delight 7-5).
-<a href=#254 id=254 data-nosnippet>254</a>///
-<a href=#255 id=255 data-nosnippet>255</a>/// The move masks of [`compress_broadword`], computed forward and
-<a href=#256 id=256 data-nosnippet>256</a>/// applied in reverse with left shifts. Constant time.
-<a href=#257 id=257 data-nosnippet>257</a>///
-<a href=#258 id=258 data-nosnippet>258</a>/// ```
-<a href=#259 id=259 data-nosnippet>259</a>/// use hakmem::word::expand_broadword;
-<a href=#260 id=260 data-nosnippet>260</a>/// assert_eq!(expand_broadword(0b10u32, 0b1010), 0b1000);
-<a href=#261 id=261 data-nosnippet>261</a>/// ```
-<a href=#262 id=262 data-nosnippet>262</a></span><span class="attr">#[inline]
-<a href=#263 id=263 data-nosnippet>263</a>#[must_use]
-<a href=#264 id=264 data-nosnippet>264</a></span><span class="kw">pub fn </span>expand_broadword&lt;W: Word&gt;(x: W, mask: W) -&gt; W {
-<a href=#265 id=265 data-nosnippet>265</a>    <span class="comment">// One mask a halving round, 16 rounds for 2^16 bits. Past that the
-<a href=#266 id=266 data-nosnippet>266</a>    // array ran out at run time; now the build does.
-<a href=#267 id=267 data-nosnippet>267</a>    </span><span class="kw">const </span>{ <span class="macro">assert!</span>(W::BITS &lt;= <span class="number">1 </span>&lt;&lt; <span class="number">16</span>, <span class="string">"expand_broadword: BITS above 2^16"</span>) };
-<a href=#268 id=268 data-nosnippet>268</a>    <span class="kw">let </span><span class="kw-2">mut </span>moves = [W::ZERO; <span class="number">16</span>];
-<a href=#269 id=269 data-nosnippet>269</a>    <span class="kw">let </span><span class="kw-2">mut </span>m = mask;
-<a href=#270 id=270 data-nosnippet>270</a>    <span class="kw">let </span><span class="kw-2">mut </span>mk = mask.not().shl(<span class="number">1</span>);
-<a href=#271 id=271 data-nosnippet>271</a>    <span class="kw">let </span><span class="kw-2">mut </span>rounds = <span class="number">0</span>;
-<a href=#272 id=272 data-nosnippet>272</a>    <span class="kw">while </span>(<span class="number">1u32 </span>&lt;&lt; rounds) &lt; W::BITS {
-<a href=#273 id=273 data-nosnippet>273</a>        <span class="kw">let </span>mp = mk.xor_scan();
-<a href=#274 id=274 data-nosnippet>274</a>        <span class="kw">let </span>mv = mp.and(m);
-<a href=#275 id=275 data-nosnippet>275</a>        moves[rounds] = mv;
-<a href=#276 id=276 data-nosnippet>276</a>        m = m.xor(mv).or(mv.shr(<span class="number">1u32 </span>&lt;&lt; rounds));
-<a href=#277 id=277 data-nosnippet>277</a>        mk = mk.and(mp.not());
-<a href=#278 id=278 data-nosnippet>278</a>        rounds += <span class="number">1</span>;
-<a href=#279 id=279 data-nosnippet>279</a>    }
-<a href=#280 id=280 data-nosnippet>280</a>    <span class="kw">let </span><span class="kw-2">mut </span>x = x;
-<a href=#281 id=281 data-nosnippet>281</a>    <span class="kw">for </span>i <span class="kw">in </span>(<span class="number">0</span>..rounds).rev() {
-<a href=#282 id=282 data-nosnippet>282</a>        <span class="kw">let </span>mv = moves[i];
-<a href=#283 id=283 data-nosnippet>283</a>        x = x.and(mv.not()).or(x.shl(<span class="number">1u32 </span>&lt;&lt; i).and(mv));
-<a href=#284 id=284 data-nosnippet>284</a>    }
-<a href=#285 id=285 data-nosnippet>285</a>    x.and(mask)
-<a href=#286 id=286 data-nosnippet>286</a>}
-<a href=#287 id=287 data-nosnippet>287</a>
-<a href=#288 id=288 data-nosnippet>288</a><span class="doccomment">/// Log-depth XOR smear: `x ^= x &lt;&lt; 1; x ^= x &lt;&lt; 2; …`.
-<a href=#289 id=289 data-nosnippet>289</a></span><span class="attr">#[inline]
-<a href=#290 id=290 data-nosnippet>290</a></span><span class="kw">fn </span>xor_smear&lt;W: Word&gt;(<span class="kw-2">mut </span>x: W) -&gt; W {
-<a href=#291 id=291 data-nosnippet>291</a>    <span class="kw">let </span><span class="kw-2">mut </span>s = <span class="number">1</span>;
-<a href=#292 id=292 data-nosnippet>292</a>    <span class="kw">while </span>s &lt; W::BITS {
-<a href=#293 id=293 data-nosnippet>293</a>        x = x.xor(x.shl(s));
-<a href=#294 id=294 data-nosnippet>294</a>        s &lt;&lt;= <span class="number">1</span>;
+<a href=#173 id=173 data-nosnippet>173</a>    #[inline]
+<a href=#174 id=174 data-nosnippet>174</a>    </span><span class="kw">fn </span>select_lowest(<span class="self">self</span>, k: u32) -&gt; u32 {
+<a href=#175 id=175 data-nosnippet>175</a>        <span class="self">self</span>.select_lowest_in(k, Native)
+<a href=#176 id=176 data-nosnippet>176</a>    }
+<a href=#177 id=177 data-nosnippet>177</a>
+<a href=#178 id=178 data-nosnippet>178</a>    <span class="doccomment">/// Prefix XOR: bit `i` of the result is the parity of bits `0..=i`.
+<a href=#179 id=179 data-nosnippet>179</a>    /// PCLMULQDQ: carry-less multiply by all-ones; portable: log-depth
+<a href=#180 id=180 data-nosnippet>180</a>    /// smear.
+<a href=#181 id=181 data-nosnippet>181</a>    </span><span class="attr">#[must_use]
+<a href=#182 id=182 data-nosnippet>182</a>    #[inline]
+<a href=#183 id=183 data-nosnippet>183</a>    </span><span class="kw">fn </span>xor_scan(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
+<a href=#184 id=184 data-nosnippet>184</a>        <span class="self">self</span>.xor_scan_in(Native)
+<a href=#185 id=185 data-nosnippet>185</a>    }
+<a href=#186 id=186 data-nosnippet>186</a>
+<a href=#187 id=187 data-nosnippet>187</a>    <span class="doccomment">/// Suffix XOR: bit `i` of the result is the parity of bits
+<a href=#188 id=188 data-nosnippet>188</a>    /// `i..BITS`. The Gray decode. PCLMULQDQ: the high half of the
+<a href=#189 id=189 data-nosnippet>189</a>    /// carry-less multiply by all-ones is the exclusive suffix parity,
+<a href=#190 id=190 data-nosnippet>190</a>    /// one XOR from the inclusive; portable: log-depth smear downward.
+<a href=#191 id=191 data-nosnippet>191</a>    </span><span class="attr">#[must_use]
+<a href=#192 id=192 data-nosnippet>192</a>    #[inline]
+<a href=#193 id=193 data-nosnippet>193</a>    </span><span class="kw">fn </span>xor_scan_down(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
+<a href=#194 id=194 data-nosnippet>194</a>        <span class="self">self</span>.xor_scan_down_in(Native)
+<a href=#195 id=195 data-nosnippet>195</a>    }
+<a href=#196 id=196 data-nosnippet>196</a>
+<a href=#197 id=197 data-nosnippet>197</a>    <span class="doccomment">/// [`pext`](Word::pext) with the instructions of `isa`. The seven
+<a href=#198 id=198 data-nosnippet>198</a>    /// `_in` methods are the ones a carrier routes to hardware; the
+<a href=#199 id=199 data-nosnippet>199</a>    /// provided ones are the portable definitions, which is what an
+<a href=#200 id=200 data-nosnippet>200</a>    /// `isa` without the instruction would use anyway.
+<a href=#201 id=201 data-nosnippet>201</a>    </span><span class="attr">#[must_use]
+<a href=#202 id=202 data-nosnippet>202</a>    #[inline]
+<a href=#203 id=203 data-nosnippet>203</a>    </span><span class="kw">fn </span>pext_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#204 id=204 data-nosnippet>204</a>        <span class="kw">let _ </span>= isa;
+<a href=#205 id=205 data-nosnippet>205</a>        compress_broadword(<span class="self">self</span>, mask)
+<a href=#206 id=206 data-nosnippet>206</a>    }
+<a href=#207 id=207 data-nosnippet>207</a>    <span class="doccomment">/// [`pdep`](Word::pdep) with the instructions of `isa`.
+<a href=#208 id=208 data-nosnippet>208</a>    </span><span class="attr">#[must_use]
+<a href=#209 id=209 data-nosnippet>209</a>    #[inline]
+<a href=#210 id=210 data-nosnippet>210</a>    </span><span class="kw">fn </span>pdep_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#211 id=211 data-nosnippet>211</a>        <span class="kw">let _ </span>= isa;
+<a href=#212 id=212 data-nosnippet>212</a>        expand_broadword(<span class="self">self</span>, mask)
+<a href=#213 id=213 data-nosnippet>213</a>    }
+<a href=#214 id=214 data-nosnippet>214</a>    <span class="doccomment">/// [`unzip`](Word::unzip) with the instructions of `isa`.
+<a href=#215 id=215 data-nosnippet>215</a>    </span><span class="attr">#[must_use]
+<a href=#216 id=216 data-nosnippet>216</a>    #[inline]
+<a href=#217 id=217 data-nosnippet>217</a>    </span><span class="kw">fn </span>unzip_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; (<span class="self">Self</span>, <span class="self">Self</span>) {
+<a href=#218 id=218 data-nosnippet>218</a>        <span class="comment">// The odd bits shifted down and compacted under the even mask:
+<a href=#219 id=219 data-nosnippet>219</a>        // a compress under the odd mask itself takes a round more.
+<a href=#220 id=220 data-nosnippet>220</a>        </span><span class="kw">let </span>even = <span class="self">Self</span>::splat_byte(<span class="number">0x55</span>);
+<a href=#221 id=221 data-nosnippet>221</a>        (<span class="self">self</span>.pext_in(even, isa), <span class="self">self</span>.shr(<span class="number">1</span>).pext_in(even, isa))
+<a href=#222 id=222 data-nosnippet>222</a>    }
+<a href=#223 id=223 data-nosnippet>223</a>    <span class="doccomment">/// [`zip`](Word::zip) with the instructions of `isa`.
+<a href=#224 id=224 data-nosnippet>224</a>    </span><span class="attr">#[must_use]
+<a href=#225 id=225 data-nosnippet>225</a>    #[inline]
+<a href=#226 id=226 data-nosnippet>226</a>    </span><span class="kw">fn </span>zip_in&lt;I: Isa&gt;(<span class="self">self</span>, other: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#227 id=227 data-nosnippet>227</a>        <span class="kw">let </span>even = <span class="self">Self</span>::splat_byte(<span class="number">0x55</span>);
+<a href=#228 id=228 data-nosnippet>228</a>        <span class="self">self</span>.pdep_in(even, isa).or(other.pdep_in(even, isa).shl(<span class="number">1</span>))
+<a href=#229 id=229 data-nosnippet>229</a>    }
+<a href=#230 id=230 data-nosnippet>230</a>    <span class="doccomment">/// [`select_lowest`](Word::select_lowest) with the instructions of
+<a href=#231 id=231 data-nosnippet>231</a>    /// `isa`. The provided loop takes `k` steps, so a carrier overrides it.
+<a href=#232 id=232 data-nosnippet>232</a>    </span><span class="attr">#[must_use]
+<a href=#233 id=233 data-nosnippet>233</a>    #[inline]
+<a href=#234 id=234 data-nosnippet>234</a>    </span><span class="kw">fn </span>select_lowest_in&lt;I: Isa&gt;(<span class="self">self</span>, k: u32, isa: I) -&gt; u32 {
+<a href=#235 id=235 data-nosnippet>235</a>        <span class="kw">let _ </span>= isa;
+<a href=#236 id=236 data-nosnippet>236</a>        <span class="kw">let </span><span class="kw-2">mut </span>x = <span class="self">self</span>;
+<a href=#237 id=237 data-nosnippet>237</a>        <span class="kw">for _ in </span><span class="number">0</span>..k {
+<a href=#238 id=238 data-nosnippet>238</a>            x = x.clear_lowest_set();
+<a href=#239 id=239 data-nosnippet>239</a>        }
+<a href=#240 id=240 data-nosnippet>240</a>        x.trailing_zeros()
+<a href=#241 id=241 data-nosnippet>241</a>    }
+<a href=#242 id=242 data-nosnippet>242</a>    <span class="doccomment">/// [`xor_scan`](Word::xor_scan) with the instructions of `isa`.
+<a href=#243 id=243 data-nosnippet>243</a>    </span><span class="attr">#[must_use]
+<a href=#244 id=244 data-nosnippet>244</a>    #[inline]
+<a href=#245 id=245 data-nosnippet>245</a>    </span><span class="kw">fn </span>xor_scan_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#246 id=246 data-nosnippet>246</a>        <span class="kw">let _ </span>= isa;
+<a href=#247 id=247 data-nosnippet>247</a>        xor_smear(<span class="self">self</span>)
+<a href=#248 id=248 data-nosnippet>248</a>    }
+<a href=#249 id=249 data-nosnippet>249</a>    <span class="doccomment">/// [`xor_scan_down`](Word::xor_scan_down) with the instructions of
+<a href=#250 id=250 data-nosnippet>250</a>    /// `isa`.
+<a href=#251 id=251 data-nosnippet>251</a>    </span><span class="attr">#[must_use]
+<a href=#252 id=252 data-nosnippet>252</a>    #[inline]
+<a href=#253 id=253 data-nosnippet>253</a>    </span><span class="kw">fn </span>xor_scan_down_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#254 id=254 data-nosnippet>254</a>        <span class="kw">let _ </span>= isa;
+<a href=#255 id=255 data-nosnippet>255</a>        xor_smear_down(<span class="self">self</span>)
+<a href=#256 id=256 data-nosnippet>256</a>    }
+<a href=#257 id=257 data-nosnippet>257</a>
+<a href=#258 id=258 data-nosnippet>258</a>    <span class="doccomment">/// Mask with the `n` lowest bits set, `n &lt;= BITS`.
+<a href=#259 id=259 data-nosnippet>259</a>    </span><span class="attr">#[must_use]
+<a href=#260 id=260 data-nosnippet>260</a>    #[inline]
+<a href=#261 id=261 data-nosnippet>261</a>    </span><span class="kw">fn </span>low_ones(n: u32) -&gt; <span class="self">Self </span>{
+<a href=#262 id=262 data-nosnippet>262</a>        <span class="kw">if </span>n &gt;= <span class="self">Self</span>::BITS {
+<a href=#263 id=263 data-nosnippet>263</a>            <span class="self">Self</span>::ONES
+<a href=#264 id=264 data-nosnippet>264</a>        } <span class="kw">else </span>{
+<a href=#265 id=265 data-nosnippet>265</a>            <span class="self">Self</span>::ONE.shl(n).wrapping_sub(<span class="self">Self</span>::ONE)
+<a href=#266 id=266 data-nosnippet>266</a>        }
+<a href=#267 id=267 data-nosnippet>267</a>    }
+<a href=#268 id=268 data-nosnippet>268</a>
+<a href=#269 id=269 data-nosnippet>269</a>    <span class="doccomment">/// `true` when no bit is set.
+<a href=#270 id=270 data-nosnippet>270</a>    </span><span class="attr">#[inline]
+<a href=#271 id=271 data-nosnippet>271</a>    #[must_use]
+<a href=#272 id=272 data-nosnippet>272</a>    </span><span class="kw">fn </span>is_zero(<span class="self">self</span>) -&gt; bool {
+<a href=#273 id=273 data-nosnippet>273</a>        <span class="self">self </span>== <span class="self">Self</span>::ZERO
+<a href=#274 id=274 data-nosnippet>274</a>    }
+<a href=#275 id=275 data-nosnippet>275</a>
+<a href=#276 id=276 data-nosnippet>276</a>    <span class="doccomment">/// `true` when bit `i &lt; BITS` is set.
+<a href=#277 id=277 data-nosnippet>277</a>    </span><span class="attr">#[inline]
+<a href=#278 id=278 data-nosnippet>278</a>    #[must_use]
+<a href=#279 id=279 data-nosnippet>279</a>    </span><span class="kw">fn </span>bit(<span class="self">self</span>, i: u32) -&gt; bool {
+<a href=#280 id=280 data-nosnippet>280</a>        !<span class="self">self</span>.shr(i).and(<span class="self">Self</span>::ONE).is_zero()
+<a href=#281 id=281 data-nosnippet>281</a>    }
+<a href=#282 id=282 data-nosnippet>282</a>
+<a href=#283 id=283 data-nosnippet>283</a>    <span class="doccomment">/// `true` when an odd number of bits is set.
+<a href=#284 id=284 data-nosnippet>284</a>    </span><span class="attr">#[inline]
+<a href=#285 id=285 data-nosnippet>285</a>    #[must_use]
+<a href=#286 id=286 data-nosnippet>286</a>    </span><span class="kw">fn </span>parity(<span class="self">self</span>) -&gt; bool {
+<a href=#287 id=287 data-nosnippet>287</a>        <span class="self">self</span>.count_ones() &amp; <span class="number">1 </span>== <span class="number">1
+<a href=#288 id=288 data-nosnippet>288</a>    </span>}
+<a href=#289 id=289 data-nosnippet>289</a>
+<a href=#290 id=290 data-nosnippet>290</a>    <span class="doccomment">/// Number of consecutive set bits from bit 0 upward.
+<a href=#291 id=291 data-nosnippet>291</a>    </span><span class="attr">#[inline]
+<a href=#292 id=292 data-nosnippet>292</a>    #[must_use]
+<a href=#293 id=293 data-nosnippet>293</a>    </span><span class="kw">fn </span>trailing_ones(<span class="self">self</span>) -&gt; u32 {
+<a href=#294 id=294 data-nosnippet>294</a>        <span class="self">self</span>.not().trailing_zeros()
 <a href=#295 id=295 data-nosnippet>295</a>    }
-<a href=#296 id=296 data-nosnippet>296</a>    x
-<a href=#297 id=297 data-nosnippet>297</a>}
-<a href=#298 id=298 data-nosnippet>298</a>
-<a href=#299 id=299 data-nosnippet>299</a><span class="doccomment">/// Log-depth XOR smear downward: `x ^= x &gt;&gt; 1; x ^= x &gt;&gt; 2; …`.
-<a href=#300 id=300 data-nosnippet>300</a></span><span class="attr">#[inline]
-<a href=#301 id=301 data-nosnippet>301</a></span><span class="kw">fn </span>xor_smear_down&lt;W: Word&gt;(<span class="kw-2">mut </span>x: W) -&gt; W {
-<a href=#302 id=302 data-nosnippet>302</a>    <span class="kw">let </span><span class="kw-2">mut </span>s = <span class="number">1</span>;
-<a href=#303 id=303 data-nosnippet>303</a>    <span class="kw">while </span>s &lt; W::BITS {
-<a href=#304 id=304 data-nosnippet>304</a>        x = x.xor(x.shr(s));
-<a href=#305 id=305 data-nosnippet>305</a>        s &lt;&lt;= <span class="number">1</span>;
-<a href=#306 id=306 data-nosnippet>306</a>    }
-<a href=#307 id=307 data-nosnippet>307</a>    x
-<a href=#308 id=308 data-nosnippet>308</a>}
-<a href=#309 id=309 data-nosnippet>309</a>
-<a href=#310 id=310 data-nosnippet>310</a><span class="kw">const </span>ONES_STEP_4: u64 = <span class="number">0x1111_1111_1111_1111</span>;
-<a href=#311 id=311 data-nosnippet>311</a><span class="kw">const </span>ONES_STEP_8: u64 = <span class="number">0x0101_0101_0101_0101</span>;
-<a href=#312 id=312 data-nosnippet>312</a><span class="kw">const </span>MSBS_STEP_8: u64 = <span class="number">0x8080_8080_8080_8080</span>;
-<a href=#313 id=313 data-nosnippet>313</a><span class="doccomment">/// Byte `i` holds `1 &lt;&lt; i`.
-<a href=#314 id=314 data-nosnippet>314</a></span><span class="kw">const </span>INCR_STEP_8: u64 = <span class="number">0x8040_2010_0804_0201</span>;
-<a href=#315 id=315 data-nosnippet>315</a>
-<a href=#316 id=316 data-nosnippet>316</a><span class="doccomment">/// Position of the `k`-th set bit of a 64-bit word without PDEP.
-<a href=#317 id=317 data-nosnippet>317</a>///
-<a href=#318 id=318 data-nosnippet>318</a>/// Vigna, *Broadword Implementation of Rank/Select Queries* (WEA 2008),
-<a href=#319 id=319 data-nosnippet>319</a>/// with the final in-byte step done by the same compare-and-count
-<a href=#320 id=320 data-nosnippet>320</a>/// trick instead of a table. Constant time, ~30 ALU ops, no memory;
-<a href=#321 id=321 data-nosnippet>321</a>/// see `benches/select.rs` for how it compares with PDEP and with a
-<a href=#322 id=322 data-nosnippet>322</a>/// clear-lowest-bit loop on a given microarchitecture.
-<a href=#323 id=323 data-nosnippet>323</a>///
-<a href=#324 id=324 data-nosnippet>324</a>/// 64 when `k &gt;= count_ones(x)`.
-<a href=#325 id=325 data-nosnippet>325</a>///
-<a href=#326 id=326 data-nosnippet>326</a>/// ```
-<a href=#327 id=327 data-nosnippet>327</a>/// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 2), 7);
-<a href=#328 id=328 data-nosnippet>328</a>/// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 3), 64);
-<a href=#329 id=329 data-nosnippet>329</a>/// ```
-<a href=#330 id=330 data-nosnippet>330</a></span><span class="attr">#[must_use]
-<a href=#331 id=331 data-nosnippet>331</a></span><span class="kw">pub fn </span>select_broadword64(x: u64, k: u32) -&gt; u32 {
-<a href=#332 id=332 data-nosnippet>332</a>    <span class="comment">// Phase 1: per-byte popcounts, then per-byte prefix sums by
-<a href=#333 id=333 data-nosnippet>333</a>    // multiplying with 0x0101…: byte j = popcount of bytes 0..=j.
-<a href=#334 id=334 data-nosnippet>334</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>s = x - ((x &gt;&gt; <span class="number">1</span>) &amp; (<span class="number">0x5 </span>* ONES_STEP_4));
-<a href=#335 id=335 data-nosnippet>335</a>    s = (s &amp; (<span class="number">0x3 </span>* ONES_STEP_4)) + ((s &gt;&gt; <span class="number">2</span>) &amp; (<span class="number">0x3 </span>* ONES_STEP_4));
-<a href=#336 id=336 data-nosnippet>336</a>    s = (s + (s &gt;&gt; <span class="number">4</span>)) &amp; (<span class="number">0x0F </span>* ONES_STEP_8);
-<a href=#337 id=337 data-nosnippet>337</a>    <span class="kw">let </span>byte_sums = s.wrapping_mul(ONES_STEP_8);
-<a href=#338 id=338 data-nosnippet>338</a>    <span class="comment">// The top byte is the whole count, so asking past it costs a compare
-<a href=#339 id=339 data-nosnippet>339</a>    // the algorithm had already paid for. Without it the answer is a
-<a href=#340 id=340 data-nosnippet>340</a>    // shift by 64, which Rust calls a panic and x86 calls a shift by 0.
-<a href=#341 id=341 data-nosnippet>341</a>    </span><span class="kw">if </span>u64::from(k) &gt;= byte_sums &gt;&gt; <span class="number">56 </span>{
-<a href=#342 id=342 data-nosnippet>342</a>        <span class="kw">return </span><span class="number">64</span>;
-<a href=#343 id=343 data-nosnippet>343</a>    }
-<a href=#344 id=344 data-nosnippet>344</a>
-<a href=#345 id=345 data-nosnippet>345</a>    <span class="comment">// Phase 2: the byte holding the answer is the number of bytes whose
-<a href=#346 id=346 data-nosnippet>346</a>    // prefix sum is &lt;= k. Compare all eight at once: with the MSB
-<a href=#347 id=347 data-nosnippet>347</a>    // pre-set, `(k | 0x80) - sum` keeps its MSB iff sum &lt;= k.
-<a href=#348 id=348 data-nosnippet>348</a>    </span><span class="kw">let </span>k_step_8 = u64::from(k) * ONES_STEP_8;
-<a href=#349 id=349 data-nosnippet>349</a>    <span class="kw">let </span>geq_k = ((k_step_8 | MSBS_STEP_8) - byte_sums) &amp; MSBS_STEP_8;
-<a href=#350 id=350 data-nosnippet>350</a>    <span class="kw">let </span>place = geq_k.count_ones() * <span class="number">8</span>;
-<a href=#351 id=351 data-nosnippet>351</a>    <span class="kw">let </span>byte_rank = k - (((byte_sums &lt;&lt; <span class="number">8</span>) &gt;&gt; place) &amp; <span class="number">0xFF</span>) <span class="kw">as </span>u32;
-<a href=#352 id=352 data-nosnippet>352</a>
-<a href=#353 id=353 data-nosnippet>353</a>    <span class="comment">// Phase 3: the same trick inside the byte. Spread the byte into all
-<a href=#354 id=354 data-nosnippet>354</a>    // eight lanes keeping bit i in lane i, normalise to 0/1, prefix-sum
-<a href=#355 id=355 data-nosnippet>355</a>    // by multiplication, and count lanes whose sum is &lt;= byte_rank.
-<a href=#356 id=356 data-nosnippet>356</a>    </span><span class="kw">let </span>byte = (x &gt;&gt; place) &amp; <span class="number">0xFF</span>;
-<a href=#357 id=357 data-nosnippet>357</a>    <span class="kw">let </span><span class="kw-2">mut </span>spread = byte.wrapping_mul(ONES_STEP_8) &amp; INCR_STEP_8;
-<a href=#358 id=358 data-nosnippet>358</a>    spread |= spread &gt;&gt; <span class="number">4</span>;
-<a href=#359 id=359 data-nosnippet>359</a>    spread |= spread &gt;&gt; <span class="number">2</span>;
-<a href=#360 id=360 data-nosnippet>360</a>    spread |= spread &gt;&gt; <span class="number">1</span>;
-<a href=#361 id=361 data-nosnippet>361</a>    <span class="kw">let </span>bit_sums = (spread &amp; ONES_STEP_8).wrapping_mul(ONES_STEP_8);
-<a href=#362 id=362 data-nosnippet>362</a>    <span class="kw">let </span>byte_rank_step_8 = u64::from(byte_rank) * ONES_STEP_8;
-<a href=#363 id=363 data-nosnippet>363</a>    <span class="kw">let </span>geq_r = ((byte_rank_step_8 | MSBS_STEP_8) - bit_sums) &amp; MSBS_STEP_8;
-<a href=#364 id=364 data-nosnippet>364</a>    place + geq_r.count_ones()
-<a href=#365 id=365 data-nosnippet>365</a>}
-<a href=#366 id=366 data-nosnippet>366</a>
-<a href=#367 id=367 data-nosnippet>367</a><span class="comment">// --- hardware paths -------------------------------------------------------
-<a href=#368 id=368 data-nosnippet>368</a>
-<a href=#369 id=369 data-nosnippet>369</a></span><span class="attr">#[cfg(all(
-<a href=#370 id=370 data-nosnippet>370</a>    target_arch = <span class="string">"x86_64"</span>,
-<a href=#371 id=371 data-nosnippet>371</a>    target_feature = <span class="string">"bmi2"</span>,
-<a href=#372 id=372 data-nosnippet>372</a>    not(feature = <span class="string">"portable"</span>)
-<a href=#373 id=373 data-nosnippet>373</a>))]
-<a href=#374 id=374 data-nosnippet>374</a>#[allow(unsafe_code)]
-<a href=#375 id=375 data-nosnippet>375</a></span><span class="kw">mod </span>bmi2 {
-<a href=#376 id=376 data-nosnippet>376</a>    <span class="doccomment">//! BMI2 fast paths.
-<a href=#377 id=377 data-nosnippet>377</a>    //!
-<a href=#378 id=378 data-nosnippet>378</a>    //! The intrinsics are `unsafe` solely because they require the
-<a href=#379 id=379 data-nosnippet>379</a>    //! `bmi2` target feature. The `cfg` on this module proves the
-<a href=#380 id=380 data-nosnippet>380</a>    //! feature is enabled for the whole compilation, so the calls are
-<a href=#381 id=381 data-nosnippet>381</a>    //! sound; there is no other precondition.
-<a href=#382 id=382 data-nosnippet>382</a>    </span><span class="kw">use </span>core::arch::x86_64::{_pdep_u32, _pdep_u64, _pext_u32, _pext_u64};
-<a href=#383 id=383 data-nosnippet>383</a>
-<a href=#384 id=384 data-nosnippet>384</a>    <span class="attr">#[inline]
-<a href=#385 id=385 data-nosnippet>385</a>    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>pext32(x: u32, m: u32) -&gt; u32 {
-<a href=#386 id=386 data-nosnippet>386</a>        <span class="comment">// SAFETY: bmi2 is statically enabled (module cfg).
-<a href=#387 id=387 data-nosnippet>387</a>        </span><span class="kw">unsafe </span>{ _pext_u32(x, m) }
-<a href=#388 id=388 data-nosnippet>388</a>    }
-<a href=#389 id=389 data-nosnippet>389</a>    <span class="attr">#[inline]
-<a href=#390 id=390 data-nosnippet>390</a>    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>pdep32(x: u32, m: u32) -&gt; u32 {
-<a href=#391 id=391 data-nosnippet>391</a>        <span class="comment">// SAFETY: bmi2 is statically enabled (module cfg).
-<a href=#392 id=392 data-nosnippet>392</a>        </span><span class="kw">unsafe </span>{ _pdep_u32(x, m) }
-<a href=#393 id=393 data-nosnippet>393</a>    }
-<a href=#394 id=394 data-nosnippet>394</a>    <span class="attr">#[inline]
-<a href=#395 id=395 data-nosnippet>395</a>    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>pext64(x: u64, m: u64) -&gt; u64 {
-<a href=#396 id=396 data-nosnippet>396</a>        <span class="comment">// SAFETY: bmi2 is statically enabled (module cfg).
-<a href=#397 id=397 data-nosnippet>397</a>        </span><span class="kw">unsafe </span>{ _pext_u64(x, m) }
-<a href=#398 id=398 data-nosnippet>398</a>    }
-<a href=#399 id=399 data-nosnippet>399</a>    <span class="attr">#[inline]
-<a href=#400 id=400 data-nosnippet>400</a>    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>pdep64(x: u64, m: u64) -&gt; u64 {
-<a href=#401 id=401 data-nosnippet>401</a>        <span class="comment">// SAFETY: bmi2 is statically enabled (module cfg).
-<a href=#402 id=402 data-nosnippet>402</a>        </span><span class="kw">unsafe </span>{ _pdep_u64(x, m) }
-<a href=#403 id=403 data-nosnippet>403</a>    }
-<a href=#404 id=404 data-nosnippet>404</a>}
-<a href=#405 id=405 data-nosnippet>405</a>
-<a href=#406 id=406 data-nosnippet>406</a><span class="attr">#[cfg(all(
-<a href=#407 id=407 data-nosnippet>407</a>    target_arch = <span class="string">"x86_64"</span>,
-<a href=#408 id=408 data-nosnippet>408</a>    target_feature = <span class="string">"pclmulqdq"</span>,
-<a href=#409 id=409 data-nosnippet>409</a>    not(feature = <span class="string">"portable"</span>)
-<a href=#410 id=410 data-nosnippet>410</a>))]
-<a href=#411 id=411 data-nosnippet>411</a>#[allow(unsafe_code)]
-<a href=#412 id=412 data-nosnippet>412</a></span><span class="kw">mod </span>clmul {
-<a href=#413 id=413 data-nosnippet>413</a>    <span class="doccomment">//! PCLMULQDQ fast path for prefix XOR: a carry-less multiply by
-<a href=#414 id=414 data-nosnippet>414</a>    //! all-ones XORs every left shift of the operand together, which is
-<a href=#415 id=415 data-nosnippet>415</a>    //! exactly the prefix parity. The high half of the same 128-bit
-<a href=#416 id=416 data-nosnippet>416</a>    //! product holds every right shift combined by XOR, bit `i` the
-<a href=#417 id=417 data-nosnippet>417</a>    //! parity of bits `i + 1..64`: the exclusive suffix parity, one
-<a href=#418 id=418 data-nosnippet>418</a>    //! XOR from the suffix scan. Same soundness argument as `bmi2`.
-<a href=#419 id=419 data-nosnippet>419</a>    </span><span class="kw">use </span>core::arch::x86_64::{
-<a href=#420 id=420 data-nosnippet>420</a>        __m128i, _mm_clmulepi64_si128, _mm_cvtsi128_si64, _mm_set_epi64x, _mm_unpackhi_epi64,
-<a href=#421 id=421 data-nosnippet>421</a>    };
-<a href=#422 id=422 data-nosnippet>422</a>
-<a href=#423 id=423 data-nosnippet>423</a>    <span class="attr">#[inline]
-<a href=#424 id=424 data-nosnippet>424</a>    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>prefix_xor64(x: u64) -&gt; u64 {
-<a href=#425 id=425 data-nosnippet>425</a>        <span class="comment">// SAFETY: pclmulqdq (and sse2, implied on x86_64) are
-<a href=#426 id=426 data-nosnippet>426</a>        // statically enabled (module cfg). Reinterpreting the u64 as
-<a href=#427 id=427 data-nosnippet>427</a>        // an i64 lane is a bit copy.
-<a href=#428 id=428 data-nosnippet>428</a>        </span><span class="kw">unsafe </span>{
-<a href=#429 id=429 data-nosnippet>429</a>            <span class="kw">let </span>a: __m128i = _mm_set_epi64x(<span class="number">0</span>, x.cast_signed());
-<a href=#430 id=430 data-nosnippet>430</a>            <span class="kw">let </span>ones: __m128i = _mm_set_epi64x(<span class="number">0</span>, -<span class="number">1</span>);
-<a href=#431 id=431 data-nosnippet>431</a>            _mm_cvtsi128_si64(_mm_clmulepi64_si128(a, ones, <span class="number">0</span>)).cast_unsigned()
-<a href=#432 id=432 data-nosnippet>432</a>        }
-<a href=#433 id=433 data-nosnippet>433</a>    }
-<a href=#434 id=434 data-nosnippet>434</a>
-<a href=#435 id=435 data-nosnippet>435</a>    <span class="attr">#[inline]
-<a href=#436 id=436 data-nosnippet>436</a>    </span><span class="kw">pub</span>(<span class="kw">super</span>) <span class="kw">fn </span>suffix_xor64(x: u64) -&gt; u64 {
-<a href=#437 id=437 data-nosnippet>437</a>        <span class="comment">// SAFETY: as above; `unpackhi` moves the high lane down, a
-<a href=#438 id=438 data-nosnippet>438</a>        // register shuffle.
-<a href=#439 id=439 data-nosnippet>439</a>        </span><span class="kw">unsafe </span>{
-<a href=#440 id=440 data-nosnippet>440</a>            <span class="kw">let </span>a: __m128i = _mm_set_epi64x(<span class="number">0</span>, x.cast_signed());
-<a href=#441 id=441 data-nosnippet>441</a>            <span class="kw">let </span>ones: __m128i = _mm_set_epi64x(<span class="number">0</span>, -<span class="number">1</span>);
-<a href=#442 id=442 data-nosnippet>442</a>            <span class="kw">let </span>p = _mm_clmulepi64_si128(a, ones, <span class="number">0</span>);
-<a href=#443 id=443 data-nosnippet>443</a>            <span class="kw">let </span>exclusive = _mm_cvtsi128_si64(_mm_unpackhi_epi64(p, p)).cast_unsigned();
-<a href=#444 id=444 data-nosnippet>444</a>            exclusive ^ x
-<a href=#445 id=445 data-nosnippet>445</a>        }
-<a href=#446 id=446 data-nosnippet>446</a>    }
-<a href=#447 id=447 data-nosnippet>447</a>}
-<a href=#448 id=448 data-nosnippet>448</a>
-<a href=#449 id=449 data-nosnippet>449</a><span class="comment">// --- carrier impls --------------------------------------------------------
-<a href=#450 id=450 data-nosnippet>450</a>
-<a href=#451 id=451 data-nosnippet>451</a></span><span class="macro">macro_rules!</span> impl_word_core {
-<a href=#452 id=452 data-nosnippet>452</a>    (<span class="macro-nonterminal">$t</span>:ty) =&gt; {
-<a href=#453 id=453 data-nosnippet>453</a>        <span class="kw">const </span>BITS: u32 = &lt;<span class="macro-nonterminal">$t</span>&gt;::BITS;
-<a href=#454 id=454 data-nosnippet>454</a>        <span class="kw">const </span>ZERO: <span class="self">Self </span>= <span class="number">0</span>;
-<a href=#455 id=455 data-nosnippet>455</a>        <span class="kw">const </span>ONE: <span class="self">Self </span>= <span class="number">1</span>;
-<a href=#456 id=456 data-nosnippet>456</a>        <span class="kw">const </span>ONES: <span class="self">Self </span>= &lt;<span class="macro-nonterminal">$t</span>&gt;::MAX;
-<a href=#457 id=457 data-nosnippet>457</a>
-<a href=#458 id=458 data-nosnippet>458</a>        <span class="attr">#[inline]
-<a href=#459 id=459 data-nosnippet>459</a>        </span><span class="kw">fn </span>and(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#460 id=460 data-nosnippet>460</a>            <span class="self">self </span>&amp; other
-<a href=#461 id=461 data-nosnippet>461</a>        }
-<a href=#462 id=462 data-nosnippet>462</a>        <span class="attr">#[inline]
-<a href=#463 id=463 data-nosnippet>463</a>        </span><span class="kw">fn </span>or(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#464 id=464 data-nosnippet>464</a>            <span class="self">self </span>| other
-<a href=#465 id=465 data-nosnippet>465</a>        }
-<a href=#466 id=466 data-nosnippet>466</a>        <span class="attr">#[inline]
-<a href=#467 id=467 data-nosnippet>467</a>        </span><span class="kw">fn </span>xor(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#468 id=468 data-nosnippet>468</a>            <span class="self">self </span>^ other
-<a href=#469 id=469 data-nosnippet>469</a>        }
-<a href=#470 id=470 data-nosnippet>470</a>        <span class="attr">#[inline]
-<a href=#471 id=471 data-nosnippet>471</a>        </span><span class="kw">fn </span>not(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#472 id=472 data-nosnippet>472</a>            !<span class="self">self
-<a href=#473 id=473 data-nosnippet>473</a>        </span>}
-<a href=#474 id=474 data-nosnippet>474</a>
-<a href=#475 id=475 data-nosnippet>475</a>        <span class="attr">#[inline]
-<a href=#476 id=476 data-nosnippet>476</a>        </span><span class="kw">fn </span>shl(<span class="self">self</span>, n: u32) -&gt; <span class="self">Self </span>{
-<a href=#477 id=477 data-nosnippet>477</a>            <span class="macro">debug_assert!</span>(n &lt; <span class="self">Self</span>::BITS, <span class="string">"shift {n} &gt;= width {}"</span>, <span class="self">Self</span>::BITS);
-<a href=#478 id=478 data-nosnippet>478</a>            <span class="self">self </span>&lt;&lt; n
-<a href=#479 id=479 data-nosnippet>479</a>        }
-<a href=#480 id=480 data-nosnippet>480</a>        <span class="attr">#[inline]
-<a href=#481 id=481 data-nosnippet>481</a>        </span><span class="kw">fn </span>shr(<span class="self">self</span>, n: u32) -&gt; <span class="self">Self </span>{
-<a href=#482 id=482 data-nosnippet>482</a>            <span class="macro">debug_assert!</span>(n &lt; <span class="self">Self</span>::BITS, <span class="string">"shift {n} &gt;= width {}"</span>, <span class="self">Self</span>::BITS);
-<a href=#483 id=483 data-nosnippet>483</a>            <span class="self">self </span>&gt;&gt; n
-<a href=#484 id=484 data-nosnippet>484</a>        }
-<a href=#485 id=485 data-nosnippet>485</a>
-<a href=#486 id=486 data-nosnippet>486</a>        <span class="attr">#[inline]
-<a href=#487 id=487 data-nosnippet>487</a>        </span><span class="kw">fn </span>wrapping_add(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#488 id=488 data-nosnippet>488</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::wrapping_add(<span class="self">self</span>, other)
-<a href=#489 id=489 data-nosnippet>489</a>        }
-<a href=#490 id=490 data-nosnippet>490</a>        <span class="attr">#[inline]
-<a href=#491 id=491 data-nosnippet>491</a>        </span><span class="kw">fn </span>wrapping_sub(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#492 id=492 data-nosnippet>492</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::wrapping_sub(<span class="self">self</span>, other)
-<a href=#493 id=493 data-nosnippet>493</a>        }
-<a href=#494 id=494 data-nosnippet>494</a>        <span class="attr">#[inline]
-<a href=#495 id=495 data-nosnippet>495</a>        </span><span class="kw">fn </span>wrapping_mul(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#496 id=496 data-nosnippet>496</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::wrapping_mul(<span class="self">self</span>, other)
-<a href=#497 id=497 data-nosnippet>497</a>        }
-<a href=#498 id=498 data-nosnippet>498</a>        <span class="comment">// Truncation is the point.
-<a href=#499 id=499 data-nosnippet>499</a>        </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#500 id=500 data-nosnippet>500</a>        #[inline]
-<a href=#501 id=501 data-nosnippet>501</a>        </span><span class="kw">fn </span>low_byte(<span class="self">self</span>) -&gt; u8 {
-<a href=#502 id=502 data-nosnippet>502</a>            <span class="self">self </span><span class="kw">as </span>u8
+<a href=#296 id=296 data-nosnippet>296</a>
+<a href=#297 id=297 data-nosnippet>297</a>    <span class="doccomment">/// Number of consecutive set bits from the top downward.
+<a href=#298 id=298 data-nosnippet>298</a>    </span><span class="attr">#[inline]
+<a href=#299 id=299 data-nosnippet>299</a>    #[must_use]
+<a href=#300 id=300 data-nosnippet>300</a>    </span><span class="kw">fn </span>leading_ones(<span class="self">self</span>) -&gt; u32 {
+<a href=#301 id=301 data-nosnippet>301</a>        <span class="self">self</span>.not().leading_zeros()
+<a href=#302 id=302 data-nosnippet>302</a>    }
+<a href=#303 id=303 data-nosnippet>303</a>}
+<a href=#304 id=304 data-nosnippet>304</a>
+<a href=#305 id=305 data-nosnippet>305</a><span class="comment">// --- portable definitions ----------------------------------------------
+<a href=#306 id=306 data-nosnippet>306</a>
+<a href=#307 id=307 data-nosnippet>307</a></span><span class="doccomment">/// The even and the odd bits of `x`, each compacted, without PEXT: both
+<a href=#308 id=308 data-nosnippet>308</a>/// halves side by side in a `u64` and one shift ladder for the two, the
+<a href=#309 id=309 data-nosnippet>309</a>/// way the `morton` crate decodes. What a bit shifts across the middle
+<a href=#310 id=310 data-nosnippet>310</a>/// lands where the next mask clears it. Two compresses of a `u32` cost
+<a href=#311 id=311 data-nosnippet>311</a>/// a third more.
+<a href=#312 id=312 data-nosnippet>312</a></span><span class="attr">#[inline]
+<a href=#313 id=313 data-nosnippet>313</a>#[must_use]
+<a href=#314 id=314 data-nosnippet>314</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const fn </span>unzip_broadword(x: u32) -&gt; (u32, u32) {
+<a href=#315 id=315 data-nosnippet>315</a>    <span class="kw">let </span>z = x <span class="kw">as </span>u64;
+<a href=#316 id=316 data-nosnippet>316</a>    <span class="kw">let </span><span class="kw-2">mut </span>w = (z | (z &gt;&gt; <span class="number">1</span>) &lt;&lt; <span class="number">32</span>) &amp; <span class="number">0x5555_5555_5555_5555</span>;
+<a href=#317 id=317 data-nosnippet>317</a>    w = (w | w &gt;&gt; <span class="number">1</span>) &amp; <span class="number">0x3333_3333_3333_3333</span>;
+<a href=#318 id=318 data-nosnippet>318</a>    w = (w | w &gt;&gt; <span class="number">2</span>) &amp; <span class="number">0x0F0F_0F0F_0F0F_0F0F</span>;
+<a href=#319 id=319 data-nosnippet>319</a>    w = (w | w &gt;&gt; <span class="number">4</span>) &amp; <span class="number">0x00FF_00FF_00FF_00FF</span>;
+<a href=#320 id=320 data-nosnippet>320</a>    <span class="comment">// No last mask: each half is 16 bits, and the truncation clears
+<a href=#321 id=321 data-nosnippet>321</a>    // what the shift dragged above them, as a zero-extending move.
+<a href=#322 id=322 data-nosnippet>322</a>    </span>w |= w &gt;&gt; <span class="number">8</span>;
+<a href=#323 id=323 data-nosnippet>323</a>    <span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#324 id=324 data-nosnippet>324</a>    </span>(w <span class="kw">as </span>u16 <span class="kw">as </span>u32, (w &gt;&gt; <span class="number">32</span>) <span class="kw">as </span>u16 <span class="kw">as </span>u32)
+<a href=#325 id=325 data-nosnippet>325</a>}
+<a href=#326 id=326 data-nosnippet>326</a>
+<a href=#327 id=327 data-nosnippet>327</a><span class="doccomment">/// The even bits of `x` gathered into the low 32: the classic ladder,
+<a href=#328 id=328 data-nosnippet>328</a>/// five shifts. [`compress_broadword`] under the same mask folds to about
+<a href=#329 id=329 data-nosnippet>329</a>/// as many operations, but this one schedules better where the Hilbert
+<a href=#330 id=330 data-nosnippet>330</a>/// decode inlines it (2.94 to 2.65 µs for 1024 points, no flags).
+<a href=#331 id=331 data-nosnippet>331</a></span><span class="attr">#[inline]
+<a href=#332 id=332 data-nosnippet>332</a>#[must_use]
+<a href=#333 id=333 data-nosnippet>333</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">const fn </span>gather_even_u64(x: u64) -&gt; u64 {
+<a href=#334 id=334 data-nosnippet>334</a>    <span class="kw">let </span><span class="kw-2">mut </span>x = x &amp; <span class="number">0x5555_5555_5555_5555</span>;
+<a href=#335 id=335 data-nosnippet>335</a>    x = (x | x &gt;&gt; <span class="number">1</span>) &amp; <span class="number">0x3333_3333_3333_3333</span>;
+<a href=#336 id=336 data-nosnippet>336</a>    x = (x | x &gt;&gt; <span class="number">2</span>) &amp; <span class="number">0x0F0F_0F0F_0F0F_0F0F</span>;
+<a href=#337 id=337 data-nosnippet>337</a>    x = (x | x &gt;&gt; <span class="number">4</span>) &amp; <span class="number">0x00FF_00FF_00FF_00FF</span>;
+<a href=#338 id=338 data-nosnippet>338</a>    x = (x | x &gt;&gt; <span class="number">8</span>) &amp; <span class="number">0x0000_FFFF_0000_FFFF</span>;
+<a href=#339 id=339 data-nosnippet>339</a>    (x | x &gt;&gt; <span class="number">16</span>) &amp; <span class="number">0xFFFF_FFFF
+<a href=#340 id=340 data-nosnippet>340</a></span>}
+<a href=#341 id=341 data-nosnippet>341</a>
+<a href=#342 id=342 data-nosnippet>342</a><span class="doccomment">/// Portable PEXT: compress by parallel suffix (Hacker's Delight 7-4).
+<a href=#343 id=343 data-nosnippet>343</a>///
+<a href=#344 id=344 data-nosnippet>344</a>/// `log₂ BITS` rounds. Round `i` moves every selected bit right by
+<a href=#345 id=345 data-nosnippet>345</a>/// `2^i` exactly when the number of unselected bits below it has bit
+<a href=#346 id=346 data-nosnippet>346</a>/// `i` set; that count's parity, for every bit at once, is one
+<a href=#347 id=347 data-nosnippet>347</a>/// prefix-XOR scan ([`Word::xor_scan`]) of the "zeros to the right"
+<a href=#348 id=348 data-nosnippet>348</a>/// mask. Constant time, no table, no data-dependent branch: about
+<a href=#349 id=349 data-nosnippet>349</a>/// `log₂ BITS × (9 + cost of a scan)` operations, where a scan is one
+<a href=#350 id=350 data-nosnippet>350</a>/// PCLMULQDQ on targets that have it and a log-depth smear otherwise.
+<a href=#351 id=351 data-nosnippet>351</a>/// `benches/compact.rs` compares it with PEXT and with a loop over the
+<a href=#352 id=352 data-nosnippet>352</a>/// mask's set bits.
+<a href=#353 id=353 data-nosnippet>353</a>///
+<a href=#354 id=354 data-nosnippet>354</a>/// ```
+<a href=#355 id=355 data-nosnippet>355</a>/// use hakmem::word::compress_broadword;
+<a href=#356 id=356 data-nosnippet>356</a>/// assert_eq!(compress_broadword(0b1001u32, 0b1010), 0b10);
+<a href=#357 id=357 data-nosnippet>357</a>/// ```
+<a href=#358 id=358 data-nosnippet>358</a></span><span class="attr">#[inline]
+<a href=#359 id=359 data-nosnippet>359</a>#[must_use]
+<a href=#360 id=360 data-nosnippet>360</a></span><span class="kw">pub fn </span>compress_broadword&lt;W: Word&gt;(x: W, <span class="kw-2">mut </span>mask: W) -&gt; W {
+<a href=#361 id=361 data-nosnippet>361</a>    <span class="kw">let </span><span class="kw-2">mut </span>x = x.and(mask);
+<a href=#362 id=362 data-nosnippet>362</a>    <span class="kw">let </span><span class="kw-2">mut </span>mk = mask.not().shl(<span class="number">1</span>); <span class="comment">// zeros to the right of each bit
+<a href=#363 id=363 data-nosnippet>363</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>i = <span class="number">0</span>;
+<a href=#364 id=364 data-nosnippet>364</a>    <span class="kw">while </span>(<span class="number">1u32 </span>&lt;&lt; i) &lt; W::BITS {
+<a href=#365 id=365 data-nosnippet>365</a>        <span class="kw">let </span>mp = mk.xor_scan(); <span class="comment">// parity of those zeros, per bit
+<a href=#366 id=366 data-nosnippet>366</a>        </span><span class="kw">let </span>mv = mp.and(mask); <span class="comment">// bits that move this round
+<a href=#367 id=367 data-nosnippet>367</a>        </span>mask = mask.xor(mv).or(mv.shr(<span class="number">1u32 </span>&lt;&lt; i));
+<a href=#368 id=368 data-nosnippet>368</a>        <span class="kw">let </span>t = x.and(mv);
+<a href=#369 id=369 data-nosnippet>369</a>        x = x.xor(t).or(t.shr(<span class="number">1u32 </span>&lt;&lt; i));
+<a href=#370 id=370 data-nosnippet>370</a>        mk = mk.and(mp.not());
+<a href=#371 id=371 data-nosnippet>371</a>        i += <span class="number">1</span>;
+<a href=#372 id=372 data-nosnippet>372</a>    }
+<a href=#373 id=373 data-nosnippet>373</a>    x
+<a href=#374 id=374 data-nosnippet>374</a>}
+<a href=#375 id=375 data-nosnippet>375</a>
+<a href=#376 id=376 data-nosnippet>376</a><span class="doccomment">/// Portable PDEP: expand by parallel suffix (Hacker's Delight 7-5).
+<a href=#377 id=377 data-nosnippet>377</a>///
+<a href=#378 id=378 data-nosnippet>378</a>/// The move masks of [`compress_broadword`], computed forward and
+<a href=#379 id=379 data-nosnippet>379</a>/// applied in reverse with left shifts. Constant time.
+<a href=#380 id=380 data-nosnippet>380</a>///
+<a href=#381 id=381 data-nosnippet>381</a>/// ```
+<a href=#382 id=382 data-nosnippet>382</a>/// use hakmem::word::expand_broadword;
+<a href=#383 id=383 data-nosnippet>383</a>/// assert_eq!(expand_broadword(0b10u32, 0b1010), 0b1000);
+<a href=#384 id=384 data-nosnippet>384</a>/// ```
+<a href=#385 id=385 data-nosnippet>385</a></span><span class="attr">#[inline]
+<a href=#386 id=386 data-nosnippet>386</a>#[must_use]
+<a href=#387 id=387 data-nosnippet>387</a></span><span class="kw">pub fn </span>expand_broadword&lt;W: Word&gt;(x: W, mask: W) -&gt; W {
+<a href=#388 id=388 data-nosnippet>388</a>    <span class="comment">// One mask a halving round, 16 rounds for 2^16 bits. Past that the
+<a href=#389 id=389 data-nosnippet>389</a>    // array ran out at run time; now the build does.
+<a href=#390 id=390 data-nosnippet>390</a>    </span><span class="kw">const </span>{ <span class="macro">assert!</span>(W::BITS &lt;= <span class="number">1 </span>&lt;&lt; <span class="number">16</span>, <span class="string">"expand_broadword: BITS above 2^16"</span>) };
+<a href=#391 id=391 data-nosnippet>391</a>    <span class="kw">let </span><span class="kw-2">mut </span>moves = [W::ZERO; <span class="number">16</span>];
+<a href=#392 id=392 data-nosnippet>392</a>    <span class="kw">let </span><span class="kw-2">mut </span>m = mask;
+<a href=#393 id=393 data-nosnippet>393</a>    <span class="kw">let </span><span class="kw-2">mut </span>mk = mask.not().shl(<span class="number">1</span>);
+<a href=#394 id=394 data-nosnippet>394</a>    <span class="kw">let </span><span class="kw-2">mut </span>rounds = <span class="number">0</span>;
+<a href=#395 id=395 data-nosnippet>395</a>    <span class="kw">while </span>(<span class="number">1u32 </span>&lt;&lt; rounds) &lt; W::BITS {
+<a href=#396 id=396 data-nosnippet>396</a>        <span class="kw">let </span>mp = mk.xor_scan();
+<a href=#397 id=397 data-nosnippet>397</a>        <span class="kw">let </span>mv = mp.and(m);
+<a href=#398 id=398 data-nosnippet>398</a>        moves[rounds] = mv;
+<a href=#399 id=399 data-nosnippet>399</a>        m = m.xor(mv).or(mv.shr(<span class="number">1u32 </span>&lt;&lt; rounds));
+<a href=#400 id=400 data-nosnippet>400</a>        mk = mk.and(mp.not());
+<a href=#401 id=401 data-nosnippet>401</a>        rounds += <span class="number">1</span>;
+<a href=#402 id=402 data-nosnippet>402</a>    }
+<a href=#403 id=403 data-nosnippet>403</a>    <span class="kw">let </span><span class="kw-2">mut </span>x = x;
+<a href=#404 id=404 data-nosnippet>404</a>    <span class="kw">for </span>i <span class="kw">in </span>(<span class="number">0</span>..rounds).rev() {
+<a href=#405 id=405 data-nosnippet>405</a>        <span class="kw">let </span>mv = moves[i];
+<a href=#406 id=406 data-nosnippet>406</a>        x = x.and(mv.not()).or(x.shl(<span class="number">1u32 </span>&lt;&lt; i).and(mv));
+<a href=#407 id=407 data-nosnippet>407</a>    }
+<a href=#408 id=408 data-nosnippet>408</a>    x.and(mask)
+<a href=#409 id=409 data-nosnippet>409</a>}
+<a href=#410 id=410 data-nosnippet>410</a>
+<a href=#411 id=411 data-nosnippet>411</a><span class="doccomment">/// Log-depth XOR smear: `x ^= x &lt;&lt; 1; x ^= x &lt;&lt; 2; …`.
+<a href=#412 id=412 data-nosnippet>412</a></span><span class="attr">#[inline]
+<a href=#413 id=413 data-nosnippet>413</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>xor_smear&lt;W: Word&gt;(<span class="kw-2">mut </span>x: W) -&gt; W {
+<a href=#414 id=414 data-nosnippet>414</a>    <span class="kw">let </span><span class="kw-2">mut </span>s = <span class="number">1</span>;
+<a href=#415 id=415 data-nosnippet>415</a>    <span class="kw">while </span>s &lt; W::BITS {
+<a href=#416 id=416 data-nosnippet>416</a>        x = x.xor(x.shl(s));
+<a href=#417 id=417 data-nosnippet>417</a>        s &lt;&lt;= <span class="number">1</span>;
+<a href=#418 id=418 data-nosnippet>418</a>    }
+<a href=#419 id=419 data-nosnippet>419</a>    x
+<a href=#420 id=420 data-nosnippet>420</a>}
+<a href=#421 id=421 data-nosnippet>421</a>
+<a href=#422 id=422 data-nosnippet>422</a><span class="doccomment">/// Log-depth XOR smear downward: `x ^= x &gt;&gt; 1; x ^= x &gt;&gt; 2; …`.
+<a href=#423 id=423 data-nosnippet>423</a></span><span class="attr">#[inline]
+<a href=#424 id=424 data-nosnippet>424</a></span><span class="kw">pub</span>(<span class="kw">crate</span>) <span class="kw">fn </span>xor_smear_down&lt;W: Word&gt;(<span class="kw-2">mut </span>x: W) -&gt; W {
+<a href=#425 id=425 data-nosnippet>425</a>    <span class="kw">let </span><span class="kw-2">mut </span>s = <span class="number">1</span>;
+<a href=#426 id=426 data-nosnippet>426</a>    <span class="kw">while </span>s &lt; W::BITS {
+<a href=#427 id=427 data-nosnippet>427</a>        x = x.xor(x.shr(s));
+<a href=#428 id=428 data-nosnippet>428</a>        s &lt;&lt;= <span class="number">1</span>;
+<a href=#429 id=429 data-nosnippet>429</a>    }
+<a href=#430 id=430 data-nosnippet>430</a>    x
+<a href=#431 id=431 data-nosnippet>431</a>}
+<a href=#432 id=432 data-nosnippet>432</a>
+<a href=#433 id=433 data-nosnippet>433</a><span class="kw">const </span>ONES_STEP_4: u64 = <span class="number">0x1111_1111_1111_1111</span>;
+<a href=#434 id=434 data-nosnippet>434</a><span class="kw">const </span>ONES_STEP_8: u64 = <span class="number">0x0101_0101_0101_0101</span>;
+<a href=#435 id=435 data-nosnippet>435</a><span class="kw">const </span>MSBS_STEP_8: u64 = <span class="number">0x8080_8080_8080_8080</span>;
+<a href=#436 id=436 data-nosnippet>436</a><span class="doccomment">/// Byte `i` holds `1 &lt;&lt; i`.
+<a href=#437 id=437 data-nosnippet>437</a></span><span class="kw">const </span>INCR_STEP_8: u64 = <span class="number">0x8040_2010_0804_0201</span>;
+<a href=#438 id=438 data-nosnippet>438</a>
+<a href=#439 id=439 data-nosnippet>439</a><span class="doccomment">/// Position of the `k`-th set bit of a 64-bit word without PDEP.
+<a href=#440 id=440 data-nosnippet>440</a>///
+<a href=#441 id=441 data-nosnippet>441</a>/// Vigna, *Broadword Implementation of Rank/Select Queries* (WEA 2008),
+<a href=#442 id=442 data-nosnippet>442</a>/// with the final in-byte step done by the same compare-and-count
+<a href=#443 id=443 data-nosnippet>443</a>/// trick instead of a table. Constant time, ~30 ALU ops, no memory;
+<a href=#444 id=444 data-nosnippet>444</a>/// see `benches/select.rs` for how it compares with PDEP and with a
+<a href=#445 id=445 data-nosnippet>445</a>/// clear-lowest-bit loop on a given microarchitecture.
+<a href=#446 id=446 data-nosnippet>446</a>///
+<a href=#447 id=447 data-nosnippet>447</a>/// 64 when `k &gt;= count_ones(x)`.
+<a href=#448 id=448 data-nosnippet>448</a>///
+<a href=#449 id=449 data-nosnippet>449</a>/// ```
+<a href=#450 id=450 data-nosnippet>450</a>/// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 2), 7);
+<a href=#451 id=451 data-nosnippet>451</a>/// assert_eq!(hakmem::word::select_broadword64(0b1011_0000, 3), 64);
+<a href=#452 id=452 data-nosnippet>452</a>/// ```
+<a href=#453 id=453 data-nosnippet>453</a></span><span class="attr">#[must_use]
+<a href=#454 id=454 data-nosnippet>454</a>#[inline]
+<a href=#455 id=455 data-nosnippet>455</a></span><span class="kw">pub fn </span>select_broadword64(x: u64, k: u32) -&gt; u32 {
+<a href=#456 id=456 data-nosnippet>456</a>    <span class="comment">// Phase 1: per-byte popcounts, then per-byte prefix sums by
+<a href=#457 id=457 data-nosnippet>457</a>    // multiplying with 0x0101…: byte j = popcount of bytes 0..=j.
+<a href=#458 id=458 data-nosnippet>458</a>    </span><span class="kw">let </span><span class="kw-2">mut </span>s = x - ((x &gt;&gt; <span class="number">1</span>) &amp; (<span class="number">0x5 </span>* ONES_STEP_4));
+<a href=#459 id=459 data-nosnippet>459</a>    s = (s &amp; (<span class="number">0x3 </span>* ONES_STEP_4)) + ((s &gt;&gt; <span class="number">2</span>) &amp; (<span class="number">0x3 </span>* ONES_STEP_4));
+<a href=#460 id=460 data-nosnippet>460</a>    s = (s + (s &gt;&gt; <span class="number">4</span>)) &amp; (<span class="number">0x0F </span>* ONES_STEP_8);
+<a href=#461 id=461 data-nosnippet>461</a>    <span class="kw">let </span>byte_sums = s.wrapping_mul(ONES_STEP_8);
+<a href=#462 id=462 data-nosnippet>462</a>    <span class="comment">// The top byte is the whole count, so asking past it costs a compare
+<a href=#463 id=463 data-nosnippet>463</a>    // the algorithm had already paid for. Without it the answer is a
+<a href=#464 id=464 data-nosnippet>464</a>    // shift by 64, which Rust calls a panic and x86 calls a shift by 0.
+<a href=#465 id=465 data-nosnippet>465</a>    </span><span class="kw">if </span>u64::from(k) &gt;= byte_sums &gt;&gt; <span class="number">56 </span>{
+<a href=#466 id=466 data-nosnippet>466</a>        <span class="kw">return </span><span class="number">64</span>;
+<a href=#467 id=467 data-nosnippet>467</a>    }
+<a href=#468 id=468 data-nosnippet>468</a>
+<a href=#469 id=469 data-nosnippet>469</a>    <span class="comment">// Phase 2: the byte holding the answer is the number of bytes whose
+<a href=#470 id=470 data-nosnippet>470</a>    // prefix sum is &lt;= k. Compare all eight at once: with the MSB
+<a href=#471 id=471 data-nosnippet>471</a>    // pre-set, `(k | 0x80) - sum` keeps its MSB iff sum &lt;= k.
+<a href=#472 id=472 data-nosnippet>472</a>    </span><span class="kw">let </span>k_step_8 = u64::from(k) * ONES_STEP_8;
+<a href=#473 id=473 data-nosnippet>473</a>    <span class="kw">let </span>geq_k = ((k_step_8 | MSBS_STEP_8) - byte_sums) &amp; MSBS_STEP_8;
+<a href=#474 id=474 data-nosnippet>474</a>    <span class="kw">let </span>place = geq_k.count_ones() * <span class="number">8</span>;
+<a href=#475 id=475 data-nosnippet>475</a>    <span class="kw">let </span>byte_rank = k - (((byte_sums &lt;&lt; <span class="number">8</span>) &gt;&gt; place) &amp; <span class="number">0xFF</span>) <span class="kw">as </span>u32;
+<a href=#476 id=476 data-nosnippet>476</a>
+<a href=#477 id=477 data-nosnippet>477</a>    <span class="comment">// Phase 3: the same trick inside the byte. Spread the byte into all
+<a href=#478 id=478 data-nosnippet>478</a>    // eight lanes keeping bit i in lane i, normalise to 0/1, prefix-sum
+<a href=#479 id=479 data-nosnippet>479</a>    // by multiplication, and count lanes whose sum is &lt;= byte_rank.
+<a href=#480 id=480 data-nosnippet>480</a>    </span><span class="kw">let </span>byte = (x &gt;&gt; place) &amp; <span class="number">0xFF</span>;
+<a href=#481 id=481 data-nosnippet>481</a>    <span class="kw">let </span><span class="kw-2">mut </span>spread = byte.wrapping_mul(ONES_STEP_8) &amp; INCR_STEP_8;
+<a href=#482 id=482 data-nosnippet>482</a>    spread |= spread &gt;&gt; <span class="number">4</span>;
+<a href=#483 id=483 data-nosnippet>483</a>    spread |= spread &gt;&gt; <span class="number">2</span>;
+<a href=#484 id=484 data-nosnippet>484</a>    spread |= spread &gt;&gt; <span class="number">1</span>;
+<a href=#485 id=485 data-nosnippet>485</a>    <span class="kw">let </span>bit_sums = (spread &amp; ONES_STEP_8).wrapping_mul(ONES_STEP_8);
+<a href=#486 id=486 data-nosnippet>486</a>    <span class="kw">let </span>byte_rank_step_8 = u64::from(byte_rank) * ONES_STEP_8;
+<a href=#487 id=487 data-nosnippet>487</a>    <span class="kw">let </span>geq_r = ((byte_rank_step_8 | MSBS_STEP_8) - bit_sums) &amp; MSBS_STEP_8;
+<a href=#488 id=488 data-nosnippet>488</a>    place + geq_r.count_ones()
+<a href=#489 id=489 data-nosnippet>489</a>}
+<a href=#490 id=490 data-nosnippet>490</a>
+<a href=#491 id=491 data-nosnippet>491</a><span class="comment">// --- carrier impls --------------------------------------------------------
+<a href=#492 id=492 data-nosnippet>492</a>
+<a href=#493 id=493 data-nosnippet>493</a></span><span class="macro">macro_rules!</span> impl_word_core {
+<a href=#494 id=494 data-nosnippet>494</a>    (<span class="macro-nonterminal">$t</span>:ty) =&gt; {
+<a href=#495 id=495 data-nosnippet>495</a>        <span class="kw">const </span>BITS: u32 = &lt;<span class="macro-nonterminal">$t</span>&gt;::BITS;
+<a href=#496 id=496 data-nosnippet>496</a>        <span class="kw">const </span>ZERO: <span class="self">Self </span>= <span class="number">0</span>;
+<a href=#497 id=497 data-nosnippet>497</a>        <span class="kw">const </span>ONE: <span class="self">Self </span>= <span class="number">1</span>;
+<a href=#498 id=498 data-nosnippet>498</a>        <span class="kw">const </span>ONES: <span class="self">Self </span>= &lt;<span class="macro-nonterminal">$t</span>&gt;::MAX;
+<a href=#499 id=499 data-nosnippet>499</a>
+<a href=#500 id=500 data-nosnippet>500</a>        <span class="attr">#[inline]
+<a href=#501 id=501 data-nosnippet>501</a>        </span><span class="kw">fn </span>and(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#502 id=502 data-nosnippet>502</a>            <span class="self">self </span>&amp; other
 <a href=#503 id=503 data-nosnippet>503</a>        }
 <a href=#504 id=504 data-nosnippet>504</a>        <span class="attr">#[inline]
-<a href=#505 id=505 data-nosnippet>505</a>        </span><span class="kw">fn </span>splat_byte(b: u8) -&gt; <span class="self">Self </span>{
-<a href=#506 id=506 data-nosnippet>506</a>            <span class="comment">// 0x0101…01 has one bit per lane; multiplying copies `b` into each.
-<a href=#507 id=507 data-nosnippet>507</a>            </span><span class="self">Self</span>::from(b).wrapping_mul(&lt;<span class="macro-nonterminal">$t</span>&gt;::MAX / <span class="number">0xFF</span>)
-<a href=#508 id=508 data-nosnippet>508</a>        }
-<a href=#509 id=509 data-nosnippet>509</a>
-<a href=#510 id=510 data-nosnippet>510</a>        <span class="attr">#[inline]
-<a href=#511 id=511 data-nosnippet>511</a>        </span><span class="kw">fn </span>count_ones(<span class="self">self</span>) -&gt; u32 {
-<a href=#512 id=512 data-nosnippet>512</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::count_ones(<span class="self">self</span>)
-<a href=#513 id=513 data-nosnippet>513</a>        }
-<a href=#514 id=514 data-nosnippet>514</a>        <span class="attr">#[inline]
-<a href=#515 id=515 data-nosnippet>515</a>        </span><span class="kw">fn </span>trailing_zeros(<span class="self">self</span>) -&gt; u32 {
-<a href=#516 id=516 data-nosnippet>516</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::trailing_zeros(<span class="self">self</span>)
-<a href=#517 id=517 data-nosnippet>517</a>        }
-<a href=#518 id=518 data-nosnippet>518</a>        <span class="attr">#[inline]
-<a href=#519 id=519 data-nosnippet>519</a>        </span><span class="kw">fn </span>leading_zeros(<span class="self">self</span>) -&gt; u32 {
-<a href=#520 id=520 data-nosnippet>520</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::leading_zeros(<span class="self">self</span>)
+<a href=#505 id=505 data-nosnippet>505</a>        </span><span class="kw">fn </span>or(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#506 id=506 data-nosnippet>506</a>            <span class="self">self </span>| other
+<a href=#507 id=507 data-nosnippet>507</a>        }
+<a href=#508 id=508 data-nosnippet>508</a>        <span class="attr">#[inline]
+<a href=#509 id=509 data-nosnippet>509</a>        </span><span class="kw">fn </span>xor(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#510 id=510 data-nosnippet>510</a>            <span class="self">self </span>^ other
+<a href=#511 id=511 data-nosnippet>511</a>        }
+<a href=#512 id=512 data-nosnippet>512</a>        <span class="attr">#[inline]
+<a href=#513 id=513 data-nosnippet>513</a>        </span><span class="kw">fn </span>not(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
+<a href=#514 id=514 data-nosnippet>514</a>            !<span class="self">self
+<a href=#515 id=515 data-nosnippet>515</a>        </span>}
+<a href=#516 id=516 data-nosnippet>516</a>
+<a href=#517 id=517 data-nosnippet>517</a>        <span class="attr">#[inline]
+<a href=#518 id=518 data-nosnippet>518</a>        </span><span class="kw">fn </span>shl(<span class="self">self</span>, n: u32) -&gt; <span class="self">Self </span>{
+<a href=#519 id=519 data-nosnippet>519</a>            <span class="macro">debug_assert!</span>(n &lt; <span class="self">Self</span>::BITS, <span class="string">"shift {n} &gt;= width {}"</span>, <span class="self">Self</span>::BITS);
+<a href=#520 id=520 data-nosnippet>520</a>            <span class="self">self </span>&lt;&lt; n
 <a href=#521 id=521 data-nosnippet>521</a>        }
 <a href=#522 id=522 data-nosnippet>522</a>        <span class="attr">#[inline]
-<a href=#523 id=523 data-nosnippet>523</a>        </span><span class="kw">fn </span>clear_lowest_set(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#524 id=524 data-nosnippet>524</a>            <span class="self">self </span>&amp; <span class="self">self</span>.wrapping_sub(<span class="number">1</span>)
-<a href=#525 id=525 data-nosnippet>525</a>        }
-<a href=#526 id=526 data-nosnippet>526</a>
-<a href=#527 id=527 data-nosnippet>527</a>        <span class="attr">#[inline]
-<a href=#528 id=528 data-nosnippet>528</a>        </span><span class="kw">fn </span>low_ones(n: u32) -&gt; <span class="self">Self </span>{
-<a href=#529 id=529 data-nosnippet>529</a>            <span class="macro">debug_assert!</span>(n &lt;= <span class="self">Self</span>::BITS, <span class="string">"mask width {n} &gt; {}"</span>, <span class="self">Self</span>::BITS);
-<a href=#530 id=530 data-nosnippet>530</a>            <span class="kw">if </span>n &gt;= <span class="self">Self</span>::BITS {
-<a href=#531 id=531 data-nosnippet>531</a>                <span class="self">Self</span>::ONES
-<a href=#532 id=532 data-nosnippet>532</a>            } <span class="kw">else </span>{
-<a href=#533 id=533 data-nosnippet>533</a>                (<span class="number">1 </span>&lt;&lt; n) - <span class="number">1
-<a href=#534 id=534 data-nosnippet>534</a>            </span>}
+<a href=#523 id=523 data-nosnippet>523</a>        </span><span class="kw">fn </span>shr(<span class="self">self</span>, n: u32) -&gt; <span class="self">Self </span>{
+<a href=#524 id=524 data-nosnippet>524</a>            <span class="macro">debug_assert!</span>(n &lt; <span class="self">Self</span>::BITS, <span class="string">"shift {n} &gt;= width {}"</span>, <span class="self">Self</span>::BITS);
+<a href=#525 id=525 data-nosnippet>525</a>            <span class="self">self </span>&gt;&gt; n
+<a href=#526 id=526 data-nosnippet>526</a>        }
+<a href=#527 id=527 data-nosnippet>527</a>
+<a href=#528 id=528 data-nosnippet>528</a>        <span class="attr">#[inline]
+<a href=#529 id=529 data-nosnippet>529</a>        </span><span class="kw">fn </span>wrapping_add(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#530 id=530 data-nosnippet>530</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::wrapping_add(<span class="self">self</span>, other)
+<a href=#531 id=531 data-nosnippet>531</a>        }
+<a href=#532 id=532 data-nosnippet>532</a>        <span class="attr">#[inline]
+<a href=#533 id=533 data-nosnippet>533</a>        </span><span class="kw">fn </span>wrapping_sub(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#534 id=534 data-nosnippet>534</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::wrapping_sub(<span class="self">self</span>, other)
 <a href=#535 id=535 data-nosnippet>535</a>        }
-<a href=#536 id=536 data-nosnippet>536</a>    };
-<a href=#537 id=537 data-nosnippet>537</a>}
-<a href=#538 id=538 data-nosnippet>538</a>
-<a href=#539 id=539 data-nosnippet>539</a><span class="kw">impl </span>Word <span class="kw">for </span>u64 {
-<a href=#540 id=540 data-nosnippet>540</a>    <span class="macro">impl_word_core!</span>(u64);
-<a href=#541 id=541 data-nosnippet>541</a>
-<a href=#542 id=542 data-nosnippet>542</a>    <span class="attr">#[inline]
-<a href=#543 id=543 data-nosnippet>543</a>    </span><span class="kw">fn </span>pext(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#544 id=544 data-nosnippet>544</a>        <span class="attr">#[cfg(all(
-<a href=#545 id=545 data-nosnippet>545</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#546 id=546 data-nosnippet>546</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#547 id=547 data-nosnippet>547</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#548 id=548 data-nosnippet>548</a>        ))]
-<a href=#549 id=549 data-nosnippet>549</a>        </span>{
-<a href=#550 id=550 data-nosnippet>550</a>            bmi2::pext64(<span class="self">self</span>, mask)
-<a href=#551 id=551 data-nosnippet>551</a>        }
-<a href=#552 id=552 data-nosnippet>552</a>        <span class="attr">#[cfg(not(all(
-<a href=#553 id=553 data-nosnippet>553</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#554 id=554 data-nosnippet>554</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#555 id=555 data-nosnippet>555</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#556 id=556 data-nosnippet>556</a>        )))]
-<a href=#557 id=557 data-nosnippet>557</a>        </span>{
-<a href=#558 id=558 data-nosnippet>558</a>            compress_broadword(<span class="self">self</span>, mask)
+<a href=#536 id=536 data-nosnippet>536</a>        <span class="attr">#[inline]
+<a href=#537 id=537 data-nosnippet>537</a>        </span><span class="kw">fn </span>wrapping_mul(<span class="self">self</span>, other: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
+<a href=#538 id=538 data-nosnippet>538</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::wrapping_mul(<span class="self">self</span>, other)
+<a href=#539 id=539 data-nosnippet>539</a>        }
+<a href=#540 id=540 data-nosnippet>540</a>        <span class="comment">// Truncation is the point.
+<a href=#541 id=541 data-nosnippet>541</a>        </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#542 id=542 data-nosnippet>542</a>        #[inline]
+<a href=#543 id=543 data-nosnippet>543</a>        </span><span class="kw">fn </span>low_byte(<span class="self">self</span>) -&gt; u8 {
+<a href=#544 id=544 data-nosnippet>544</a>            <span class="self">self </span><span class="kw">as </span>u8
+<a href=#545 id=545 data-nosnippet>545</a>        }
+<a href=#546 id=546 data-nosnippet>546</a>        <span class="attr">#[inline]
+<a href=#547 id=547 data-nosnippet>547</a>        </span><span class="kw">fn </span>splat_byte(b: u8) -&gt; <span class="self">Self </span>{
+<a href=#548 id=548 data-nosnippet>548</a>            <span class="comment">// 0x0101…01 has one bit per lane; multiplying copies `b` into each.
+<a href=#549 id=549 data-nosnippet>549</a>            </span><span class="self">Self</span>::from(b).wrapping_mul(&lt;<span class="macro-nonterminal">$t</span>&gt;::MAX / <span class="number">0xFF</span>)
+<a href=#550 id=550 data-nosnippet>550</a>        }
+<a href=#551 id=551 data-nosnippet>551</a>
+<a href=#552 id=552 data-nosnippet>552</a>        <span class="attr">#[inline]
+<a href=#553 id=553 data-nosnippet>553</a>        </span><span class="kw">fn </span>count_ones(<span class="self">self</span>) -&gt; u32 {
+<a href=#554 id=554 data-nosnippet>554</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::count_ones(<span class="self">self</span>)
+<a href=#555 id=555 data-nosnippet>555</a>        }
+<a href=#556 id=556 data-nosnippet>556</a>        <span class="attr">#[inline]
+<a href=#557 id=557 data-nosnippet>557</a>        </span><span class="kw">fn </span>trailing_zeros(<span class="self">self</span>) -&gt; u32 {
+<a href=#558 id=558 data-nosnippet>558</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::trailing_zeros(<span class="self">self</span>)
 <a href=#559 id=559 data-nosnippet>559</a>        }
-<a href=#560 id=560 data-nosnippet>560</a>    }
-<a href=#561 id=561 data-nosnippet>561</a>    <span class="attr">#[inline]
-<a href=#562 id=562 data-nosnippet>562</a>    </span><span class="kw">fn </span>pdep(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#563 id=563 data-nosnippet>563</a>        <span class="attr">#[cfg(all(
-<a href=#564 id=564 data-nosnippet>564</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#565 id=565 data-nosnippet>565</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#566 id=566 data-nosnippet>566</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#567 id=567 data-nosnippet>567</a>        ))]
-<a href=#568 id=568 data-nosnippet>568</a>        </span>{
-<a href=#569 id=569 data-nosnippet>569</a>            bmi2::pdep64(<span class="self">self</span>, mask)
-<a href=#570 id=570 data-nosnippet>570</a>        }
-<a href=#571 id=571 data-nosnippet>571</a>        <span class="attr">#[cfg(not(all(
-<a href=#572 id=572 data-nosnippet>572</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#573 id=573 data-nosnippet>573</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#574 id=574 data-nosnippet>574</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#575 id=575 data-nosnippet>575</a>        )))]
-<a href=#576 id=576 data-nosnippet>576</a>        </span>{
-<a href=#577 id=577 data-nosnippet>577</a>            expand_broadword(<span class="self">self</span>, mask)
-<a href=#578 id=578 data-nosnippet>578</a>        }
-<a href=#579 id=579 data-nosnippet>579</a>    }
-<a href=#580 id=580 data-nosnippet>580</a>    <span class="attr">#[inline]
-<a href=#581 id=581 data-nosnippet>581</a>    </span><span class="kw">fn </span>select_lowest(<span class="self">self</span>, k: u32) -&gt; u32 {
-<a href=#582 id=582 data-nosnippet>582</a>        <span class="attr">#[cfg(all(
-<a href=#583 id=583 data-nosnippet>583</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#584 id=584 data-nosnippet>584</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#585 id=585 data-nosnippet>585</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#586 id=586 data-nosnippet>586</a>        ))]
-<a href=#587 id=587 data-nosnippet>587</a>        </span>{
-<a href=#588 id=588 data-nosnippet>588</a>            <span class="comment">// Past the last set bit PDEP deposits nothing and TZCNT says 64,
-<a href=#589 id=589 data-nosnippet>589</a>            // as long as `1 &lt;&lt; k` is not asked to exist first.
-<a href=#590 id=590 data-nosnippet>590</a>            </span>bmi2::pdep64(<span class="number">1u64</span>.checked_shl(k).unwrap_or(<span class="number">0</span>), <span class="self">self</span>).trailing_zeros()
-<a href=#591 id=591 data-nosnippet>591</a>        }
-<a href=#592 id=592 data-nosnippet>592</a>        <span class="attr">#[cfg(not(all(
-<a href=#593 id=593 data-nosnippet>593</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#594 id=594 data-nosnippet>594</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#595 id=595 data-nosnippet>595</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#596 id=596 data-nosnippet>596</a>        )))]
-<a href=#597 id=597 data-nosnippet>597</a>        </span>{
-<a href=#598 id=598 data-nosnippet>598</a>            select_broadword64(<span class="self">self</span>, k)
-<a href=#599 id=599 data-nosnippet>599</a>        }
-<a href=#600 id=600 data-nosnippet>600</a>    }
-<a href=#601 id=601 data-nosnippet>601</a>    <span class="attr">#[inline]
-<a href=#602 id=602 data-nosnippet>602</a>    </span><span class="kw">fn </span>xor_scan(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#603 id=603 data-nosnippet>603</a>        <span class="attr">#[cfg(all(
-<a href=#604 id=604 data-nosnippet>604</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#605 id=605 data-nosnippet>605</a>            target_feature = <span class="string">"pclmulqdq"</span>,
-<a href=#606 id=606 data-nosnippet>606</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#607 id=607 data-nosnippet>607</a>        ))]
-<a href=#608 id=608 data-nosnippet>608</a>        </span>{
-<a href=#609 id=609 data-nosnippet>609</a>            clmul::prefix_xor64(<span class="self">self</span>)
-<a href=#610 id=610 data-nosnippet>610</a>        }
-<a href=#611 id=611 data-nosnippet>611</a>        <span class="attr">#[cfg(not(all(
-<a href=#612 id=612 data-nosnippet>612</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#613 id=613 data-nosnippet>613</a>            target_feature = <span class="string">"pclmulqdq"</span>,
-<a href=#614 id=614 data-nosnippet>614</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#615 id=615 data-nosnippet>615</a>        )))]
-<a href=#616 id=616 data-nosnippet>616</a>        </span>{
-<a href=#617 id=617 data-nosnippet>617</a>            xor_smear(<span class="self">self</span>)
-<a href=#618 id=618 data-nosnippet>618</a>        }
-<a href=#619 id=619 data-nosnippet>619</a>    }
-<a href=#620 id=620 data-nosnippet>620</a>    <span class="attr">#[inline]
-<a href=#621 id=621 data-nosnippet>621</a>    </span><span class="kw">fn </span>xor_scan_down(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#622 id=622 data-nosnippet>622</a>        <span class="attr">#[cfg(all(
-<a href=#623 id=623 data-nosnippet>623</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#624 id=624 data-nosnippet>624</a>            target_feature = <span class="string">"pclmulqdq"</span>,
-<a href=#625 id=625 data-nosnippet>625</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#626 id=626 data-nosnippet>626</a>        ))]
-<a href=#627 id=627 data-nosnippet>627</a>        </span>{
-<a href=#628 id=628 data-nosnippet>628</a>            clmul::suffix_xor64(<span class="self">self</span>)
-<a href=#629 id=629 data-nosnippet>629</a>        }
-<a href=#630 id=630 data-nosnippet>630</a>        <span class="attr">#[cfg(not(all(
-<a href=#631 id=631 data-nosnippet>631</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#632 id=632 data-nosnippet>632</a>            target_feature = <span class="string">"pclmulqdq"</span>,
-<a href=#633 id=633 data-nosnippet>633</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#634 id=634 data-nosnippet>634</a>        )))]
-<a href=#635 id=635 data-nosnippet>635</a>        </span>{
-<a href=#636 id=636 data-nosnippet>636</a>            xor_smear_down(<span class="self">self</span>)
-<a href=#637 id=637 data-nosnippet>637</a>        }
-<a href=#638 id=638 data-nosnippet>638</a>    }
-<a href=#639 id=639 data-nosnippet>639</a>}
-<a href=#640 id=640 data-nosnippet>640</a>
-<a href=#641 id=641 data-nosnippet>641</a><span class="kw">impl </span>Word <span class="kw">for </span>u32 {
-<a href=#642 id=642 data-nosnippet>642</a>    <span class="macro">impl_word_core!</span>(u32);
-<a href=#643 id=643 data-nosnippet>643</a>
-<a href=#644 id=644 data-nosnippet>644</a>    <span class="attr">#[inline]
-<a href=#645 id=645 data-nosnippet>645</a>    </span><span class="kw">fn </span>pext(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#646 id=646 data-nosnippet>646</a>        <span class="attr">#[cfg(all(
-<a href=#647 id=647 data-nosnippet>647</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#648 id=648 data-nosnippet>648</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#649 id=649 data-nosnippet>649</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#650 id=650 data-nosnippet>650</a>        ))]
-<a href=#651 id=651 data-nosnippet>651</a>        </span>{
-<a href=#652 id=652 data-nosnippet>652</a>            bmi2::pext32(<span class="self">self</span>, mask)
-<a href=#653 id=653 data-nosnippet>653</a>        }
-<a href=#654 id=654 data-nosnippet>654</a>        <span class="attr">#[cfg(not(all(
-<a href=#655 id=655 data-nosnippet>655</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#656 id=656 data-nosnippet>656</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#657 id=657 data-nosnippet>657</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#658 id=658 data-nosnippet>658</a>        )))]
-<a href=#659 id=659 data-nosnippet>659</a>        </span>{
-<a href=#660 id=660 data-nosnippet>660</a>            compress_broadword(<span class="self">self</span>, mask)
-<a href=#661 id=661 data-nosnippet>661</a>        }
-<a href=#662 id=662 data-nosnippet>662</a>    }
-<a href=#663 id=663 data-nosnippet>663</a>    <span class="attr">#[inline]
-<a href=#664 id=664 data-nosnippet>664</a>    </span><span class="kw">fn </span>pdep(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#665 id=665 data-nosnippet>665</a>        <span class="attr">#[cfg(all(
-<a href=#666 id=666 data-nosnippet>666</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#667 id=667 data-nosnippet>667</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#668 id=668 data-nosnippet>668</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#669 id=669 data-nosnippet>669</a>        ))]
-<a href=#670 id=670 data-nosnippet>670</a>        </span>{
-<a href=#671 id=671 data-nosnippet>671</a>            bmi2::pdep32(<span class="self">self</span>, mask)
-<a href=#672 id=672 data-nosnippet>672</a>        }
-<a href=#673 id=673 data-nosnippet>673</a>        <span class="attr">#[cfg(not(all(
-<a href=#674 id=674 data-nosnippet>674</a>            target_arch = <span class="string">"x86_64"</span>,
-<a href=#675 id=675 data-nosnippet>675</a>            target_feature = <span class="string">"bmi2"</span>,
-<a href=#676 id=676 data-nosnippet>676</a>            not(feature = <span class="string">"portable"</span>)
-<a href=#677 id=677 data-nosnippet>677</a>        )))]
-<a href=#678 id=678 data-nosnippet>678</a>        </span>{
-<a href=#679 id=679 data-nosnippet>679</a>            expand_broadword(<span class="self">self</span>, mask)
-<a href=#680 id=680 data-nosnippet>680</a>        }
-<a href=#681 id=681 data-nosnippet>681</a>    }
-<a href=#682 id=682 data-nosnippet>682</a>    <span class="attr">#[inline]
-<a href=#683 id=683 data-nosnippet>683</a>    </span><span class="kw">fn </span>select_lowest(<span class="self">self</span>, k: u32) -&gt; u32 {
-<a href=#684 id=684 data-nosnippet>684</a>        <span class="comment">// Zero-extended, "none" comes back as 64.
-<a href=#685 id=685 data-nosnippet>685</a>        </span>u64::from(<span class="self">self</span>).select_lowest(k).min(<span class="self">Self</span>::BITS)
-<a href=#686 id=686 data-nosnippet>686</a>    }
-<a href=#687 id=687 data-nosnippet>687</a>    <span class="comment">// The prefix of a zero-extended word is the prefix of the word.
-<a href=#688 id=688 data-nosnippet>688</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#689 id=689 data-nosnippet>689</a>    #[inline]
-<a href=#690 id=690 data-nosnippet>690</a>    </span><span class="kw">fn </span>xor_scan(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#691 id=691 data-nosnippet>691</a>        u64::from(<span class="self">self</span>).xor_scan() <span class="kw">as </span><span class="self">Self
-<a href=#692 id=692 data-nosnippet>692</a>    </span>}
-<a href=#693 id=693 data-nosnippet>693</a>    <span class="comment">// The zero extension contributes no parity: the suffix of the
-<a href=#694 id=694 data-nosnippet>694</a>    // extended word, truncated, is the suffix of the word.
-<a href=#695 id=695 data-nosnippet>695</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#696 id=696 data-nosnippet>696</a>    #[inline]
-<a href=#697 id=697 data-nosnippet>697</a>    </span><span class="kw">fn </span>xor_scan_down(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#698 id=698 data-nosnippet>698</a>        u64::from(<span class="self">self</span>).xor_scan_down() <span class="kw">as </span><span class="self">Self
-<a href=#699 id=699 data-nosnippet>699</a>    </span>}
-<a href=#700 id=700 data-nosnippet>700</a>}
-<a href=#701 id=701 data-nosnippet>701</a>
-<a href=#702 id=702 data-nosnippet>702</a><span class="kw">impl </span>Word <span class="kw">for </span>u128 {
-<a href=#703 id=703 data-nosnippet>703</a>    <span class="macro">impl_word_core!</span>(u128);
-<a href=#704 id=704 data-nosnippet>704</a>
-<a href=#705 id=705 data-nosnippet>705</a>    <span class="doccomment">/// Two 64-bit halves: the high half's extract lands above the low
-<a href=#706 id=706 data-nosnippet>706</a>    /// half's `popcount` bits.
-<a href=#707 id=707 data-nosnippet>707</a>    </span><span class="comment">// Truncating casts split the halves on purpose.
-<a href=#708 id=708 data-nosnippet>708</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#709 id=709 data-nosnippet>709</a>    #[inline]
-<a href=#710 id=710 data-nosnippet>710</a>    </span><span class="kw">fn </span>pext(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#711 id=711 data-nosnippet>711</a>        <span class="kw">let </span>(lo, hi) = (<span class="self">self </span><span class="kw">as </span>u64, (<span class="self">self </span>&gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
-<a href=#712 id=712 data-nosnippet>712</a>        <span class="kw">let </span>(mlo, mhi) = (mask <span class="kw">as </span>u64, (mask &gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
-<a href=#713 id=713 data-nosnippet>713</a>        <span class="self">Self</span>::from(lo.pext(mlo)) | (<span class="self">Self</span>::from(hi.pext(mhi)) &lt;&lt; mlo.count_ones())
-<a href=#714 id=714 data-nosnippet>714</a>    }
-<a href=#715 id=715 data-nosnippet>715</a>    <span class="doccomment">/// Two 64-bit halves: the high half consumes source bits after the
-<a href=#716 id=716 data-nosnippet>716</a>    /// low mask's `popcount`.
-<a href=#717 id=717 data-nosnippet>717</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#718 id=718 data-nosnippet>718</a>    #[inline]
-<a href=#719 id=719 data-nosnippet>719</a>    </span><span class="kw">fn </span>pdep(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#720 id=720 data-nosnippet>720</a>        <span class="kw">let </span>(mlo, mhi) = (mask <span class="kw">as </span>u64, (mask &gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
-<a href=#721 id=721 data-nosnippet>721</a>        <span class="kw">let </span>lo = (<span class="self">self </span><span class="kw">as </span>u64).pdep(mlo);
-<a href=#722 id=722 data-nosnippet>722</a>        <span class="kw">let </span>hi = ((<span class="self">self </span>&gt;&gt; mlo.count_ones()) <span class="kw">as </span>u64).pdep(mhi);
-<a href=#723 id=723 data-nosnippet>723</a>        <span class="self">Self</span>::from(lo) | (<span class="self">Self</span>::from(hi) &lt;&lt; <span class="number">64</span>)
-<a href=#724 id=724 data-nosnippet>724</a>    }
-<a href=#725 id=725 data-nosnippet>725</a>    <span class="doccomment">/// Pick the half by comparing `k` with the low half's popcount.
-<a href=#726 id=726 data-nosnippet>726</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#727 id=727 data-nosnippet>727</a>    #[inline]
-<a href=#728 id=728 data-nosnippet>728</a>    </span><span class="kw">fn </span>select_lowest(<span class="self">self</span>, k: u32) -&gt; u32 {
-<a href=#729 id=729 data-nosnippet>729</a>        <span class="kw">let </span>(lo, hi) = (<span class="self">self </span><span class="kw">as </span>u64, (<span class="self">self </span>&gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
-<a href=#730 id=730 data-nosnippet>730</a>        <span class="kw">let </span>n = lo.count_ones();
-<a href=#731 id=731 data-nosnippet>731</a>        <span class="kw">if </span>k &lt; n {
-<a href=#732 id=732 data-nosnippet>732</a>            lo.select_lowest(k)
-<a href=#733 id=733 data-nosnippet>733</a>        } <span class="kw">else </span>{
-<a href=#734 id=734 data-nosnippet>734</a>            <span class="number">64 </span>+ hi.select_lowest(k - n)
-<a href=#735 id=735 data-nosnippet>735</a>        }
-<a href=#736 id=736 data-nosnippet>736</a>    }
-<a href=#737 id=737 data-nosnippet>737</a>    <span class="doccomment">/// Prefix of each half, with the low half's parity carried into
-<a href=#738 id=738 data-nosnippet>738</a>    /// every bit of the high half.
-<a href=#739 id=739 data-nosnippet>739</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#740 id=740 data-nosnippet>740</a>    #[inline]
-<a href=#741 id=741 data-nosnippet>741</a>    </span><span class="kw">fn </span>xor_scan(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#742 id=742 data-nosnippet>742</a>        <span class="kw">let </span>(lo, hi) = (<span class="self">self </span><span class="kw">as </span>u64, (<span class="self">self </span>&gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
-<a href=#743 id=743 data-nosnippet>743</a>        <span class="kw">let </span>carry = <span class="number">0u64</span>.wrapping_sub(u64::from(lo.count_ones() &amp; <span class="number">1</span>));
-<a href=#744 id=744 data-nosnippet>744</a>        <span class="self">Self</span>::from(lo.xor_scan()) | (<span class="self">Self</span>::from(hi.xor_scan() ^ carry) &lt;&lt; <span class="number">64</span>)
-<a href=#745 id=745 data-nosnippet>745</a>    }
-<a href=#746 id=746 data-nosnippet>746</a>    <span class="doccomment">/// Suffix of each half, with the high half's parity carried into
-<a href=#747 id=747 data-nosnippet>747</a>    /// every bit of the low half.
-<a href=#748 id=748 data-nosnippet>748</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#749 id=749 data-nosnippet>749</a>    #[inline]
-<a href=#750 id=750 data-nosnippet>750</a>    </span><span class="kw">fn </span>xor_scan_down(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#751 id=751 data-nosnippet>751</a>        <span class="kw">let </span>(lo, hi) = (<span class="self">self </span><span class="kw">as </span>u64, (<span class="self">self </span>&gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
-<a href=#752 id=752 data-nosnippet>752</a>        <span class="kw">let </span>carry = <span class="number">0u64</span>.wrapping_sub(u64::from(hi.count_ones() &amp; <span class="number">1</span>));
-<a href=#753 id=753 data-nosnippet>753</a>        <span class="self">Self</span>::from(lo.xor_scan_down() ^ carry) | (<span class="self">Self</span>::from(hi.xor_scan_down()) &lt;&lt; <span class="number">64</span>)
-<a href=#754 id=754 data-nosnippet>754</a>    }
-<a href=#755 id=755 data-nosnippet>755</a>}
-<a href=#756 id=756 data-nosnippet>756</a>
-<a href=#757 id=757 data-nosnippet>757</a><span class="doccomment">/// Narrow carriers delegate the hardware-backed primitives to `u32` /
-<a href=#758 id=758 data-nosnippet>758</a>/// `u64`: zero-extending both operands leaves the result inside the
-<a href=#759 id=759 data-nosnippet>759</a>/// low bits, so the fast path is shared. They exist mainly so laws
-<a href=#760 id=760 data-nosnippet>760</a>/// can be checked exhaustively (`tests/exhaustive.rs`).
-<a href=#761 id=761 data-nosnippet>761</a></span><span class="macro">macro_rules!</span> impl_word_narrow {
-<a href=#762 id=762 data-nosnippet>762</a>    ($(<span class="macro-nonterminal">$t</span>:ty),<span class="kw-2">*</span>) =&gt; {$(
-<a href=#763 id=763 data-nosnippet>763</a>        <span class="kw">impl </span>Word <span class="kw">for </span><span class="macro-nonterminal">$t </span>{
-<a href=#764 id=764 data-nosnippet>764</a>            <span class="macro">impl_word_core!</span>(<span class="macro-nonterminal">$t</span>);
-<a href=#765 id=765 data-nosnippet>765</a>
-<a href=#766 id=766 data-nosnippet>766</a>            <span class="comment">// The result fits: it has at most `count_ones(mask)` bits.
-<a href=#767 id=767 data-nosnippet>767</a>            </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#768 id=768 data-nosnippet>768</a>            #[inline]
-<a href=#769 id=769 data-nosnippet>769</a>            </span><span class="kw">fn </span>pext(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#770 id=770 data-nosnippet>770</a>                u32::from(<span class="self">self</span>).pext(u32::from(mask)) <span class="kw">as </span><span class="macro-nonterminal">$t
-<a href=#771 id=771 data-nosnippet>771</a>            </span>}
-<a href=#772 id=772 data-nosnippet>772</a>            <span class="comment">// Deposited bits land only at set positions of `mask`.
-<a href=#773 id=773 data-nosnippet>773</a>            </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#774 id=774 data-nosnippet>774</a>            #[inline]
-<a href=#775 id=775 data-nosnippet>775</a>            </span><span class="kw">fn </span>pdep(<span class="self">self</span>, mask: <span class="self">Self</span>) -&gt; <span class="self">Self </span>{
-<a href=#776 id=776 data-nosnippet>776</a>                u32::from(<span class="self">self</span>).pdep(u32::from(mask)) <span class="kw">as </span><span class="macro-nonterminal">$t
-<a href=#777 id=777 data-nosnippet>777</a>            </span>}
-<a href=#778 id=778 data-nosnippet>778</a>            <span class="attr">#[inline]
-<a href=#779 id=779 data-nosnippet>779</a>            </span><span class="kw">fn </span>select_lowest(<span class="self">self</span>, k: u32) -&gt; u32 {
-<a href=#780 id=780 data-nosnippet>780</a>                u64::from(<span class="self">self</span>).select_lowest(k).min(<span class="self">Self</span>::BITS)
-<a href=#781 id=781 data-nosnippet>781</a>            }
-<a href=#782 id=782 data-nosnippet>782</a>            <span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#783 id=783 data-nosnippet>783</a>            #[inline]
-<a href=#784 id=784 data-nosnippet>784</a>            </span><span class="kw">fn </span>xor_scan(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#785 id=785 data-nosnippet>785</a>                u64::from(<span class="self">self</span>).xor_scan() <span class="kw">as </span><span class="macro-nonterminal">$t
-<a href=#786 id=786 data-nosnippet>786</a>            </span>}
-<a href=#787 id=787 data-nosnippet>787</a>            <span class="attr">#[allow(clippy::cast_possible_truncation)]
-<a href=#788 id=788 data-nosnippet>788</a>            #[inline]
-<a href=#789 id=789 data-nosnippet>789</a>            </span><span class="kw">fn </span>xor_scan_down(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
-<a href=#790 id=790 data-nosnippet>790</a>                u64::from(<span class="self">self</span>).xor_scan_down() <span class="kw">as </span><span class="macro-nonterminal">$t
-<a href=#791 id=791 data-nosnippet>791</a>            </span>}
-<a href=#792 id=792 data-nosnippet>792</a>        }
-<a href=#793 id=793 data-nosnippet>793</a>    )<span class="kw-2">*</span>};
-<a href=#794 id=794 data-nosnippet>794</a>}
-<a href=#795 id=795 data-nosnippet>795</a>
-<a href=#796 id=796 data-nosnippet>796</a><span class="macro">impl_word_narrow!</span>(u8, u16);
+<a href=#560 id=560 data-nosnippet>560</a>        <span class="attr">#[inline]
+<a href=#561 id=561 data-nosnippet>561</a>        </span><span class="kw">fn </span>leading_zeros(<span class="self">self</span>) -&gt; u32 {
+<a href=#562 id=562 data-nosnippet>562</a>            &lt;<span class="macro-nonterminal">$t</span>&gt;::leading_zeros(<span class="self">self</span>)
+<a href=#563 id=563 data-nosnippet>563</a>        }
+<a href=#564 id=564 data-nosnippet>564</a>        <span class="attr">#[inline]
+<a href=#565 id=565 data-nosnippet>565</a>        </span><span class="kw">fn </span>clear_lowest_set(<span class="self">self</span>) -&gt; <span class="self">Self </span>{
+<a href=#566 id=566 data-nosnippet>566</a>            <span class="self">self </span>&amp; <span class="self">self</span>.wrapping_sub(<span class="number">1</span>)
+<a href=#567 id=567 data-nosnippet>567</a>        }
+<a href=#568 id=568 data-nosnippet>568</a>
+<a href=#569 id=569 data-nosnippet>569</a>        <span class="attr">#[inline]
+<a href=#570 id=570 data-nosnippet>570</a>        </span><span class="kw">fn </span>low_ones(n: u32) -&gt; <span class="self">Self </span>{
+<a href=#571 id=571 data-nosnippet>571</a>            <span class="macro">debug_assert!</span>(n &lt;= <span class="self">Self</span>::BITS, <span class="string">"mask width {n} &gt; {}"</span>, <span class="self">Self</span>::BITS);
+<a href=#572 id=572 data-nosnippet>572</a>            <span class="kw">if </span>n &gt;= <span class="self">Self</span>::BITS {
+<a href=#573 id=573 data-nosnippet>573</a>                <span class="self">Self</span>::ONES
+<a href=#574 id=574 data-nosnippet>574</a>            } <span class="kw">else </span>{
+<a href=#575 id=575 data-nosnippet>575</a>                (<span class="number">1 </span>&lt;&lt; n) - <span class="number">1
+<a href=#576 id=576 data-nosnippet>576</a>            </span>}
+<a href=#577 id=577 data-nosnippet>577</a>        }
+<a href=#578 id=578 data-nosnippet>578</a>    };
+<a href=#579 id=579 data-nosnippet>579</a>}
+<a href=#580 id=580 data-nosnippet>580</a>
+<a href=#581 id=581 data-nosnippet>581</a><span class="kw">impl </span>Word <span class="kw">for </span>u64 {
+<a href=#582 id=582 data-nosnippet>582</a>    <span class="macro">impl_word_core!</span>(u64);
+<a href=#583 id=583 data-nosnippet>583</a>
+<a href=#584 id=584 data-nosnippet>584</a>    <span class="attr">#[inline]
+<a href=#585 id=585 data-nosnippet>585</a>    </span><span class="kw">fn </span>pext_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#586 id=586 data-nosnippet>586</a>        isa.pext_u64(<span class="self">self</span>, mask)
+<a href=#587 id=587 data-nosnippet>587</a>    }
+<a href=#588 id=588 data-nosnippet>588</a>    <span class="attr">#[inline]
+<a href=#589 id=589 data-nosnippet>589</a>    </span><span class="kw">fn </span>unzip_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; (<span class="self">Self</span>, <span class="self">Self</span>) {
+<a href=#590 id=590 data-nosnippet>590</a>        isa.unzip_u64(<span class="self">self</span>)
+<a href=#591 id=591 data-nosnippet>591</a>    }
+<a href=#592 id=592 data-nosnippet>592</a>    <span class="attr">#[inline]
+<a href=#593 id=593 data-nosnippet>593</a>    </span><span class="kw">fn </span>pdep_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#594 id=594 data-nosnippet>594</a>        isa.pdep_u64(<span class="self">self</span>, mask)
+<a href=#595 id=595 data-nosnippet>595</a>    }
+<a href=#596 id=596 data-nosnippet>596</a>    <span class="attr">#[inline]
+<a href=#597 id=597 data-nosnippet>597</a>    </span><span class="kw">fn </span>select_lowest_in&lt;I: Isa&gt;(<span class="self">self</span>, k: u32, isa: I) -&gt; u32 {
+<a href=#598 id=598 data-nosnippet>598</a>        isa.select_u64(<span class="self">self</span>, k)
+<a href=#599 id=599 data-nosnippet>599</a>    }
+<a href=#600 id=600 data-nosnippet>600</a>    <span class="attr">#[inline]
+<a href=#601 id=601 data-nosnippet>601</a>    </span><span class="kw">fn </span>xor_scan_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#602 id=602 data-nosnippet>602</a>        isa.xor_scan_u64(<span class="self">self</span>)
+<a href=#603 id=603 data-nosnippet>603</a>    }
+<a href=#604 id=604 data-nosnippet>604</a>    <span class="attr">#[inline]
+<a href=#605 id=605 data-nosnippet>605</a>    </span><span class="kw">fn </span>xor_scan_down_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#606 id=606 data-nosnippet>606</a>        isa.xor_scan_down_u64(<span class="self">self</span>)
+<a href=#607 id=607 data-nosnippet>607</a>    }
+<a href=#608 id=608 data-nosnippet>608</a>}
+<a href=#609 id=609 data-nosnippet>609</a>
+<a href=#610 id=610 data-nosnippet>610</a><span class="kw">impl </span>Word <span class="kw">for </span>u32 {
+<a href=#611 id=611 data-nosnippet>611</a>    <span class="macro">impl_word_core!</span>(u32);
+<a href=#612 id=612 data-nosnippet>612</a>
+<a href=#613 id=613 data-nosnippet>613</a>    <span class="attr">#[inline]
+<a href=#614 id=614 data-nosnippet>614</a>    </span><span class="kw">fn </span>pext_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#615 id=615 data-nosnippet>615</a>        isa.pext_u32(<span class="self">self</span>, mask)
+<a href=#616 id=616 data-nosnippet>616</a>    }
+<a href=#617 id=617 data-nosnippet>617</a>    <span class="attr">#[inline]
+<a href=#618 id=618 data-nosnippet>618</a>    </span><span class="kw">fn </span>unzip_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; (<span class="self">Self</span>, <span class="self">Self</span>) {
+<a href=#619 id=619 data-nosnippet>619</a>        isa.unzip_u32(<span class="self">self</span>)
+<a href=#620 id=620 data-nosnippet>620</a>    }
+<a href=#621 id=621 data-nosnippet>621</a>    <span class="attr">#[inline]
+<a href=#622 id=622 data-nosnippet>622</a>    </span><span class="kw">fn </span>pdep_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#623 id=623 data-nosnippet>623</a>        isa.pdep_u32(<span class="self">self</span>, mask)
+<a href=#624 id=624 data-nosnippet>624</a>    }
+<a href=#625 id=625 data-nosnippet>625</a>    <span class="attr">#[inline]
+<a href=#626 id=626 data-nosnippet>626</a>    </span><span class="kw">fn </span>select_lowest_in&lt;I: Isa&gt;(<span class="self">self</span>, k: u32, isa: I) -&gt; u32 {
+<a href=#627 id=627 data-nosnippet>627</a>        <span class="comment">// Zero-extended, "none" comes back as 64.
+<a href=#628 id=628 data-nosnippet>628</a>        </span>u64::from(<span class="self">self</span>).select_lowest_in(k, isa).min(<span class="self">Self</span>::BITS)
+<a href=#629 id=629 data-nosnippet>629</a>    }
+<a href=#630 id=630 data-nosnippet>630</a>    <span class="comment">// The prefix of a zero-extended word is the prefix of the word.
+<a href=#631 id=631 data-nosnippet>631</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#632 id=632 data-nosnippet>632</a>    #[inline]
+<a href=#633 id=633 data-nosnippet>633</a>    </span><span class="kw">fn </span>xor_scan_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#634 id=634 data-nosnippet>634</a>        u64::from(<span class="self">self</span>).xor_scan_in(isa) <span class="kw">as </span><span class="self">Self
+<a href=#635 id=635 data-nosnippet>635</a>    </span>}
+<a href=#636 id=636 data-nosnippet>636</a>    <span class="comment">// The zero extension contributes no parity: the suffix of the
+<a href=#637 id=637 data-nosnippet>637</a>    // extended word, truncated, is the suffix of the word.
+<a href=#638 id=638 data-nosnippet>638</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#639 id=639 data-nosnippet>639</a>    #[inline]
+<a href=#640 id=640 data-nosnippet>640</a>    </span><span class="kw">fn </span>xor_scan_down_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#641 id=641 data-nosnippet>641</a>        u64::from(<span class="self">self</span>).xor_scan_down_in(isa) <span class="kw">as </span><span class="self">Self
+<a href=#642 id=642 data-nosnippet>642</a>    </span>}
+<a href=#643 id=643 data-nosnippet>643</a>}
+<a href=#644 id=644 data-nosnippet>644</a>
+<a href=#645 id=645 data-nosnippet>645</a><span class="kw">impl </span>Word <span class="kw">for </span>u128 {
+<a href=#646 id=646 data-nosnippet>646</a>    <span class="macro">impl_word_core!</span>(u128);
+<a href=#647 id=647 data-nosnippet>647</a>
+<a href=#648 id=648 data-nosnippet>648</a>    <span class="doccomment">/// Two 64-bit halves: the high half's extract lands above the low
+<a href=#649 id=649 data-nosnippet>649</a>    /// half's `popcount` bits.
+<a href=#650 id=650 data-nosnippet>650</a>    </span><span class="comment">// Truncating casts split the halves on purpose.
+<a href=#651 id=651 data-nosnippet>651</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#652 id=652 data-nosnippet>652</a>    #[inline]
+<a href=#653 id=653 data-nosnippet>653</a>    </span><span class="kw">fn </span>pext_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#654 id=654 data-nosnippet>654</a>        <span class="kw">let </span>(lo, hi) = (<span class="self">self </span><span class="kw">as </span>u64, (<span class="self">self </span>&gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
+<a href=#655 id=655 data-nosnippet>655</a>        <span class="kw">let </span>(mlo, mhi) = (mask <span class="kw">as </span>u64, (mask &gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
+<a href=#656 id=656 data-nosnippet>656</a>        <span class="self">Self</span>::from(lo.pext_in(mlo, isa)) | (<span class="self">Self</span>::from(hi.pext_in(mhi, isa)) &lt;&lt; mlo.count_ones())
+<a href=#657 id=657 data-nosnippet>657</a>    }
+<a href=#658 id=658 data-nosnippet>658</a>    <span class="doccomment">/// Two 64-bit halves: the high half consumes source bits after the
+<a href=#659 id=659 data-nosnippet>659</a>    /// low mask's `popcount`.
+<a href=#660 id=660 data-nosnippet>660</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#661 id=661 data-nosnippet>661</a>    #[inline]
+<a href=#662 id=662 data-nosnippet>662</a>    </span><span class="kw">fn </span>pdep_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#663 id=663 data-nosnippet>663</a>        <span class="kw">let </span>(mlo, mhi) = (mask <span class="kw">as </span>u64, (mask &gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
+<a href=#664 id=664 data-nosnippet>664</a>        <span class="kw">let </span>lo = (<span class="self">self </span><span class="kw">as </span>u64).pdep_in(mlo, isa);
+<a href=#665 id=665 data-nosnippet>665</a>        <span class="kw">let </span>hi = ((<span class="self">self </span>&gt;&gt; mlo.count_ones()) <span class="kw">as </span>u64).pdep_in(mhi, isa);
+<a href=#666 id=666 data-nosnippet>666</a>        <span class="self">Self</span>::from(lo) | (<span class="self">Self</span>::from(hi) &lt;&lt; <span class="number">64</span>)
+<a href=#667 id=667 data-nosnippet>667</a>    }
+<a href=#668 id=668 data-nosnippet>668</a>    <span class="doccomment">/// Pick the half by comparing `k` with the low half's popcount.
+<a href=#669 id=669 data-nosnippet>669</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#670 id=670 data-nosnippet>670</a>    #[inline]
+<a href=#671 id=671 data-nosnippet>671</a>    </span><span class="kw">fn </span>select_lowest_in&lt;I: Isa&gt;(<span class="self">self</span>, k: u32, isa: I) -&gt; u32 {
+<a href=#672 id=672 data-nosnippet>672</a>        <span class="kw">let </span>(lo, hi) = (<span class="self">self </span><span class="kw">as </span>u64, (<span class="self">self </span>&gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
+<a href=#673 id=673 data-nosnippet>673</a>        <span class="kw">let </span>n = lo.count_ones();
+<a href=#674 id=674 data-nosnippet>674</a>        <span class="kw">if </span>k &lt; n {
+<a href=#675 id=675 data-nosnippet>675</a>            lo.select_lowest_in(k, isa)
+<a href=#676 id=676 data-nosnippet>676</a>        } <span class="kw">else </span>{
+<a href=#677 id=677 data-nosnippet>677</a>            <span class="number">64 </span>+ hi.select_lowest_in(k - n, isa)
+<a href=#678 id=678 data-nosnippet>678</a>        }
+<a href=#679 id=679 data-nosnippet>679</a>    }
+<a href=#680 id=680 data-nosnippet>680</a>    <span class="doccomment">/// Prefix of each half, with the low half's parity carried into
+<a href=#681 id=681 data-nosnippet>681</a>    /// every bit of the high half.
+<a href=#682 id=682 data-nosnippet>682</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#683 id=683 data-nosnippet>683</a>    #[inline]
+<a href=#684 id=684 data-nosnippet>684</a>    </span><span class="kw">fn </span>xor_scan_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#685 id=685 data-nosnippet>685</a>        <span class="kw">let </span>(lo, hi) = (<span class="self">self </span><span class="kw">as </span>u64, (<span class="self">self </span>&gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
+<a href=#686 id=686 data-nosnippet>686</a>        <span class="kw">let </span>carry = <span class="number">0u64</span>.wrapping_sub(u64::from(lo.count_ones() &amp; <span class="number">1</span>));
+<a href=#687 id=687 data-nosnippet>687</a>        <span class="self">Self</span>::from(lo.xor_scan_in(isa)) | (<span class="self">Self</span>::from(hi.xor_scan_in(isa) ^ carry) &lt;&lt; <span class="number">64</span>)
+<a href=#688 id=688 data-nosnippet>688</a>    }
+<a href=#689 id=689 data-nosnippet>689</a>    <span class="doccomment">/// Suffix of each half, with the high half's parity carried into
+<a href=#690 id=690 data-nosnippet>690</a>    /// every bit of the low half.
+<a href=#691 id=691 data-nosnippet>691</a>    </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#692 id=692 data-nosnippet>692</a>    #[inline]
+<a href=#693 id=693 data-nosnippet>693</a>    </span><span class="kw">fn </span>xor_scan_down_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#694 id=694 data-nosnippet>694</a>        <span class="kw">let </span>(lo, hi) = (<span class="self">self </span><span class="kw">as </span>u64, (<span class="self">self </span>&gt;&gt; <span class="number">64</span>) <span class="kw">as </span>u64);
+<a href=#695 id=695 data-nosnippet>695</a>        <span class="kw">let </span>carry = <span class="number">0u64</span>.wrapping_sub(u64::from(hi.count_ones() &amp; <span class="number">1</span>));
+<a href=#696 id=696 data-nosnippet>696</a>        <span class="self">Self</span>::from(lo.xor_scan_down_in(isa) ^ carry) | (<span class="self">Self</span>::from(hi.xor_scan_down_in(isa)) &lt;&lt; <span class="number">64</span>)
+<a href=#697 id=697 data-nosnippet>697</a>    }
+<a href=#698 id=698 data-nosnippet>698</a>}
+<a href=#699 id=699 data-nosnippet>699</a>
+<a href=#700 id=700 data-nosnippet>700</a><span class="doccomment">/// Narrow carriers delegate the hardware-backed primitives to `u32` /
+<a href=#701 id=701 data-nosnippet>701</a>/// `u64`: zero-extending both operands leaves the result inside the
+<a href=#702 id=702 data-nosnippet>702</a>/// low bits, so the fast path is shared. They exist mainly so laws
+<a href=#703 id=703 data-nosnippet>703</a>/// can be checked exhaustively (`tests/exhaustive.rs`).
+<a href=#704 id=704 data-nosnippet>704</a></span><span class="macro">macro_rules!</span> impl_word_narrow {
+<a href=#705 id=705 data-nosnippet>705</a>    ($(<span class="macro-nonterminal">$t</span>:ty),<span class="kw-2">*</span>) =&gt; {$(
+<a href=#706 id=706 data-nosnippet>706</a>        <span class="kw">impl </span>Word <span class="kw">for </span><span class="macro-nonterminal">$t </span>{
+<a href=#707 id=707 data-nosnippet>707</a>            <span class="macro">impl_word_core!</span>(<span class="macro-nonterminal">$t</span>);
+<a href=#708 id=708 data-nosnippet>708</a>
+<a href=#709 id=709 data-nosnippet>709</a>            <span class="comment">// The result fits: it has at most `count_ones(mask)` bits.
+<a href=#710 id=710 data-nosnippet>710</a>            </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#711 id=711 data-nosnippet>711</a>            #[inline]
+<a href=#712 id=712 data-nosnippet>712</a>            </span><span class="kw">fn </span>pext_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#713 id=713 data-nosnippet>713</a>                u32::from(<span class="self">self</span>).pext_in(u32::from(mask), isa) <span class="kw">as </span><span class="macro-nonterminal">$t
+<a href=#714 id=714 data-nosnippet>714</a>            </span>}
+<a href=#715 id=715 data-nosnippet>715</a>            <span class="comment">// Each half of a zero-extended word fits the narrow one.
+<a href=#716 id=716 data-nosnippet>716</a>            </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#717 id=717 data-nosnippet>717</a>            #[inline]
+<a href=#718 id=718 data-nosnippet>718</a>            </span><span class="kw">fn </span>unzip_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; (<span class="self">Self</span>, <span class="self">Self</span>) {
+<a href=#719 id=719 data-nosnippet>719</a>                <span class="kw">let </span>(even, odd) = u32::from(<span class="self">self</span>).unzip_in(isa);
+<a href=#720 id=720 data-nosnippet>720</a>                (even <span class="kw">as </span><span class="macro-nonterminal">$t</span>, odd <span class="kw">as </span><span class="macro-nonterminal">$t</span>)
+<a href=#721 id=721 data-nosnippet>721</a>            }
+<a href=#722 id=722 data-nosnippet>722</a>            <span class="comment">// Deposited bits land only at set positions of `mask`.
+<a href=#723 id=723 data-nosnippet>723</a>            </span><span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#724 id=724 data-nosnippet>724</a>            #[inline]
+<a href=#725 id=725 data-nosnippet>725</a>            </span><span class="kw">fn </span>pdep_in&lt;I: Isa&gt;(<span class="self">self</span>, mask: <span class="self">Self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#726 id=726 data-nosnippet>726</a>                u32::from(<span class="self">self</span>).pdep_in(u32::from(mask), isa) <span class="kw">as </span><span class="macro-nonterminal">$t
+<a href=#727 id=727 data-nosnippet>727</a>            </span>}
+<a href=#728 id=728 data-nosnippet>728</a>            <span class="attr">#[inline]
+<a href=#729 id=729 data-nosnippet>729</a>            </span><span class="kw">fn </span>select_lowest_in&lt;I: Isa&gt;(<span class="self">self</span>, k: u32, isa: I) -&gt; u32 {
+<a href=#730 id=730 data-nosnippet>730</a>                u64::from(<span class="self">self</span>).select_lowest_in(k, isa).min(<span class="self">Self</span>::BITS)
+<a href=#731 id=731 data-nosnippet>731</a>            }
+<a href=#732 id=732 data-nosnippet>732</a>            <span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#733 id=733 data-nosnippet>733</a>            #[inline]
+<a href=#734 id=734 data-nosnippet>734</a>            </span><span class="kw">fn </span>xor_scan_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#735 id=735 data-nosnippet>735</a>                u64::from(<span class="self">self</span>).xor_scan_in(isa) <span class="kw">as </span><span class="macro-nonterminal">$t
+<a href=#736 id=736 data-nosnippet>736</a>            </span>}
+<a href=#737 id=737 data-nosnippet>737</a>            <span class="attr">#[allow(clippy::cast_possible_truncation)]
+<a href=#738 id=738 data-nosnippet>738</a>            #[inline]
+<a href=#739 id=739 data-nosnippet>739</a>            </span><span class="kw">fn </span>xor_scan_down_in&lt;I: Isa&gt;(<span class="self">self</span>, isa: I) -&gt; <span class="self">Self </span>{
+<a href=#740 id=740 data-nosnippet>740</a>                u64::from(<span class="self">self</span>).xor_scan_down_in(isa) <span class="kw">as </span><span class="macro-nonterminal">$t
+<a href=#741 id=741 data-nosnippet>741</a>            </span>}
+<a href=#742 id=742 data-nosnippet>742</a>        }
+<a href=#743 id=743 data-nosnippet>743</a>    )<span class="kw-2">*</span>};
+<a href=#744 id=744 data-nosnippet>744</a>}
+<a href=#745 id=745 data-nosnippet>745</a>
+<a href=#746 id=746 data-nosnippet>746</a><span class="macro">impl_word_narrow!</span>(u8, u16);
 </code></pre></div></section></main></body></html>
