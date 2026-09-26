@@ -43,6 +43,7 @@
       "id"
       "on"
       "permissions"
+      "defaults"
       "concurrency"
       "env"
       "inputs"

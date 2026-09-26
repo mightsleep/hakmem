@@ -8,6 +8,9 @@ name: pages
     - main
   workflow_dispatch: {}
 permissions: {}
+defaults:
+  run:
+    shell: bash
 jobs:
   # What the pushed range needs. rustdoc and the index always; the bench
   # only when a file that can move a number changed. Schedule and manual

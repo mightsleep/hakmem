@@ -38,6 +38,9 @@ name: release
     - v*
   workflow_dispatch: {}
 permissions: {}
+defaults:
+  run:
+    shell: bash
 jobs:
   # Before the approval is asked for. A job of its own since the 0.2.0
   # release, whose semver action left semver-checks/ in the checkout

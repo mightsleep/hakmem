@@ -163,7 +163,7 @@
   # cargo-semver-checks from nix/semver.nix.
   semverSteps = [checkout installNix cachixRead {run = "nix run .#semver";}];
 
-  workflows = {
+  documents = {
     "workflows/ci-x86_64.yml" = ci {
       name = "x86_64";
       system = "x86_64-linux";
@@ -250,10 +250,13 @@
                 installNix
                 {
                   env = {
-                    GH_TOKEN = gh "secrets.FLAKE_LOCK_TOKEN || github.token";
-                    TOKEN = gh "secrets.FLAKE_LOCK_TOKEN || github.token";
+                    GH_TOKEN = gh "secrets.FLAKE_LOCK_TOKEN";
+                    TOKEN = gh "secrets.FLAKE_LOCK_TOKEN";
                   };
                   run = ''
+                    # No fallback to the default token: it can never push a
+                    # change under .github/workflows, so it would only fail later.
+                    [ -n "$TOKEN" ] || { echo "::error::FLAKE_LOCK_TOKEN is not set; it needs contents, pull requests and workflows permission" >&2; exit 1; }
                     nix run .#bump-actions | tee changes.txt
                     [ -s changes.txt ] || exit 0
                     nix run .#snapshots -- workflows
@@ -630,6 +633,22 @@
       {disable = true;};
     };
   };
+
+  # Every `run:` of a workflow under `bash`, which GitHub starts with
+  # `-o pipefail`: its default for a step without `shell:` is `bash -e`,
+  # where `nix run .#bump-actions | tee changes.txt` passes when the
+  # bump fails. Set here once rather than on each step that pipes.
+  workflows = let
+    bash = v:
+      if v._type or null == "yaml"
+      then v // {value = bash v.value;}
+      else v // {defaults.run.shell = "bash";};
+  in
+    documents
+    |> lib.mapAttrs (file: v:
+      if lib.hasPrefix "workflows/" file
+      then bash v
+      else v);
 
   header = file: "Generated from nix/workflows.nix (${file}): edit there, then `nix run .#snapshots -- workflows`.";
 in {

@@ -11,6 +11,9 @@ name: semver
     branches:
     - main
 permissions: {}
+defaults:
+  run:
+    shell: bash
 jobs:
   semver:
     permissions:

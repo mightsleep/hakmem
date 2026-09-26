@@ -10,6 +10,9 @@ name: aarch64
     branches:
     - main
 permissions: {}
+defaults:
+  run:
+    shell: bash
 jobs:
   plan:
     permissions:
