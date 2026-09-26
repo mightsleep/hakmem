@@ -474,6 +474,7 @@ input in 65 536 is the bug they exist for.</p>
 <tr><td>cargo-deny (licences, bans, sources)</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-deny.json&amp;style=flat-square" alt="hakmem-deny" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-deny.json&amp;style=flat-square" alt="hakmem-deny" /></a></td></tr>
 <tr><td>cargo-audit (advisories, offline)</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fhakmem-audit.json&amp;style=flat-square" alt="hakmem-audit" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fhakmem-audit.json&amp;style=flat-square" alt="hakmem-audit" /></a></td></tr>
 <tr><td>treefmt</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Ftreefmt.json&amp;style=flat-square" alt="treefmt" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Ftreefmt.json&amp;style=flat-square" alt="treefmt" /></a></td></tr>
+<tr><td><code>.github/</code> is what <code>nix/workflows.nix</code> renders; actionlint, shellcheck, zizmor</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fworkflows.json&amp;style=flat-square" alt="workflows" /></a></td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-aarch64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Faarch64-linux%2Fworkflows.json&amp;style=flat-square" alt="workflows" /></a></td></tr>
 <tr><td>Miri over the intrinsics, both paths</td><td><a href="https://github.com/mightsleep/hakmem/actions/workflows/ci-x86_64.yml?query=branch%3Amain"><img src="https://img.shields.io/endpoint?url=https%3A%2F%2Fmightsleep.github.io%2Fhakmem%2Fstatus%2Fx86_64-linux%2Fmiri.json&amp;style=flat-square" alt="miri" /></a></td><td>n/a</td></tr>
 </tbody></table>
 </div><h4 id="how-the-checks-got-here"><a class="doc-anchor" href="#how-the-checks-got-here">§</a>How the checks got here</h4>
@@ -498,6 +499,17 @@ Put the missing <code>#[inline]</code> back and both fail with the line that say
 why. Clippy’s <code>missing_inline_in_public_items</code> now asks before the fact,
 and on its first run it found <code>Rank9::rank</code> and <code>select</code> out of reach of
 any caller outside the crate: 6 to 39 % back.</p>
+<p>The <code>.github/</code> row came from the 0.2.0 release, whose first run stopped
+on a checkout a GitHub action had left dirty, in a step order nothing
+local ever ran. The workflows are Nix values now (<code>nix/workflows.nix</code>),
+rendered by a small emitter of our own with every action pinned by
+commit (the flake is written with <code>|&gt;</code>, so evaluating it needs the
+<code>pipe-operators</code> experimental feature); the check holds the committed files to the rendering, parses
+them back to what they were rendered from, and lints them. The release
+workflow runs on pull requests as a rehearsal, semver runs from Nix
+instead of an action, and every release packs its tarball twice, from
+two checkouts, since a rerun recognises its own upload on crates.io by
+the checksum.</p>
 <p>Design: <a href="https://github.com/mightsleep/hakmem/blob/main/docs/design.md"><code>docs/design.md</code></a>,
 the decisions behind the API, the hardware policy, how the laws are
 verified, and where every combinator comes from.
