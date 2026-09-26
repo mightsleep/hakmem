@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.2.0, unreleased
+## 0.2.0, 2026-09-26: A Nocturne of Curves
 
 `hakmem::hilbert::Hilbert2`: 2D Hilbert indices over any `Word`,
 full width or by order. The decode is two suffix XORs over the Morton
