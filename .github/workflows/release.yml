@@ -5,6 +5,11 @@
 # tarball) and uploads the tarball those passed. Semver is checked here
 # too, against what crates.io has: it needs the registry, so it is not a
 # nix check.
+#
+# Two jobs: the one holding the OIDC token cannot write to the repository,
+# and "Re-run failed jobs" after a failed GitHub release does not upload
+# again (and if it does run again, publish finds the same tarball on
+# crates.io and passes).
 name: release
 on:
   push:
@@ -15,10 +20,12 @@ jobs:
     runs-on: ubuntu-latest
     environment: crates-io
     permissions:
-      contents: write # the GitHub release
+      contents: read
       id-token: write # the OIDC token crates.io trusts
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - uses: DeterminateSystems/nix-installer-action@v23
       - uses: cachix/cachix-action@v17
         with:
@@ -29,10 +36,24 @@ jobs:
       - run: nix run .#publish
         env:
           CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+
+  github-release:
+    needs: publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # the GitHub release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
       - name: GitHub release from the changelog section
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           v=${GITHUB_REF_NAME#v}
           awk -v v="$v" '$0 ~ "^## "v"," {p = 1; next} /^## / {p = 0} p' CHANGELOG.md > notes.md
-          gh release create "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
+            echo "release $GITHUB_REF_NAME exists already"
+          else
+            gh release create "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag
+          fi

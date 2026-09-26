@@ -9,6 +9,8 @@
 # and a token, so no derivation. It refuses unless HEAD is the version's
 # tag, the changelog dates the version, these checks pass for the tree,
 # and the tarball it is about to upload holds what the checked one holds.
+# A version already on crates.io with the same checksum is a success, so
+# a rerun of the release goes through.
 # `.cargo_vcs_info.json` is the one difference allowed: cargo writes the
 # commit into it, and a sandbox has no git to read it from.
 {lib, ...}: {
@@ -26,7 +28,7 @@
 
     publish = pkgs.writeShellApplication {
       name = "hakmem-publish";
-      runtimeInputs = [config.rust.nightly pkgs.git pkgs.gnutar pkgs.gzip pkgs.diffutils];
+      runtimeInputs = [config.rust.nightly pkgs.git pkgs.gnutar pkgs.gzip pkgs.diffutils pkgs.curl pkgs.jq];
       text = ''
         die() { echo "publish: $*" >&2; exit 1; }
         version=${version}
@@ -49,8 +51,25 @@
         diff -r --exclude=.cargo_vcs_info.json "$work/checked" "$work/upload" \
           || die "the tarball to upload is not the one the checks passed"
 
-        # HAKMEM_PUBLISH_DRY_RUN=1: every check, then cargo's dry run.
-        cargo publish --locked ''${HAKMEM_PUBLISH_DRY_RUN:+--dry-run}
+        # A rerun after an upload that went through (a failed step later, or
+        # cargo timing out on the index) finds the version on crates.io. The
+        # tarball is reproducible to the byte (fixed mtimes, the commit in
+        # .cargo_vcs_info.json), so the same tag gives the same checksum.
+        sum=$(sha256sum "$work/target/package/hakmem-$version.crate" | cut -d' ' -f1)
+        code=$(curl -s -A hakmem-publish -o "$work/version.json" -w '%{http_code}' \
+          "https://crates.io/api/v1/crates/hakmem/$version")
+        case $code in
+          404)
+            # HAKMEM_PUBLISH_DRY_RUN=1: every check, then cargo's dry run.
+            cargo publish --locked ''${HAKMEM_PUBLISH_DRY_RUN:+--dry-run}
+            ;;
+          200)
+            jq -e --arg s "$sum" '.version.checksum == $s' "$work/version.json" >/dev/null \
+              || die "$version is on crates.io with a different tarball"
+            echo "publish: $version is on crates.io already, the same tarball"
+            ;;
+          *) die "crates.io answered $code for $version" ;;
+        esac
       '';
     };
   in {
