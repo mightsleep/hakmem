@@ -403,6 +403,48 @@
       };
     };
 
+    "workflows/bench.yml" =
+      comment ''
+        By hand: one bench on x86_64, Neoverse (the aarch64 runner) and Apple
+        silicon, for numbers a PR elsewhere needs from machines this one is
+        not. Default target features, as a distribution builds; the bencher
+        lines go up as one artifact a runner. Nothing is tracked or compared:
+        pages.yml keeps the trend.''
+      {
+        name = "bench";
+        on.workflow_dispatch.inputs.bench = {
+          description = "cargo bench --bench <name>";
+          required = true;
+          default = "filter";
+          type = "string";
+        };
+        permissions = {};
+        jobs.bench = {
+          name = gh "matrix.runner";
+          permissions.contents = "read";
+          runs-on = gh "matrix.runner";
+          strategy = {
+            fail-fast = false;
+            matrix.runner = ["ubuntu-latest" "ubuntu-24.04-arm" "macos-15"];
+          };
+          steps = [
+            checkout
+            {uses = use "dtolnay/rust-toolchain";}
+            {
+              run = ''cargo bench --bench "$BENCH" -- --output-format bencher | tee bench.txt'';
+              env.BENCH = gh "inputs.bench";
+            }
+            {
+              uses = use "actions/upload-artifact";
+              "with" = {
+                name = gh "format('bench-{0}-{1}', inputs.bench, matrix.runner)";
+                path = "bench.txt";
+              };
+            }
+          ];
+        };
+      };
+
     "workflows/release.yml" = let
       tag = "github.ref_type == 'tag'";
     in
