@@ -146,7 +146,10 @@
                 checkout
                 (status {
                   inherit system;
+                  plan = gh "needs.plan.result";
+                  build = gh "needs.plan.outputs.checks";
                   cached = gh "needs.plan.outputs.cached";
+                  jobs = builtins.toJSON (lib.optional miri "miri");
                 })
               ];
             };
@@ -595,7 +598,7 @@
     "actions/status/action.yml" = {
       name = "status";
       description = fold ''
-        Write the result of every job of this run to gh-pages as shields.io
+        Write the result of every cell of this run to gh-pages as shields.io
         endpoint JSON (status/<system>/<check>.json). The README matrix and the
         site index read those files. With `pending`, before the build, write a
         grey placeholder for each listed check that has no file yet.'';
@@ -604,8 +607,23 @@
           description = "Nix system of the matrix this run built (x86_64-linux, aarch64-linux).";
           required = true;
         };
+        plan = {
+          description = "Result of the plan job; anything but success fails the run.";
+          required = false;
+          default = "success";
+        };
+        build = {
+          description = "JSON array of checks the plan sent to the matrix.";
+          required = false;
+          default = "[]";
+        };
         cached = {
           description = "JSON array of checks the plan skipped as cache hits (recorded as pass).";
+          required = false;
+          default = "[]";
+        };
+        jobs = {
+          description = "JSON array of cells that are plain jobs of the run, not matrix entries (miri).";
           required = false;
           default = "[]";
         };
@@ -631,7 +649,10 @@
             env = {
               GH_TOKEN = gh "github.token";
               SYSTEM = gh "inputs.system";
+              PLAN = gh "inputs.plan";
+              BUILD = gh "inputs.build";
               CACHED = gh "inputs.cached";
+              JOBS = gh "inputs.jobs";
               PENDING = gh "inputs.pending";
             };
             run = ''
@@ -641,8 +662,11 @@
                 echo "what=pending" >> "$GITHUB_ENV"
               else
                 gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
-                printf '%s' "$CACHED" > cached.json
-                .github/status.sh "$SYSTEM" jobs.json site/status cached.json
+                # A failed plan leaves its outputs empty, not `[]`.
+                jq -n --arg plan "$PLAN" --argjson build "''${BUILD:-[]}" \
+                  --argjson cached "''${CACHED:-[]}" --argjson jobs "$JOBS" \
+                  '{$plan, $build, $cached, $jobs}' > cells.json
+                .github/status.sh "$SYSTEM" jobs.json site/status cells.json
                 echo "what=status" >> "$GITHUB_ENV"
               fi
             '';

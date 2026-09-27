@@ -1,7 +1,15 @@
 # Generated from nix/workflows.nix (actions/status/action.yml): edit there, then `nix run .#snapshots -- workflows`.
 name: status
-description: Write the result of every job of this run to gh-pages as shields.io endpoint JSON (status/<system>/<check>.json). The README matrix and the site index read those files. With `pending`, before the build, write a grey placeholder for each listed check that has no file yet.
+description: Write the result of every cell of this run to gh-pages as shields.io endpoint JSON (status/<system>/<check>.json). The README matrix and the site index read those files. With `pending`, before the build, write a grey placeholder for each listed check that has no file yet.
 inputs:
+  jobs:
+    description: JSON array of cells that are plain jobs of the run, not matrix entries (miri).
+    default: "[]"
+    required: false
+  build:
+    description: JSON array of checks the plan sent to the matrix.
+    default: "[]"
+    required: false
   cached:
     description: JSON array of checks the plan skipped as cache hits (recorded as pass).
     default: "[]"
@@ -9,6 +17,10 @@ inputs:
   pending:
     description: JSON array of checks about to build. When set, only placeholders are written, for the ones without a file, and no results.
     default: ""
+    required: false
+  plan:
+    description: Result of the plan job; anything but success fails the run.
+    default: success
     required: false
   system:
     description: Nix system of the matrix this run built (x86_64-linux, aarch64-linux).
@@ -21,9 +33,12 @@ runs:
       persist-credentials: false
       ref: gh-pages
   - env:
+      BUILD: ${{ inputs.build }}
       CACHED: ${{ inputs.cached }}
       GH_TOKEN: ${{ github.token }}
+      JOBS: ${{ inputs.jobs }}
       PENDING: ${{ inputs.pending }}
+      PLAN: ${{ inputs.plan }}
       SYSTEM: ${{ inputs.system }}
     shell: bash
     run: |
@@ -33,8 +48,11 @@ runs:
         echo "what=pending" >> "$GITHUB_ENV"
       else
         gh api "repos/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID/jobs?per_page=100" > jobs.json
-        printf '%s' "$CACHED" > cached.json
-        .github/status.sh "$SYSTEM" jobs.json site/status cached.json
+        # A failed plan leaves its outputs empty, not `[]`.
+        jq -n --arg plan "$PLAN" --argjson build "${BUILD:-[]}" \
+          --argjson cached "${CACHED:-[]}" --argjson jobs "$JOBS" \
+          '{$plan, $build, $cached, $jobs}' > cells.json
+        .github/status.sh "$SYSTEM" jobs.json site/status cells.json
         echo "what=status" >> "$GITHUB_ENV"
       fi
   - env:

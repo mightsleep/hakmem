@@ -91,7 +91,10 @@ jobs:
         persist-credentials: false
     - uses: ./.github/actions/status
       with:
+        jobs: "[]"
+        build: ${{ needs.plan.outputs.checks }}
         cached: ${{ needs.plan.outputs.cached }}
+        plan: ${{ needs.plan.result }}
         system: aarch64-linux
   # The one check the main ruleset requires: the cells change with every
   # plan, so they cannot be named in advance. A cell skipped because its

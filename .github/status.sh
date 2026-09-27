@@ -1,15 +1,24 @@
 #!/usr/bin/env bash
-# The result of every job of one CI run as shields.io endpoint JSON, one
-# file per job plus all.json for the run, under <outdir>/<system>/.
+# The result of every cell of one CI run as shields.io endpoint JSON, one
+# file per cell plus all.json for the run, under <outdir>/<system>/.
 #
-#   status.sh <system> <jobs.json> <outdir> [cached.json]
+#   status.sh <system> <jobs.json> <outdir> <cells.json>
 #
-# jobs.json is the /repos/{repo}/actions/runs/{id}/jobs response; a job's
-# name is its check name (the workflows set `name: ${{ matrix.check }}`).
-# `plan`, `pending` and `status` are bookkeeping, not checks, and are left
-# out. The optional cached.json is the plan's `cached` array: cells it
-# skipped because their output was already in the binary cache, which only
-# a passing build produces, so they are written as pass.
+# cells.json says what the run was supposed to produce:
+#   {"plan": "<result of the plan job>", "build": [...], "cached": [...],
+#    "jobs": [...]}
+# `build` and `cached` are the plan's two arrays, `jobs` the cells that are
+# plain jobs rather than matrix entries (miri). Only these get a file. A
+# cached cell is a pass: its output is in the binary cache, which only a
+# passing build produces. The rest take their conclusion from jobs.json,
+# the /repos/{repo}/actions/runs/{id}/jobs response (the matrix sets
+# `name: ${{ matrix.check }}`); one with no job there is `missing`.
+#
+# The list used to be every job of the run minus the known bookkeeping,
+# and each new job taught the lesson again: the empty matrix's skipped
+# `matrix.check`, then the `<arch> ok` gate, caught still running by the
+# listing, all painted a green run red. Files of anything no longer a cell
+# are deleted, so a renamed check leaves no stale badge either.
 # Colours are Catppuccin Mocha: green pass, red fail, overlay0 otherwise.
 #
 #   status.sh --pending <system> <checks.json> <outdir>
@@ -30,7 +39,7 @@ fi
 system=$1
 jobs=$2
 out=$3/$system
-cached=${4:-}
+cells=${4:-}
 mkdir -p "$out"
 
 badge() {
@@ -55,24 +64,28 @@ if [ -n "$pending" ]; then
   exit 0
 fi
 
+# A failed plan builds nothing and lists nothing: the run failed, and
+# without a list of cells there is nothing to tell stale files by.
 overall=success
-# A skipped job did not run a check. When the cache holds every cell the
-# matrix is empty, and GitHub reports it as one skipped job named
-# `matrix.check`, which used to paint the whole badge red: CI failing
-# because there was nothing left to fail.
-rm -f "$out/matrix.check.json"
+plan=$(jq -r '.plan' "$cells")
+[ "$plan" = success ] || overall=failure
+
+declare -A keep=([all]=1)
 while IFS=$'\t' read -r name conclusion; do
-  [ "$conclusion" = skipped ] && continue
+  keep[$name]=1
   read -r message colour < <(badge "$conclusion")
   write "" "$message" "$colour" "$name"
   [ "$conclusion" = success ] || overall=failure
-done < <(jq -r '.jobs[] | select(.name != "plan" and .name != "pending" and .name != "status") | [.name, (.conclusion // "unknown")] | @tsv' "$jobs")
+done < <(jq -r --slurpfile run "$jobs" '
+  ($run[0].jobs | map({(.name): (.conclusion // "unknown")}) | add // {}) as $ran
+  | (.cached[] | [., "success"]),
+    ((.build + .jobs)[] | [., ($ran[.] // "missing")])
+  | @tsv' "$cells")
 
-if [ -n "$cached" ]; then
-  while IFS= read -r name; do
-    write "" pass a6e3a1 "$name"
-  done < <(jq -r '.[]' "$cached")
-fi
+[ "$plan" = success ] && for f in "$out"/*.json; do
+  name=$(basename "$f" .json)
+  [ -n "${keep[$name]:-}" ] || rm -f "$f"
+done
 
 read -r message colour < <(badge "$overall")
 write "${system%%-*}" "$message" "$colour" all
