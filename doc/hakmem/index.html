@@ -509,7 +509,11 @@ them back to what they were rendered from, and lints them. The release
 workflow runs on pull requests as a rehearsal, semver runs from Nix
 instead of an action, and every release packs its tarball twice, from
 two checkouts, since a rerun recognises its own upload on crates.io by
-the checksum.</p>
+the checksum. The rulesets are Nix values too, recorded in
+<code>.github/rulesets/</code>: <code>main</code> takes signed commits through a pull request
+whose <code>x86_64 ok</code>, <code>aarch64 ok</code> and <code>semver</code> passed, and only an admin
+moves a <code>v*</code> tag. <code>nix run .#rulesets</code> shows how the live ones differ,
+<code>nix run .#rulesets -- apply</code> sets them.</p>
 <p>Design: <a href="https://github.com/mightsleep/hakmem/blob/main/docs/design.md"><code>docs/design.md</code></a>,
 the decisions behind the API, the hardware policy, how the laws are
 verified, and where every combinator comes from.
