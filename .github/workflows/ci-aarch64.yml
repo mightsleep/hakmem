@@ -93,3 +93,21 @@ jobs:
       with:
         cached: ${{ needs.plan.outputs.cached }}
         system: aarch64-linux
+  # The one check the main ruleset requires: the cells change with every
+  # plan, so they cannot be named in advance. A cell skipped because its
+  # output was cached passed; a failed or cancelled job fails this one.
+  ok:
+    name: aarch64 ok
+    permissions: {}
+    needs:
+    - plan
+    - check
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+    - env:
+        NEEDS: ${{ toJSON(needs) }}
+      run: |
+        jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped")
+          | "::error::\(.key) ended \(.value.result)"' <<<"$NEEDS" | tee failed.txt
+        [ ! -s failed.txt ]
