@@ -1,7 +1,8 @@
 # The GitHub workflows, the status action, dependabot's and zizmor's
 # config, as Nix values rendered to .github/ (nix/_yaml.nix). GitHub reads
 # only committed files, so they stay in the repository; this is where they
-# are written.
+# are written. The rulesets too, as JSON: GitHub does not read those from
+# the tree, `nix run .#rulesets` sets them.
 #
 #   nix run .#snapshots -- workflows   write them (a snapshot, nix/hakmem.nix)
 #   checks.workflows                   the committed files are the rendered ones,
@@ -73,7 +74,7 @@
       inherit name;
       on = onMainAndPRs;
       permissions = {};
-      jobs = ordered ["plan" "check" "miri" "pending" "status"] (
+      jobs = ordered ["plan" "check" "miri" "pending" "status" "ok"] (
         {
           plan = {
             permissions.contents = "read";
@@ -147,6 +148,28 @@
                   inherit system;
                   cached = gh "needs.plan.outputs.cached";
                 })
+              ];
+            };
+          ok =
+            comment ''
+              The one check the main ruleset requires: the cells change with every
+              plan, so they cannot be named in advance. A cell skipped because its
+              output was cached passed; a failed or cancelled job fails this one.''
+            {
+              name = "${name} ok";
+              needs = ["plan" "check"] ++ lib.optional miri "miri";
+              "if" = "always()";
+              runs-on = "ubuntu-latest";
+              permissions = {};
+              steps = [
+                {
+                  env.NEEDS = gh "toJSON(needs)";
+                  run = ''
+                    jq -r 'to_entries[] | select(.value.result != "success" and .value.result != "skipped")
+                      | "::error::\(.key) ended \(.value.result)"' <<<"$NEEDS" | tee failed.txt
+                    [ ! -s failed.txt ]
+                  '';
+                }
               ];
             };
         }
@@ -379,6 +402,48 @@
           };
       };
     };
+
+    "workflows/bench.yml" =
+      comment ''
+        By hand: one bench on x86_64, Neoverse (the aarch64 runner) and Apple
+        silicon, for numbers a PR elsewhere needs from machines this one is
+        not. Default target features, as a distribution builds; the bencher
+        lines go up as one artifact a runner. Nothing is tracked or compared:
+        pages.yml keeps the trend.''
+      {
+        name = "bench";
+        on.workflow_dispatch.inputs.bench = {
+          description = "cargo bench --bench <name>";
+          required = true;
+          default = "filter";
+          type = "string";
+        };
+        permissions = {};
+        jobs.bench = {
+          name = gh "matrix.runner";
+          permissions.contents = "read";
+          runs-on = gh "matrix.runner";
+          strategy = {
+            fail-fast = false;
+            matrix.runner = ["ubuntu-latest" "ubuntu-24.04-arm" "macos-15"];
+          };
+          steps = [
+            checkout
+            {uses = use "dtolnay/rust-toolchain";}
+            {
+              run = ''cargo bench --bench "$BENCH" -- --output-format bencher | tee bench.txt'';
+              env.BENCH = gh "inputs.bench";
+            }
+            {
+              uses = use "actions/upload-artifact";
+              "with" = {
+                name = gh "format('bench-{0}-{1}', inputs.bench, matrix.runner)";
+                path = "bench.txt";
+              };
+            }
+          ];
+        };
+      };
 
     "workflows/release.yml" = let
       tag = "github.ref_type == 'tag'";
@@ -650,17 +715,104 @@
       then bash v
       else v);
 
+  # The repository rulesets, as the REST API takes them. GitHub keeps them
+  # in its settings, not in the tree: .github/rulesets/ is the record, and
+  # `nix run .#rulesets` diffs it against the live ones (`-- apply` to set).
+  #
+  # main: no force push, no deletion, signed commits, changes through a PR
+  # whose checks passed. The bots commit unsigned (update-flake-lock, the
+  # pin bump), so their PRs are squashed: GitHub signs the squash. An admin
+  # may merge a PR with red checks (a stuck runner) but not push around
+  # one; bypass goes with the user, so FLAKE_LOCK_TOKEN, a PAT, has it too.
+  #
+  # release tags: created, moved or deleted by an admin only. Publishing
+  # still waits for the crates-io environment's approval.
+  rulesets = let
+    admin = mode: {
+      actor_id = 5; # the Repository admin role
+      actor_type = "RepositoryRole";
+      bypass_mode = mode;
+    };
+    githubActions = 15368; # the app the checks come from
+    required =
+      (documents
+        |> lib.attrValues
+        |> map yaml.toData
+        |> lib.concatMap (d: lib.optional (d ? jobs.ok) d.jobs.ok.name))
+      ++ ["semver"];
+  in {
+    main = {
+      name = "main";
+      target = "branch";
+      enforcement = "active";
+      conditions.ref_name = {
+        include = ["~DEFAULT_BRANCH"];
+        exclude = [];
+      };
+      bypass_actors = [(admin "pull_request")];
+      rules = [
+        {type = "deletion";}
+        {type = "non_fast_forward";}
+        {type = "required_signatures";}
+        {
+          type = "pull_request";
+          parameters = {
+            required_approving_review_count = 0;
+            dismiss_stale_reviews_on_push = false;
+            require_code_owner_review = false;
+            require_last_push_approval = false;
+            required_review_thread_resolution = false;
+            allowed_merge_methods = ["merge" "squash"];
+          };
+        }
+        {
+          type = "required_status_checks";
+          parameters = {
+            strict_required_status_checks_policy = false;
+            do_not_enforce_on_create = false;
+            required_status_checks =
+              required
+              |> map (context: {
+                inherit context;
+                integration_id = githubActions;
+              });
+          };
+        }
+      ];
+    };
+    tags = {
+      name = "release tags";
+      target = "tag";
+      enforcement = "active";
+      conditions.ref_name = {
+        include = ["refs/tags/v*"];
+        exclude = [];
+      };
+      bypass_actors = [(admin "always")];
+      rules = [
+        {type = "creation";}
+        {type = "update";}
+        {type = "deletion";}
+      ];
+    };
+  };
+
   header = file: "Generated from nix/workflows.nix (${file}): edit there, then `nix run .#snapshots -- workflows`.";
 in {
   perSystem = {pkgs, ...}: let
     rendered =
-      workflows
-      |> lib.mapAttrsToList (file: v: ''
-        mkdir -p "$out/$(dirname ${file})"
-        cp ${pkgs.writeText (baseNameOf file) (yaml.toYAML (header file) v)} "$out/${file}"
-      '')
+      (workflows
+        |> lib.mapAttrsToList (file: v: ''
+          mkdir -p "$out/$(dirname ${file})"
+          cp ${pkgs.writeText (baseNameOf file) (yaml.toYAML (header file) v)} "$out/${file}"
+        ''))
+      ++ (rulesets
+        |> lib.mapAttrsToList (name: v: ''
+          mkdir -p "$out/rulesets"
+          jq . ${json "ruleset-${name}" v} > "$out/rulesets/${name}.json"
+        ''))
       |> lib.concatStrings
-      |> pkgs.runCommand "hakmem-workflows" {};
+      |> pkgs.runCommand "hakmem-workflows" {nativeBuildInputs = [pkgs.jq];};
 
     # What the files and the corpus mean, for the parser half of the check.
     json = name: v: builtins.toJSON v |> pkgs.writeText "${name}.json";
@@ -697,7 +849,9 @@ in {
     # file and the corpus parsed back to what was meant, and actionlint (with
     # shellcheck over every `run:`) and zizmor clean, offline.
     hakmem.snapshots.workflows = {
-      files = workflows |> lib.mapAttrs' (f: _: lib.nameValuePair ".github/${f}" "${rendered}/${f}");
+      files =
+        (workflows |> lib.mapAttrs' (f: _: lib.nameValuePair ".github/${f}" "${rendered}/${f}"))
+        // (rulesets |> lib.mapAttrs' (n: _: lib.nameValuePair ".github/rulesets/${n}.json" "${rendered}/rulesets/${n}.json"));
       why = ".github/ is not what nix/workflows.nix renders.";
       description = ".github/ is what nix/workflows.nix renders: parsed back, actionlint, shellcheck, zizmor";
       inputs = [pkgs.remarshal pkgs.jq pkgs.actionlint pkgs.shellcheck pkgs.zizmor];
@@ -714,6 +868,46 @@ in {
         zizmor --offline --no-progress --config .github/zizmor.yml .github || fail=1
         [ "$fail" = 0 ]
       '';
+    };
+
+    # The live rulesets against .github/rulesets/, matched by name: a diff
+    # (exit 1 when they differ), or with `apply` created or replaced.
+    apps.rulesets = {
+      type = "app";
+      program = lib.getExe (pkgs.writeShellApplication {
+        name = "hakmem-rulesets";
+        runtimeInputs = [pkgs.gh pkgs.jq pkgs.diffutils];
+        text = ''
+          mode=''${1:-diff}
+          case $mode in diff | apply) ;; *) echo "usage: nix run .#rulesets [-- diff|apply]" >&2; exit 2 ;; esac
+          [ -d .github/rulesets ] || { echo "run it from the repository root" >&2; exit 1; }
+          repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+          # What the files say; GitHub adds ids, links and timestamps.
+          keep='{name, target, enforcement, conditions, bypass_actors, rules: (.rules | sort_by(.type))}'
+          differ=0
+          # set -e would stop at the first refused ruleset and leave the rest
+          # unapplied; carry on, and fail at the end.
+          failed=0
+          for f in .github/rulesets/*.json; do
+            name=$(jq -r .name "$f")
+            id=$(gh api "repos/$repo/rulesets" --jq ".[] | select(.name == \"$name\") | .id")
+            have='{}'
+            [ -z "$id" ] || have=$(gh api "repos/$repo/rulesets/$id" | jq -S "$keep")
+            diff -u --label "live: $name" --label "$f" <(echo "$have") <(jq -S "$keep" "$f") && continue
+            differ=1
+            [ "$mode" = apply ] || continue
+            if [ -n "$id" ]; then
+              gh api -X PUT "repos/$repo/rulesets/$id" --input "$f" >/dev/null || { echo "$name: not applied" >&2; failed=1; continue; }
+            else
+              gh api -X POST "repos/$repo/rulesets" --input "$f" >/dev/null || { echo "$name: not applied" >&2; failed=1; continue; }
+            fi
+            echo "$name: applied"
+          done
+          [ "$mode" = apply ] || exit "$differ"
+          exit "$failed"
+        '';
+      });
+      meta.description = "Diff the live rulesets against .github/rulesets/, or apply them";
     };
 
     # Each pin to the newest release tag of its action (a branch pin to

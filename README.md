@@ -584,7 +584,11 @@ them back to what they were rendered from, and lints them. The release
 workflow runs on pull requests as a rehearsal, semver runs from Nix
 instead of an action, and every release packs its tarball twice, from
 two checkouts, since a rerun recognises its own upload on crates.io by
-the checksum.
+the checksum. The rulesets are Nix values too, recorded in
+`.github/rulesets/`: `main` takes signed commits through a pull request
+whose `x86_64 ok`, `aarch64 ok` and `semver` passed, and only an admin
+moves a `v*` tag. `nix run .#rulesets` shows how the live ones differ,
+`nix run .#rulesets -- apply` sets them.
 
 Design: [`docs/design.md`](https://github.com/mightsleep/hakmem/blob/main/docs/design.md),
 the decisions behind the API, the hardware policy, how the laws are

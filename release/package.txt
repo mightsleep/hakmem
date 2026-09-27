@@ -6,6 +6,7 @@ LICENSE-APACHE
 LICENSE-MIT
 README.md
 benches/compact.rs
+benches/filter.rs
 benches/hilbert.rs
 benches/incumbents.rs
 benches/rank9.rs

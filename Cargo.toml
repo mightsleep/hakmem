@@ -55,6 +55,10 @@ name = "compact"
 harness = false
 
 [[bench]]
+name = "filter"
+harness = false
+
+[[bench]]
 name = "rank9"
 harness = false
 

@@ -1,0 +1,44 @@
+# Generated from nix/workflows.nix (workflows/bench.yml): edit there, then `nix run .#snapshots -- workflows`.
+# By hand: one bench on x86_64, Neoverse (the aarch64 runner) and Apple
+# silicon, for numbers a PR elsewhere needs from machines this one is
+# not. Default target features, as a distribution builds; the bencher
+# lines go up as one artifact a runner. Nothing is tracked or compared:
+# pages.yml keeps the trend.
+name: bench
+"on":
+  workflow_dispatch:
+    inputs:
+      bench:
+        description: cargo bench --bench <name>
+        default: filter
+        required: true
+        type: string
+permissions: {}
+defaults:
+  run:
+    shell: bash
+jobs:
+  bench:
+    name: ${{ matrix.runner }}
+    permissions:
+      contents: read
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner:
+        - ubuntu-latest
+        - ubuntu-24.04-arm
+        - macos-15
+    steps:
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      with:
+        persist-credentials: false
+    - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+    - env:
+        BENCH: ${{ inputs.bench }}
+      run: cargo bench --bench "$BENCH" -- --output-format bencher | tee bench.txt
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: ${{ format('bench-{0}-{1}', inputs.bench, matrix.runner) }}
+        path: bench.txt
