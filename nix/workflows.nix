@@ -879,11 +879,15 @@ in {
         runtimeInputs = [pkgs.gh pkgs.jq pkgs.diffutils];
         text = ''
           mode=''${1:-diff}
+          case $mode in diff | apply) ;; *) echo "usage: nix run .#rulesets [-- diff|apply]" >&2; exit 2 ;; esac
           [ -d .github/rulesets ] || { echo "run it from the repository root" >&2; exit 1; }
           repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
           # What the files say; GitHub adds ids, links and timestamps.
           keep='{name, target, enforcement, conditions, bypass_actors, rules: (.rules | sort_by(.type))}'
           differ=0
+          # set -e would stop at the first refused ruleset and leave the rest
+          # unapplied; carry on, and fail at the end.
+          failed=0
           for f in .github/rulesets/*.json; do
             name=$(jq -r .name "$f")
             id=$(gh api "repos/$repo/rulesets" --jq ".[] | select(.name == \"$name\") | .id")
@@ -893,13 +897,14 @@ in {
             differ=1
             [ "$mode" = apply ] || continue
             if [ -n "$id" ]; then
-              gh api -X PUT "repos/$repo/rulesets/$id" --input "$f" >/dev/null
+              gh api -X PUT "repos/$repo/rulesets/$id" --input "$f" >/dev/null || { echo "$name: not applied" >&2; failed=1; continue; }
             else
-              gh api -X POST "repos/$repo/rulesets" --input "$f" >/dev/null
+              gh api -X POST "repos/$repo/rulesets" --input "$f" >/dev/null || { echo "$name: not applied" >&2; failed=1; continue; }
             fi
             echo "$name: applied"
           done
           [ "$mode" = apply ] || exit "$differ"
+          exit "$failed"
         '';
       });
       meta.description = "Diff the live rulesets against .github/rulesets/, or apply them";

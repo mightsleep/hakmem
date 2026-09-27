@@ -2,6 +2,7 @@ compact	<u64 as hakmem::bits::Bits>::compact
 compact	<u64 as hakmem::bits::Bits>::expand
 compact	hakmem::word::compress_broadword::<u64>
 compact	hakmem::word::expand_broadword::<u64>
+filter	hakmem::word::compress_broadword::<u64>
 hilbert	<hakmem::cover::Gaps<u64> as hakmem::cover::Sink<u64>>::emit_mask
 hilbert	<hakmem::cover::Merge<u64> as hakmem::cover::Sink<u64>>::emit_mask
 hilbert	<hakmem::dilated::Morton2<u32>>::decode_columns
