@@ -24,15 +24,44 @@ jobs:
     - uses: DeterminateSystems/nix-installer-action@3138316df39ed29be04236d7ffc686fa525866aa # v23
       with:
         extra-conf: extra-experimental-features = pipe-operators
-    - uses: DeterminateSystems/update-flake-lock@da03c0f078bc4b2c37ee4f7e072d34bf8f188bb3 # v29
+    - uses: cachix/cachix-action@38b082610b782e7e93e209c35fd730d399dee866 # v17
+      with:
+        name: hakmem
+    - id: lock
+      uses: DeterminateSystems/update-flake-lock@da03c0f078bc4b2c37ee4f7e072d34bf8f188bb3 # v29
       # A PR opened with the default GITHUB_TOKEN triggers no workflows, so
       # CI would never run on it. FLAKE_LOCK_TOKEN is a fine-grained PAT
       # (contents + pull requests, this repo only); until it exists the
       # default token still opens the PR, just without CI.
       with:
+        branch: update_flake_lock_action
         pr-labels: dependencies
         pr-title: "flake.lock: weekly update"
         token: ${{ secrets.FLAKE_LOCK_TOKEN || github.token }}
+    - env:
+        GH_TOKEN: ${{ secrets.FLAKE_LOCK_TOKEN }}
+        PR: ${{ steps.lock.outputs.pull-request-number }}
+        TOKEN: ${{ secrets.FLAKE_LOCK_TOKEN }}
+      if: ${{ steps.lock.outputs.pull-request-number }}
+      run: |
+        # A new nightly moves the snapshots nearly every week: rustdoc
+        # prints an impl differently, LLVM hands a few instructions to
+        # another function. They are written here, onto the PR, with a
+        # summary of what moved, so the review is reading a table.
+        # Without the token the push would start no CI; the checks
+        # then fail on the PR as before.
+        [ -n "$TOKEN" ] || { echo "::warning::FLAKE_LOCK_TOKEN is not set; snapshots left to the PR's checks"; exit 0; }
+        git fetch -q origin update_flake_lock_action
+        git switch -q -C update_flake_lock_action FETCH_HEAD
+        nix run .#snapshots
+        git add -A
+        git diff --quiet HEAD && exit 0
+        nix run .#snapshot-summary > summary.md
+        git config user.name "github-actions[bot]"
+        git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+        git commit -qm "Snapshots for the new inputs"
+        git push "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY" update_flake_lock_action
+        gh pr comment "$PR" --body-file summary.md
   # The action pins, which dependabot no longer watches: nix/actions.json
   # moved by `nix run .#bump-actions`, the files rendered again, one PR.
   # A push that changes .github/workflows needs a token with the

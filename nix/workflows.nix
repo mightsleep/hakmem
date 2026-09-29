@@ -242,7 +242,9 @@
             steps = [
               checkout
               installNix
+              cachixRead
               {
+                id = "lock";
                 uses = use "DeterminateSystems/update-flake-lock";
                 "with" =
                   comment ''
@@ -252,9 +254,36 @@
                     default token still opens the PR, just without CI.''
                   {
                     token = gh "secrets.FLAKE_LOCK_TOKEN || github.token";
+                    branch = "update_flake_lock_action";
                     pr-title = "flake.lock: weekly update";
                     pr-labels = "dependencies";
                   };
+              }
+              {
+                "if" = gh "steps.lock.outputs.pull-request-number";
+                env = {
+                  GH_TOKEN = gh "secrets.FLAKE_LOCK_TOKEN";
+                  TOKEN = gh "secrets.FLAKE_LOCK_TOKEN";
+                  PR = gh "steps.lock.outputs.pull-request-number";
+                };
+                run = ''
+                  # A new nightly moves the snapshots nearly every week: rustdoc
+                  # prints an impl differently, LLVM hands a few instructions to
+                  # another function. They are written here, onto the PR, with a
+                  # summary of what moved, so the review is reading a table.
+                  # Without the token the push would start no CI; the checks
+                  # then fail on the PR as before.
+                  [ -n "$TOKEN" ] || { echo "::warning::FLAKE_LOCK_TOKEN is not set; snapshots left to the PR's checks"; exit 0; }
+                  git fetch -q origin update_flake_lock_action
+                  git switch -q -C update_flake_lock_action FETCH_HEAD
+                  nix run .#snapshots
+                  git add -A
+                  git diff --quiet HEAD && exit 0
+                  nix run .#snapshot-summary > summary.md
+                  ${bot}git commit -qm "Snapshots for the new inputs"
+                  git push "https://x-access-token:$TOKEN@github.com/$GITHUB_REPOSITORY" update_flake_lock_action
+                  gh pr comment "$PR" --body-file summary.md
+                '';
               }
             ];
           };

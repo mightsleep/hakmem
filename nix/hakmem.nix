@@ -156,6 +156,49 @@ in {
           '';
         });
       };
+
+      # What `snapshots` changed against HEAD, as Markdown for a PR comment:
+      # the files, and of the codegen loops only those that moved enough to
+      # read (codegen/moved.awk).
+      apps.snapshot-summary = {
+        type = "app";
+        meta.description = "Summarize the uncommitted snapshot changes as Markdown";
+        program = lib.getExe (pkgs.writeShellApplication {
+          name = "hakmem-snapshot-summary";
+          runtimeInputs = [pkgs.coreutils pkgs.git pkgs.gawk];
+          text = ''
+            echo "Snapshots written for the new inputs:"
+            echo
+            echo '```'
+            git diff --stat HEAD
+            echo '```'
+            echo
+            # Every codegen snapshot in HEAD or in the tree, the old one
+            # against the new, empty where it is not.
+            old=$(mktemp)
+            rows=$(
+              { git ls-tree --name-only HEAD codegen/; ls codegen/*.txt; } 2>/dev/null \
+                | grep '\.txt$' | sort -u \
+                | while read -r f; do
+                  git show "HEAD:$f" > "$old" 2>/dev/null || : > "$old"
+                  new=$f
+                  [ -e "$new" ] || new=/dev/null
+                  awk -v snap="$(basename "$f" .txt)" -f ${../codegen/moved.awk} "$old" "$new"
+                done | sort
+            )
+            rm "$old"
+            if [ -z "$rows" ]; then
+              echo "No codegen loop moved by more than a tenth."
+              exit 0
+            fi
+            echo "Codegen loops that appeared, went, or moved by more than a tenth:"
+            echo
+            echo "| snapshot | loop | | instructions | znver5 cycles |"
+            echo "|---|---|---|---|---|"
+            echo "$rows"
+          '';
+        });
+      };
     };
   });
 }

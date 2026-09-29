@@ -18,7 +18,11 @@
     inherit (config.hakmem) keep;
     inherit (config.rust) apiTargets;
     src = config.hakmem.src [keep.readme];
-    # Default features: what `hakmem = "0.2"` gets.
+    # Default features: what `hakmem = "0.2"` gets. Derived impls are left
+    # out: their lines change with rustdoc (a nightly began printing `Self`
+    # for the type), not with hakmem, and a derive that goes is a break
+    # cargo-semver-checks reports (nix/semver.nix). Auto traits stay: a type
+    # that stops being Send changes nothing in its source.
     apiOf = target:
       craneLib.mkCargoDerivation {
         inherit src;
@@ -26,7 +30,7 @@
         version = "0";
         cargoArtifacts = null;
         nativeBuildInputs = [pkgs.cargo-public-api];
-        buildPhaseCargoCommand = "cargo public-api --simplified --target ${target} > ${target}.txt";
+        buildPhaseCargoCommand = "cargo public-api --omit blanket-impls,auto-derived-impls --target ${target} > ${target}.txt";
         installPhaseCommand = "mkdir -p $out && cp ${target}.txt $out/";
         doCheck = false;
         doInstallCargoArtifacts = false;
