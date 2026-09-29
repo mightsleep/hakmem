@@ -23,17 +23,6 @@ pub const fn hakmem::affine::Affine8::shr(u32) -> Self
 pub const fn hakmem::affine::Affine8::sra(u32) -> Self
 pub const fn hakmem::affine::Affine8::tables(self) -> ([u8; 16], [u8; 16])
 pub const fn hakmem::affine::Affine8::then(self, Self) -> Self
-impl core::clone::Clone for hakmem::affine::Affine8
-pub fn hakmem::affine::Affine8::clone(&self) -> hakmem::affine::Affine8
-impl core::cmp::Eq for hakmem::affine::Affine8
-impl core::cmp::PartialEq for hakmem::affine::Affine8
-pub fn hakmem::affine::Affine8::eq(&self, &hakmem::affine::Affine8) -> bool
-impl core::fmt::Debug for hakmem::affine::Affine8
-pub fn hakmem::affine::Affine8::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::hash::Hash for hakmem::affine::Affine8
-pub fn hakmem::affine::Affine8::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl core::marker::Copy for hakmem::affine::Affine8
-impl core::marker::StructuralPartialEq for hakmem::affine::Affine8
 impl core::marker::Freeze for hakmem::affine::Affine8
 impl core::marker::Send for hakmem::affine::Affine8
 impl core::marker::Sync for hakmem::affine::Affine8
@@ -209,21 +198,6 @@ pub fn hakmem::dilated::Dilated<W, D>::mask() -> W
 pub fn hakmem::dilated::Dilated<W, D>::to_int(self) -> W
 pub const fn hakmem::dilated::Dilated<W, D>::width() -> u32
 pub fn hakmem::dilated::Dilated<W, D>::wrapping_add(self, Self) -> Self
-impl<W: core::clone::Clone + hakmem::word::Word, const D: u32> core::clone::Clone for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::clone(&self) -> hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::Eq + hakmem::word::Word, const D: u32> core::cmp::Eq for hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::Ord + hakmem::word::Word, const D: u32> core::cmp::Ord for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::cmp(&self, &hakmem::dilated::Dilated<W, D>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word, const D: u32> core::cmp::PartialEq for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::eq(&self, &hakmem::dilated::Dilated<W, D>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word, const D: u32> core::marker::StructuralPartialEq for hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word, const D: u32> core::cmp::PartialOrd for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::partial_cmp(&self, &hakmem::dilated::Dilated<W, D>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word, const D: u32> core::fmt::Debug for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word, const D: u32> core::hash::Hash for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word, const D: u32> core::marker::Copy for hakmem::dilated::Dilated<W, D>
 impl<W: hakmem::word::Word, const D: u32> core::default::Default for hakmem::dilated::Dilated<W, D>
 pub fn hakmem::dilated::Dilated<W, D>::default() -> Self
 impl<W: hakmem::word::Word, const D: u32> core::fmt::Binary for hakmem::dilated::Dilated<W, D>
@@ -257,21 +231,6 @@ pub fn hakmem::dilated::Morton2<W>::y(self) -> hakmem::dilated::Dilated<W, 2>
 impl<W: hakmem::word::Word> hakmem::dilated::Morton2<W>
 pub fn hakmem::dilated::Morton2<W>::cover(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, &mut [(W, W)]) -> &[(W, W)]
 pub fn hakmem::dilated::Morton2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::clone(&self) -> hakmem::dilated::Morton2<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::dilated::Morton2<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::cmp(&self, &hakmem::dilated::Morton2<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::eq(&self, &hakmem::dilated::Morton2<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::dilated::Morton2<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::partial_cmp(&self, &hakmem::dilated::Morton2<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::dilated::Morton2<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton2<W>> for hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::from(hakmem::dilated::Morton2<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert::Hilbert2<W>> for hakmem::dilated::Morton2<W>
@@ -307,21 +266,6 @@ pub const fn hakmem::dilated::Morton3<W>::code(self) -> W
 pub fn hakmem::dilated::Morton3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::dilated::Morton3<W>::encode(W, W, W) -> Self
 pub const fn hakmem::dilated::Morton3<W>::from_code(W) -> Self
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::clone(&self) -> hakmem::dilated::Morton3<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::dilated::Morton3<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::cmp(&self, &hakmem::dilated::Morton3<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::eq(&self, &hakmem::dilated::Morton3<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::dilated::Morton3<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::partial_cmp(&self, &hakmem::dilated::Morton3<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::dilated::Morton3<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton3<W>> for hakmem::hilbert3::Hilbert3<W>
 pub fn hakmem::hilbert3::Hilbert3<W>::from(hakmem::dilated::Morton3<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert3::Hilbert3<W>> for hakmem::dilated::Morton3<W>
@@ -384,21 +328,6 @@ pub fn hakmem::hilbert::Hilbert2<W>::to_morton(self) -> hakmem::dilated::Morton2
 impl<W: hakmem::word::Word> hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::cover(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, &mut [(W, W)]) -> &[(W, W)]
 pub fn hakmem::hilbert::Hilbert2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::clone(&self) -> hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::cmp(&self, &hakmem::hilbert::Hilbert2<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::eq(&self, &hakmem::hilbert::Hilbert2<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::partial_cmp(&self, &hakmem::hilbert::Hilbert2<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::hilbert::Hilbert2<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton2<W>> for hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::from(hakmem::dilated::Morton2<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert::Hilbert2<W>> for hakmem::dilated::Morton2<W>
@@ -452,21 +381,6 @@ pub const fn hakmem::hilbert3::Hilbert3<W>::from_index(W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::from_morton(hakmem::dilated::Morton3<W>) -> Self
 pub const fn hakmem::hilbert3::Hilbert3<W>::index(self) -> W
 pub fn hakmem::hilbert3::Hilbert3<W>::to_morton(self) -> hakmem::dilated::Morton3<W>
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::clone(&self) -> hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::cmp(&self, &hakmem::hilbert3::Hilbert3<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::eq(&self, &hakmem::hilbert3::Hilbert3<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::partial_cmp(&self, &hakmem::hilbert3::Hilbert3<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::hilbert3::Hilbert3<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton3<W>> for hakmem::hilbert3::Hilbert3<W>
 pub fn hakmem::hilbert3::Hilbert3<W>::from(hakmem::dilated::Morton3<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert3::Hilbert3<W>> for hakmem::dilated::Morton3<W>
@@ -497,17 +411,6 @@ pub mod hakmem::isa
 pub enum hakmem::isa::Level
 pub hakmem::isa::Level::Native(hakmem::isa::Native)
 pub hakmem::isa::Level::Portable(hakmem::isa::Portable)
-impl core::clone::Clone for hakmem::isa::Level
-pub fn hakmem::isa::Level::clone(&self) -> hakmem::isa::Level
-impl core::cmp::Eq for hakmem::isa::Level
-impl core::cmp::PartialEq for hakmem::isa::Level
-pub fn hakmem::isa::Level::eq(&self, &hakmem::isa::Level) -> bool
-impl core::fmt::Debug for hakmem::isa::Level
-pub fn hakmem::isa::Level::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::hash::Hash for hakmem::isa::Level
-pub fn hakmem::isa::Level::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl core::marker::Copy for hakmem::isa::Level
-impl core::marker::StructuralPartialEq for hakmem::isa::Level
 impl core::marker::Freeze for hakmem::isa::Level
 impl core::marker::Send for hakmem::isa::Level
 impl core::marker::Sync for hakmem::isa::Level
@@ -516,19 +419,6 @@ impl core::marker::UnsafeUnpin for hakmem::isa::Level
 impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::Level
 impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::Level
 pub struct hakmem::isa::Native
-impl core::clone::Clone for hakmem::isa::Native
-pub fn hakmem::isa::Native::clone(&self) -> hakmem::isa::Native
-impl core::cmp::Eq for hakmem::isa::Native
-impl core::cmp::PartialEq for hakmem::isa::Native
-pub fn hakmem::isa::Native::eq(&self, &hakmem::isa::Native) -> bool
-impl core::default::Default for hakmem::isa::Native
-pub fn hakmem::isa::Native::default() -> hakmem::isa::Native
-impl core::fmt::Debug for hakmem::isa::Native
-pub fn hakmem::isa::Native::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::hash::Hash for hakmem::isa::Native
-pub fn hakmem::isa::Native::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl core::marker::Copy for hakmem::isa::Native
-impl core::marker::StructuralPartialEq for hakmem::isa::Native
 impl hakmem::isa::Isa for hakmem::isa::Native
 pub type hakmem::isa::Native::U8x16 = hakmem::lanes::Neon16
 pub fn hakmem::isa::Native::pdep<W: hakmem::word::Word>(self, W, W) -> W
@@ -547,19 +437,6 @@ impl core::marker::UnsafeUnpin for hakmem::isa::Native
 impl core::panic::unwind_safe::RefUnwindSafe for hakmem::isa::Native
 impl core::panic::unwind_safe::UnwindSafe for hakmem::isa::Native
 pub struct hakmem::isa::Portable
-impl core::clone::Clone for hakmem::isa::Portable
-pub fn hakmem::isa::Portable::clone(&self) -> hakmem::isa::Portable
-impl core::cmp::Eq for hakmem::isa::Portable
-impl core::cmp::PartialEq for hakmem::isa::Portable
-pub fn hakmem::isa::Portable::eq(&self, &hakmem::isa::Portable) -> bool
-impl core::default::Default for hakmem::isa::Portable
-pub fn hakmem::isa::Portable::default() -> hakmem::isa::Portable
-impl core::fmt::Debug for hakmem::isa::Portable
-pub fn hakmem::isa::Portable::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::hash::Hash for hakmem::isa::Portable
-pub fn hakmem::isa::Portable::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl core::marker::Copy for hakmem::isa::Portable
-impl core::marker::StructuralPartialEq for hakmem::isa::Portable
 impl hakmem::isa::Isa for hakmem::isa::Portable
 pub type hakmem::isa::Portable::U8x16 = hakmem::lanes::Swar16
 pub fn hakmem::isa::Portable::pdep<W: hakmem::word::Word>(self, W, W) -> W
@@ -618,14 +495,11 @@ impl hakmem::lanes::Neon16
 pub fn hakmem::lanes::Neon16::load(&[u8]) -> Self
 pub fn hakmem::lanes::Neon16::splat(u8) -> Self
 pub fn hakmem::lanes::Neon16::zero() -> Self
-impl core::clone::Clone for hakmem::lanes::Neon16
-pub fn hakmem::lanes::Neon16::clone(&self) -> hakmem::lanes::Neon16
 impl core::cmp::Eq for hakmem::lanes::Neon16
 impl core::cmp::PartialEq for hakmem::lanes::Neon16
 pub fn hakmem::lanes::Neon16::eq(&self, &Self) -> bool
 impl core::fmt::Debug for hakmem::lanes::Neon16
 pub fn hakmem::lanes::Neon16::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for hakmem::lanes::Neon16
 impl hakmem::lanes::Lanes for hakmem::lanes::Neon16
 pub type hakmem::lanes::Neon16::Bitmask = u16
 pub type hakmem::lanes::Neon16::Isa = hakmem::isa::Native
@@ -684,9 +558,6 @@ pub fn hakmem::lanes::Swar16<I>::halves(self) -> (u64, u64)
 pub fn hakmem::lanes::Swar16<I>::load(&[u8]) -> Self
 pub fn hakmem::lanes::Swar16<I>::splat(u8) -> Self
 pub fn hakmem::lanes::Swar16<I>::zero() -> Self
-impl<I: core::clone::Clone> core::clone::Clone for hakmem::lanes::Swar16<I>
-pub fn hakmem::lanes::Swar16<I>::clone(&self) -> hakmem::lanes::Swar16<I>
-impl<I: core::marker::Copy> core::marker::Copy for hakmem::lanes::Swar16<I>
 impl<I: hakmem::isa::Isa + core::default::Default> core::cmp::Eq for hakmem::lanes::Swar16<I>
 impl<I: hakmem::isa::Isa + core::default::Default> core::cmp::PartialEq for hakmem::lanes::Swar16<I>
 pub fn hakmem::lanes::Swar16<I>::eq(&self, &Self) -> bool
@@ -751,15 +622,6 @@ impl hakmem::lanes::U8x8
 pub const fn hakmem::lanes::U8x8::load(&[u8]) -> Self
 pub fn hakmem::lanes::U8x8::splat(u8) -> Self
 pub const fn hakmem::lanes::U8x8::zero() -> Self
-impl core::clone::Clone for hakmem::lanes::U8x8
-pub fn hakmem::lanes::U8x8::clone(&self) -> hakmem::lanes::U8x8
-impl core::cmp::Eq for hakmem::lanes::U8x8
-impl core::cmp::PartialEq for hakmem::lanes::U8x8
-pub fn hakmem::lanes::U8x8::eq(&self, &hakmem::lanes::U8x8) -> bool
-impl core::fmt::Debug for hakmem::lanes::U8x8
-pub fn hakmem::lanes::U8x8::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for hakmem::lanes::U8x8
-impl core::marker::StructuralPartialEq for hakmem::lanes::U8x8
 impl hakmem::lanes::Lanes for hakmem::lanes::U8x8
 pub type hakmem::lanes::U8x8::Bitmask = u8
 pub type hakmem::lanes::U8x8::Isa = hakmem::isa::Portable
@@ -1120,17 +982,6 @@ pub const fn hakmem::myers::Occurrence::distance(&self) -> u32
 pub const fn hakmem::myers::Occurrence::end(&self) -> usize
 pub const fn hakmem::myers::Occurrence::range(&self) -> core::ops::range::Range<usize>
 pub const fn hakmem::myers::Occurrence::start(&self) -> usize
-impl core::clone::Clone for hakmem::myers::Occurrence
-pub fn hakmem::myers::Occurrence::clone(&self) -> hakmem::myers::Occurrence
-impl core::cmp::Eq for hakmem::myers::Occurrence
-impl core::cmp::PartialEq for hakmem::myers::Occurrence
-pub fn hakmem::myers::Occurrence::eq(&self, &hakmem::myers::Occurrence) -> bool
-impl core::fmt::Debug for hakmem::myers::Occurrence
-pub fn hakmem::myers::Occurrence::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::hash::Hash for hakmem::myers::Occurrence
-pub fn hakmem::myers::Occurrence::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl core::marker::Copy for hakmem::myers::Occurrence
-impl core::marker::StructuralPartialEq for hakmem::myers::Occurrence
 impl core::marker::Freeze for hakmem::myers::Occurrence
 impl core::marker::Send for hakmem::myers::Occurrence
 impl core::marker::Sync for hakmem::myers::Occurrence
@@ -1186,15 +1037,6 @@ pub hakmem::permute::board8::Dir::West
 impl hakmem::permute::board8::Dir
 pub const hakmem::permute::board8::Dir::ALL: [Self; 8]
 pub const fn hakmem::permute::board8::Dir::shift(self, u64) -> u64
-impl core::clone::Clone for hakmem::permute::board8::Dir
-pub fn hakmem::permute::board8::Dir::clone(&self) -> hakmem::permute::board8::Dir
-impl core::cmp::Eq for hakmem::permute::board8::Dir
-impl core::cmp::PartialEq for hakmem::permute::board8::Dir
-pub fn hakmem::permute::board8::Dir::eq(&self, &hakmem::permute::board8::Dir) -> bool
-impl core::fmt::Debug for hakmem::permute::board8::Dir
-pub fn hakmem::permute::board8::Dir::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl core::marker::Copy for hakmem::permute::board8::Dir
-impl core::marker::StructuralPartialEq for hakmem::permute::board8::Dir
 impl core::marker::Freeze for hakmem::permute::board8::Dir
 impl core::marker::Send for hakmem::permute::board8::Dir
 impl core::marker::Sync for hakmem::permute::board8::Dir
@@ -1221,21 +1063,6 @@ pub fn hakmem::dilated::Dilated<W, D>::mask() -> W
 pub fn hakmem::dilated::Dilated<W, D>::to_int(self) -> W
 pub const fn hakmem::dilated::Dilated<W, D>::width() -> u32
 pub fn hakmem::dilated::Dilated<W, D>::wrapping_add(self, Self) -> Self
-impl<W: core::clone::Clone + hakmem::word::Word, const D: u32> core::clone::Clone for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::clone(&self) -> hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::Eq + hakmem::word::Word, const D: u32> core::cmp::Eq for hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::Ord + hakmem::word::Word, const D: u32> core::cmp::Ord for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::cmp(&self, &hakmem::dilated::Dilated<W, D>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word, const D: u32> core::cmp::PartialEq for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::eq(&self, &hakmem::dilated::Dilated<W, D>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word, const D: u32> core::marker::StructuralPartialEq for hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word, const D: u32> core::cmp::PartialOrd for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::partial_cmp(&self, &hakmem::dilated::Dilated<W, D>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word, const D: u32> core::fmt::Debug for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word, const D: u32> core::hash::Hash for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word, const D: u32> core::marker::Copy for hakmem::dilated::Dilated<W, D>
 impl<W: hakmem::word::Word, const D: u32> core::default::Default for hakmem::dilated::Dilated<W, D>
 pub fn hakmem::dilated::Dilated<W, D>::default() -> Self
 impl<W: hakmem::word::Word, const D: u32> core::fmt::Binary for hakmem::dilated::Dilated<W, D>
@@ -1277,21 +1104,6 @@ pub fn hakmem::hilbert::Hilbert2<W>::to_morton(self) -> hakmem::dilated::Morton2
 impl<W: hakmem::word::Word> hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::cover(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, &mut [(W, W)]) -> &[(W, W)]
 pub fn hakmem::hilbert::Hilbert2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::clone(&self) -> hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::cmp(&self, &hakmem::hilbert::Hilbert2<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::eq(&self, &hakmem::hilbert::Hilbert2<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::partial_cmp(&self, &hakmem::hilbert::Hilbert2<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::hilbert::Hilbert2<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton2<W>> for hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::from(hakmem::dilated::Morton2<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert::Hilbert2<W>> for hakmem::dilated::Morton2<W>
@@ -1344,21 +1156,6 @@ pub const fn hakmem::hilbert3::Hilbert3<W>::from_index(W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::from_morton(hakmem::dilated::Morton3<W>) -> Self
 pub const fn hakmem::hilbert3::Hilbert3<W>::index(self) -> W
 pub fn hakmem::hilbert3::Hilbert3<W>::to_morton(self) -> hakmem::dilated::Morton3<W>
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::clone(&self) -> hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::cmp(&self, &hakmem::hilbert3::Hilbert3<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::eq(&self, &hakmem::hilbert3::Hilbert3<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::partial_cmp(&self, &hakmem::hilbert3::Hilbert3<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::hilbert3::Hilbert3<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton3<W>> for hakmem::hilbert3::Hilbert3<W>
 pub fn hakmem::hilbert3::Hilbert3<W>::from(hakmem::dilated::Morton3<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert3::Hilbert3<W>> for hakmem::dilated::Morton3<W>
@@ -1407,21 +1204,6 @@ pub fn hakmem::dilated::Morton2<W>::y(self) -> hakmem::dilated::Dilated<W, 2>
 impl<W: hakmem::word::Word> hakmem::dilated::Morton2<W>
 pub fn hakmem::dilated::Morton2<W>::cover(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, &mut [(W, W)]) -> &[(W, W)]
 pub fn hakmem::dilated::Morton2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::clone(&self) -> hakmem::dilated::Morton2<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::dilated::Morton2<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::cmp(&self, &hakmem::dilated::Morton2<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::eq(&self, &hakmem::dilated::Morton2<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::dilated::Morton2<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::partial_cmp(&self, &hakmem::dilated::Morton2<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::dilated::Morton2<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton2<W>> for hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::from(hakmem::dilated::Morton2<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert::Hilbert2<W>> for hakmem::dilated::Morton2<W>
@@ -1457,21 +1239,6 @@ pub const fn hakmem::dilated::Morton3<W>::code(self) -> W
 pub fn hakmem::dilated::Morton3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::dilated::Morton3<W>::encode(W, W, W) -> Self
 pub const fn hakmem::dilated::Morton3<W>::from_code(W) -> Self
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::clone(&self) -> hakmem::dilated::Morton3<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::dilated::Morton3<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::cmp(&self, &hakmem::dilated::Morton3<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::eq(&self, &hakmem::dilated::Morton3<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::dilated::Morton3<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::partial_cmp(&self, &hakmem::dilated::Morton3<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::dilated::Morton3<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton3<W>> for hakmem::hilbert3::Hilbert3<W>
 pub fn hakmem::hilbert3::Hilbert3<W>::from(hakmem::dilated::Morton3<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert3::Hilbert3<W>> for hakmem::dilated::Morton3<W>
@@ -1502,13 +1269,8 @@ pub struct hakmem::prelude::Wide<const N: usize>(_)
 impl<const N: usize> hakmem::wide::Wide<N>
 pub const fn hakmem::wide::Wide<N>::from_limbs([u64; N]) -> Self
 pub const fn hakmem::wide::Wide<N>::limbs(self) -> [u64; N]
-impl<const N: usize> core::clone::Clone for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::clone(&self) -> hakmem::wide::Wide<N>
-impl<const N: usize> core::cmp::Eq for hakmem::wide::Wide<N>
 impl<const N: usize> core::cmp::Ord for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::cmp(&self, &Self) -> core::cmp::Ordering
-impl<const N: usize> core::cmp::PartialEq for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::eq(&self, &hakmem::wide::Wide<N>) -> bool
 impl<const N: usize> core::cmp::PartialOrd for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
 impl<const N: usize> core::convert::From<[u64; N]> for hakmem::wide::Wide<N>
@@ -1519,16 +1281,10 @@ impl<const N: usize> core::default::Default for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::default() -> Self
 impl<const N: usize> core::fmt::Binary for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<const N: usize> core::fmt::Debug for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<const N: usize> core::fmt::LowerHex for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<const N: usize> core::fmt::UpperHex for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<const N: usize> core::hash::Hash for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<const N: usize> core::marker::Copy for hakmem::wide::Wide<N>
-impl<const N: usize> core::marker::StructuralPartialEq for hakmem::wide::Wide<N>
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
@@ -2233,11 +1989,6 @@ pub fn hakmem::rank9::Rank9<'a>::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -
 pub fn hakmem::rank9::Rank9<'a>::select(&self, usize) -> core::option::Option<usize>
 pub fn hakmem::rank9::Rank9<'a>::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub const fn hakmem::rank9::Rank9<'a>::select_len(usize) -> usize
-impl<'a> core::clone::Clone for hakmem::rank9::Rank9<'a>
-pub fn hakmem::rank9::Rank9<'a>::clone(&self) -> hakmem::rank9::Rank9<'a>
-impl<'a> core::fmt::Debug for hakmem::rank9::Rank9<'a>
-pub fn hakmem::rank9::Rank9<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<'a> core::marker::Copy for hakmem::rank9::Rank9<'a>
 impl<'a> core::marker::Freeze for hakmem::rank9::Rank9<'a>
 impl<'a> core::marker::Send for hakmem::rank9::Rank9<'a>
 impl<'a> core::marker::Sync for hakmem::rank9::Rank9<'a>
@@ -2255,10 +2006,6 @@ pub fn hakmem::rank9::Rank9Buf<'a>::rank0(&self, usize) -> usize
 pub fn hakmem::rank9::Rank9Buf<'a>::rank_only(&'a [u64]) -> Self
 pub fn hakmem::rank9::Rank9Buf<'a>::select(&self, usize) -> core::option::Option<usize>
 pub fn hakmem::rank9::Rank9Buf<'a>::view(&self) -> hakmem::rank9::Rank9<'_>
-impl<'a> core::clone::Clone for hakmem::rank9::Rank9Buf<'a>
-pub fn hakmem::rank9::Rank9Buf<'a>::clone(&self) -> hakmem::rank9::Rank9Buf<'a>
-impl<'a> core::fmt::Debug for hakmem::rank9::Rank9Buf<'a>
-pub fn hakmem::rank9::Rank9Buf<'a>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<'a> core::marker::Freeze for hakmem::rank9::Rank9Buf<'a>
 impl<'a> core::marker::Send for hakmem::rank9::Rank9Buf<'a>
 impl<'a> core::marker::Sync for hakmem::rank9::Rank9Buf<'a>
@@ -2268,10 +2015,6 @@ impl<'a> core::panic::unwind_safe::RefUnwindSafe for hakmem::rank9::Rank9Buf<'a>
 impl<'a> core::panic::unwind_safe::UnwindSafe for hakmem::rank9::Rank9Buf<'a>
 pub mod hakmem::set
 pub struct hakmem::set::Positions<W: hakmem::word::Word>(_)
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::set::Positions<W>
-pub fn hakmem::set::Positions<W>::clone(&self) -> hakmem::set::Positions<W>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::set::Positions<W>
-pub fn hakmem::set::Positions<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<W: hakmem::word::Word> core::iter::traits::double_ended::DoubleEndedIterator for hakmem::set::Positions<W>
 pub fn hakmem::set::Positions<W>::next_back(&mut self) -> core::option::Option<u32>
 impl<W: hakmem::word::Word> core::iter::traits::exact_size::ExactSizeIterator for hakmem::set::Positions<W>
@@ -2288,10 +2031,6 @@ impl<W> core::marker::UnsafeUnpin for hakmem::set::Positions<W> where W: core::m
 impl<W> core::panic::unwind_safe::RefUnwindSafe for hakmem::set::Positions<W> where W: core::panic::unwind_safe::RefUnwindSafe
 impl<W> core::panic::unwind_safe::UnwindSafe for hakmem::set::Positions<W> where W: core::panic::unwind_safe::UnwindSafe
 pub struct hakmem::set::Subsets<W: hakmem::word::Word>
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::set::Subsets<W>
-pub fn hakmem::set::Subsets<W>::clone(&self) -> hakmem::set::Subsets<W>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::set::Subsets<W>
-pub fn hakmem::set::Subsets<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<W: hakmem::word::Word> core::iter::traits::iterator::Iterator for hakmem::set::Subsets<W>
 pub type hakmem::set::Subsets<W>::Item = W
 pub fn hakmem::set::Subsets<W>::next(&mut self) -> core::option::Option<W>
@@ -2341,13 +2080,8 @@ pub struct hakmem::wide::Wide<const N: usize>(_)
 impl<const N: usize> hakmem::wide::Wide<N>
 pub const fn hakmem::wide::Wide<N>::from_limbs([u64; N]) -> Self
 pub const fn hakmem::wide::Wide<N>::limbs(self) -> [u64; N]
-impl<const N: usize> core::clone::Clone for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::clone(&self) -> hakmem::wide::Wide<N>
-impl<const N: usize> core::cmp::Eq for hakmem::wide::Wide<N>
 impl<const N: usize> core::cmp::Ord for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::cmp(&self, &Self) -> core::cmp::Ordering
-impl<const N: usize> core::cmp::PartialEq for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::eq(&self, &hakmem::wide::Wide<N>) -> bool
 impl<const N: usize> core::cmp::PartialOrd for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
 impl<const N: usize> core::convert::From<[u64; N]> for hakmem::wide::Wide<N>
@@ -2358,16 +2092,10 @@ impl<const N: usize> core::default::Default for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::default() -> Self
 impl<const N: usize> core::fmt::Binary for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<const N: usize> core::fmt::Debug for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<const N: usize> core::fmt::LowerHex for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<const N: usize> core::fmt::UpperHex for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<const N: usize> core::hash::Hash for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<const N: usize> core::marker::Copy for hakmem::wide::Wide<N>
-impl<const N: usize> core::marker::StructuralPartialEq for hakmem::wide::Wide<N>
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
@@ -2711,21 +2439,6 @@ pub fn hakmem::dilated::Dilated<W, D>::mask() -> W
 pub fn hakmem::dilated::Dilated<W, D>::to_int(self) -> W
 pub const fn hakmem::dilated::Dilated<W, D>::width() -> u32
 pub fn hakmem::dilated::Dilated<W, D>::wrapping_add(self, Self) -> Self
-impl<W: core::clone::Clone + hakmem::word::Word, const D: u32> core::clone::Clone for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::clone(&self) -> hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::Eq + hakmem::word::Word, const D: u32> core::cmp::Eq for hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::Ord + hakmem::word::Word, const D: u32> core::cmp::Ord for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::cmp(&self, &hakmem::dilated::Dilated<W, D>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word, const D: u32> core::cmp::PartialEq for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::eq(&self, &hakmem::dilated::Dilated<W, D>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word, const D: u32> core::marker::StructuralPartialEq for hakmem::dilated::Dilated<W, D>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word, const D: u32> core::cmp::PartialOrd for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::partial_cmp(&self, &hakmem::dilated::Dilated<W, D>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word, const D: u32> core::fmt::Debug for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word, const D: u32> core::hash::Hash for hakmem::dilated::Dilated<W, D>
-pub fn hakmem::dilated::Dilated<W, D>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word, const D: u32> core::marker::Copy for hakmem::dilated::Dilated<W, D>
 impl<W: hakmem::word::Word, const D: u32> core::default::Default for hakmem::dilated::Dilated<W, D>
 pub fn hakmem::dilated::Dilated<W, D>::default() -> Self
 impl<W: hakmem::word::Word, const D: u32> core::fmt::Binary for hakmem::dilated::Dilated<W, D>
@@ -2767,21 +2480,6 @@ pub fn hakmem::hilbert::Hilbert2<W>::to_morton(self) -> hakmem::dilated::Morton2
 impl<W: hakmem::word::Word> hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::cover(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, &mut [(W, W)]) -> &[(W, W)]
 pub fn hakmem::hilbert::Hilbert2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::clone(&self) -> hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::cmp(&self, &hakmem::hilbert::Hilbert2<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::eq(&self, &hakmem::hilbert::Hilbert2<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::hilbert::Hilbert2<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::partial_cmp(&self, &hakmem::hilbert::Hilbert2<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::hilbert::Hilbert2<W>
-pub fn hakmem::hilbert::Hilbert2<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::hilbert::Hilbert2<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton2<W>> for hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::from(hakmem::dilated::Morton2<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert::Hilbert2<W>> for hakmem::dilated::Morton2<W>
@@ -2834,21 +2532,6 @@ pub const fn hakmem::hilbert3::Hilbert3<W>::from_index(W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::from_morton(hakmem::dilated::Morton3<W>) -> Self
 pub const fn hakmem::hilbert3::Hilbert3<W>::index(self) -> W
 pub fn hakmem::hilbert3::Hilbert3<W>::to_morton(self) -> hakmem::dilated::Morton3<W>
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::clone(&self) -> hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::cmp(&self, &hakmem::hilbert3::Hilbert3<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::eq(&self, &hakmem::hilbert3::Hilbert3<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::hilbert3::Hilbert3<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::partial_cmp(&self, &hakmem::hilbert3::Hilbert3<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::hilbert3::Hilbert3<W>
-pub fn hakmem::hilbert3::Hilbert3<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::hilbert3::Hilbert3<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton3<W>> for hakmem::hilbert3::Hilbert3<W>
 pub fn hakmem::hilbert3::Hilbert3<W>::from(hakmem::dilated::Morton3<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert3::Hilbert3<W>> for hakmem::dilated::Morton3<W>
@@ -2897,21 +2580,6 @@ pub fn hakmem::dilated::Morton2<W>::y(self) -> hakmem::dilated::Dilated<W, 2>
 impl<W: hakmem::word::Word> hakmem::dilated::Morton2<W>
 pub fn hakmem::dilated::Morton2<W>::cover(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, &mut [(W, W)]) -> &[(W, W)]
 pub fn hakmem::dilated::Morton2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::clone(&self) -> hakmem::dilated::Morton2<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::dilated::Morton2<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::cmp(&self, &hakmem::dilated::Morton2<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::eq(&self, &hakmem::dilated::Morton2<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::dilated::Morton2<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::partial_cmp(&self, &hakmem::dilated::Morton2<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::dilated::Morton2<W>
-pub fn hakmem::dilated::Morton2<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::dilated::Morton2<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton2<W>> for hakmem::hilbert::Hilbert2<W>
 pub fn hakmem::hilbert::Hilbert2<W>::from(hakmem::dilated::Morton2<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert::Hilbert2<W>> for hakmem::dilated::Morton2<W>
@@ -2947,21 +2615,6 @@ pub const fn hakmem::dilated::Morton3<W>::code(self) -> W
 pub fn hakmem::dilated::Morton3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::dilated::Morton3<W>::encode(W, W, W) -> Self
 pub const fn hakmem::dilated::Morton3<W>::from_code(W) -> Self
-impl<W: core::clone::Clone + hakmem::word::Word> core::clone::Clone for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::clone(&self) -> hakmem::dilated::Morton3<W>
-impl<W: core::cmp::Eq + hakmem::word::Word> core::cmp::Eq for hakmem::dilated::Morton3<W>
-impl<W: core::cmp::Ord + hakmem::word::Word> core::cmp::Ord for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::cmp(&self, &hakmem::dilated::Morton3<W>) -> core::cmp::Ordering
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::cmp::PartialEq for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::eq(&self, &hakmem::dilated::Morton3<W>) -> bool
-impl<W: core::cmp::PartialEq + hakmem::word::Word> core::marker::StructuralPartialEq for hakmem::dilated::Morton3<W>
-impl<W: core::cmp::PartialOrd + hakmem::word::Word> core::cmp::PartialOrd for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::partial_cmp(&self, &hakmem::dilated::Morton3<W>) -> core::option::Option<core::cmp::Ordering>
-impl<W: core::fmt::Debug + hakmem::word::Word> core::fmt::Debug for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<W: core::hash::Hash + hakmem::word::Word> core::hash::Hash for hakmem::dilated::Morton3<W>
-pub fn hakmem::dilated::Morton3<W>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<W: core::marker::Copy + hakmem::word::Word> core::marker::Copy for hakmem::dilated::Morton3<W>
 impl<W: hakmem::word::Word> core::convert::From<hakmem::dilated::Morton3<W>> for hakmem::hilbert3::Hilbert3<W>
 pub fn hakmem::hilbert3::Hilbert3<W>::from(hakmem::dilated::Morton3<W>) -> Self
 impl<W: hakmem::word::Word> core::convert::From<hakmem::hilbert3::Hilbert3<W>> for hakmem::dilated::Morton3<W>
@@ -2992,13 +2645,8 @@ pub struct hakmem::Wide<const N: usize>(_)
 impl<const N: usize> hakmem::wide::Wide<N>
 pub const fn hakmem::wide::Wide<N>::from_limbs([u64; N]) -> Self
 pub const fn hakmem::wide::Wide<N>::limbs(self) -> [u64; N]
-impl<const N: usize> core::clone::Clone for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::clone(&self) -> hakmem::wide::Wide<N>
-impl<const N: usize> core::cmp::Eq for hakmem::wide::Wide<N>
 impl<const N: usize> core::cmp::Ord for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::cmp(&self, &Self) -> core::cmp::Ordering
-impl<const N: usize> core::cmp::PartialEq for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::eq(&self, &hakmem::wide::Wide<N>) -> bool
 impl<const N: usize> core::cmp::PartialOrd for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::partial_cmp(&self, &Self) -> core::option::Option<core::cmp::Ordering>
 impl<const N: usize> core::convert::From<[u64; N]> for hakmem::wide::Wide<N>
@@ -3009,16 +2657,10 @@ impl<const N: usize> core::default::Default for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::default() -> Self
 impl<const N: usize> core::fmt::Binary for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<const N: usize> core::fmt::Debug for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<const N: usize> core::fmt::LowerHex for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
 impl<const N: usize> core::fmt::UpperHex for hakmem::wide::Wide<N>
 pub fn hakmem::wide::Wide<N>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
-impl<const N: usize> core::hash::Hash for hakmem::wide::Wide<N>
-pub fn hakmem::wide::Wide<N>::hash<__H: core::hash::Hasher>(&self, &mut __H)
-impl<const N: usize> core::marker::Copy for hakmem::wide::Wide<N>
-impl<const N: usize> core::marker::StructuralPartialEq for hakmem::wide::Wide<N>
 impl<const N: usize> hakmem::word::Word for hakmem::wide::Wide<N>
 pub const hakmem::wide::Wide<N>::BITS: u32
 pub const hakmem::wide::Wide<N>::ONE: Self
