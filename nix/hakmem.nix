@@ -173,7 +173,20 @@ in {
             git diff --stat HEAD
             echo '```'
             echo
-            rows=$(git diff -U0 HEAD -- codegen | awk -f ${../codegen/moved.awk} | sort)
+            # Every codegen snapshot in HEAD or in the tree, the old one
+            # against the new, empty where it is not.
+            old=$(mktemp)
+            rows=$(
+              { git ls-tree --name-only HEAD codegen/; ls codegen/*.txt; } 2>/dev/null \
+                | grep '\.txt$' | sort -u \
+                | while read -r f; do
+                  git show "HEAD:$f" > "$old" 2>/dev/null || : > "$old"
+                  new=$f
+                  [ -e "$new" ] || new=/dev/null
+                  awk -v snap="$(basename "$f" .txt)" -f ${../codegen/moved.awk} "$old" "$new"
+                done | sort
+            )
+            rm "$old"
             if [ -z "$rows" ]; then
               echo "No codegen loop moved by more than a tenth."
               exit 0
