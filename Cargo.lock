@@ -1578,9 +1578,9 @@ dependencies = [
 
 [[package]]
 name = "sucds"
-version = "0.9.1"
+version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "12a78cbe3f9e9890b75fda600a27bb0641c461ec863344c13930c648379b121f"
+checksum = "5daf36f30cf37a5a99eed7a86c0c717a7f70e6b45aab14374fe75702e1f69494"
 
 [[package]]
 name = "sux"

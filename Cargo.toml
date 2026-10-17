@@ -37,7 +37,7 @@ strsim = "0.11"        # Levenshtein on &str
 triple_accel = "0.4"   # SIMD-accelerated Myers Levenshtein on bytes
 # Incumbents for benches/rank9.rs: rank/select directories people use today.
 sux = { version = "0.14", default-features = false }   # Vigna: rank9 / select9
-sucds = "0.9"            # Rank9Sel
+sucds = "0.10"            # Rank9Sel
 vers-vecs = "1"          # RsVec
 # Incumbents for benches/hilbert.rs: 2D Hilbert curves.
 fast_hilbert = "2.1"     # 512-byte transition table, three levels a step
