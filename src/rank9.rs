@@ -566,66 +566,6 @@ impl<'a> Rank9<'a> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn uleq_step9_every_pair_in_every_lane() {
-        for lane in 0..7 {
-            for x in 0..512u64 {
-                for y in 0..512u64 {
-                    let got = uleq_step9(x << (9 * lane), y << (9 * lane)) >> (9 * lane + 8) & 1;
-                    assert_eq!(got == 1, x <= y, "lane {lane}: {x} <= {y}");
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn uleq_step9_lanes_do_not_interfere() {
-        // Neighbouring lanes at the extremes must not borrow into each other.
-        let x = 511 | 511 << 18 | 511 << 36 | 511 << 54;
-        let y = 511 << 9 | 511 << 18 | 1 << 36 | 510 << 54;
-        let expect = [false, true, true, true, false, true, false];
-        let got = uleq_step9(x, y);
-        for (lane, e) in expect.into_iter().enumerate() {
-            assert_eq!(got >> (9 * lane + 8) & 1 == 1, e, "lane {lane}");
-        }
-    }
-
-    #[test]
-    fn uleq_step16_small_every_pair_sampled() {
-        let mut s = 0x9E37_79B9u64;
-        for _ in 0..200_000 {
-            s ^= s << 13;
-            s ^= s >> 7;
-            s ^= s << 17;
-            let (x, y) = (s & 0x7FFF, s >> 32 & 0x7FFF);
-            for lane in 0..4 {
-                let got =
-                    uleq_step16_small(x << (16 * lane), y << (16 * lane)) >> (16 * lane + 15) & 1;
-                assert_eq!(got == 1, x <= y, "lane {lane}: {x} <= {y}");
-            }
-        }
-    }
-
-    #[test]
-    fn span_thresholds() {
-        assert_eq!(Span::of(0), Span::Tiny);
-        assert_eq!(Span::of(3), Span::Tiny);
-        assert_eq!(Span::of(4), Span::Flat);
-        assert_eq!(Span::of(15), Span::Flat);
-        assert_eq!(Span::of(16), Span::Two);
-        assert_eq!(Span::of(63), Span::Two);
-        assert_eq!(Span::of(64), Span::Pos16);
-        assert_eq!(Span::of(127), Span::Pos16);
-        assert_eq!(Span::of(128), Span::Pos32);
-        assert_eq!(Span::of(0x7F_FFFF), Span::Pos32);
-        assert_eq!(Span::of(0x80_0000), Span::Search);
-    }
-}
-
 /// [`Rank9`] with the directory allocated for you: one call from a bit
 /// slice to rank and select. Behind the `alloc` feature, on by default; the view type
 /// stays the whole API, this only owns its two buffers.
@@ -721,5 +661,65 @@ impl<'a> Rank9Buf<'a> {
     #[allow(clippy::missing_inline_in_public_items)]
     pub fn into_parts(self) -> (alloc::boxed::Box<[u64]>, alloc::boxed::Box<[u64]>) {
         (self.counts, self.select)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn uleq_step9_every_pair_in_every_lane() {
+        for lane in 0..7 {
+            for x in 0..512u64 {
+                for y in 0..512u64 {
+                    let got = uleq_step9(x << (9 * lane), y << (9 * lane)) >> (9 * lane + 8) & 1;
+                    assert_eq!(got == 1, x <= y, "lane {lane}: {x} <= {y}");
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn uleq_step9_lanes_do_not_interfere() {
+        // Neighbouring lanes at the extremes must not borrow into each other.
+        let x = 511 | 511 << 18 | 511 << 36 | 511 << 54;
+        let y = 511 << 9 | 511 << 18 | 1 << 36 | 510 << 54;
+        let expect = [false, true, true, true, false, true, false];
+        let got = uleq_step9(x, y);
+        for (lane, e) in expect.into_iter().enumerate() {
+            assert_eq!(got >> (9 * lane + 8) & 1 == 1, e, "lane {lane}");
+        }
+    }
+
+    #[test]
+    fn uleq_step16_small_every_pair_sampled() {
+        let mut s = 0x9E37_79B9u64;
+        for _ in 0..200_000 {
+            s ^= s << 13;
+            s ^= s >> 7;
+            s ^= s << 17;
+            let (x, y) = (s & 0x7FFF, s >> 32 & 0x7FFF);
+            for lane in 0..4 {
+                let got =
+                    uleq_step16_small(x << (16 * lane), y << (16 * lane)) >> (16 * lane + 15) & 1;
+                assert_eq!(got == 1, x <= y, "lane {lane}: {x} <= {y}");
+            }
+        }
+    }
+
+    #[test]
+    fn span_thresholds() {
+        assert_eq!(Span::of(0), Span::Tiny);
+        assert_eq!(Span::of(3), Span::Tiny);
+        assert_eq!(Span::of(4), Span::Flat);
+        assert_eq!(Span::of(15), Span::Flat);
+        assert_eq!(Span::of(16), Span::Two);
+        assert_eq!(Span::of(63), Span::Two);
+        assert_eq!(Span::of(64), Span::Pos16);
+        assert_eq!(Span::of(127), Span::Pos16);
+        assert_eq!(Span::of(128), Span::Pos32);
+        assert_eq!(Span::of(0x7F_FFFF), Span::Pos32);
+        assert_eq!(Span::of(0x80_0000), Span::Search);
     }
 }

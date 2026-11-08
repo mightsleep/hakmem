@@ -1425,7 +1425,7 @@ pub fn find_escaped_matches_reference<W: Word>(words: &[W], prev_ends_odd: bool)
             if run_odd && !w.bit(i) {
                 want = want.or(W::ONE.shl(i));
             }
-            run_odd = if w.bit(i) { !run_odd } else { false };
+            run_odd = w.bit(i) && !run_odd;
         }
         if escaped != want || next_carry != run_odd {
             return false;
