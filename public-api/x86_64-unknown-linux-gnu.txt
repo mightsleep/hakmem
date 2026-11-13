@@ -23,7 +23,9 @@ pub const fn hakmem::affine::Affine8::shr(u32) -> Self
 pub const fn hakmem::affine::Affine8::sra(u32) -> Self
 pub const fn hakmem::affine::Affine8::tables(self) -> ([u8; 16], [u8; 16])
 pub const fn hakmem::affine::Affine8::then(self, Self) -> Self
+impl core::marker::Forget for hakmem::affine::Affine8
 impl core::marker::Freeze for hakmem::affine::Affine8
+impl core::marker::Move for hakmem::affine::Affine8
 impl core::marker::Send for hakmem::affine::Affine8
 impl core::marker::Sync for hakmem::affine::Affine8
 impl core::marker::Unpin for hakmem::affine::Affine8
@@ -202,7 +204,9 @@ impl<W: hakmem::word::Word, const D: u32> core::default::Default for hakmem::dil
 pub fn hakmem::dilated::Dilated<W, D>::default() -> Self
 impl<W: hakmem::word::Word, const D: u32> core::fmt::Binary for hakmem::dilated::Dilated<W, D>
 pub fn hakmem::dilated::Dilated<W, D>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<W, const D: u32> core::marker::Forget for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Freeze for hakmem::dilated::Dilated<W, D> where W: core::marker::Freeze
+impl<W, const D: u32> core::marker::Move for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Send for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Sync for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Unpin for hakmem::dilated::Dilated<W, D> where W: core::marker::Unpin
@@ -252,7 +256,9 @@ pub fn hakmem::dilated::Morton2<W>::encode(W, W) -> Self
 pub fn hakmem::dilated::Morton2<W>::from_key(W) -> Self
 pub fn hakmem::dilated::Morton2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
 pub fn hakmem::dilated::Morton2<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Freeze for hakmem::dilated::Morton2<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Send for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Sync for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Unpin for hakmem::dilated::Morton2<W> where W: core::marker::Unpin
@@ -285,7 +291,9 @@ pub fn hakmem::dilated::Morton3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::dilated::Morton3<W>::encode(W, W, W) -> Self
 pub fn hakmem::dilated::Morton3<W>::from_key(W) -> Self
 pub fn hakmem::dilated::Morton3<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Freeze for hakmem::dilated::Morton3<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Send for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Sync for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Unpin for hakmem::dilated::Morton3<W> where W: core::marker::Unpin
@@ -349,7 +357,9 @@ pub fn hakmem::hilbert::Hilbert2<W>::encode(W, W) -> Self
 pub fn hakmem::hilbert::Hilbert2<W>::from_key(W) -> Self
 pub fn hakmem::hilbert::Hilbert2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
 pub fn hakmem::hilbert::Hilbert2<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Freeze for hakmem::hilbert::Hilbert2<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Send for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Sync for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Unpin for hakmem::hilbert::Hilbert2<W> where W: core::marker::Unpin
@@ -400,7 +410,9 @@ pub fn hakmem::hilbert3::Hilbert3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::hilbert3::Hilbert3<W>::encode(W, W, W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::from_key(W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Freeze for hakmem::hilbert3::Hilbert3<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Send for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Sync for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Unpin for hakmem::hilbert3::Hilbert3<W> where W: core::marker::Unpin
@@ -414,7 +426,9 @@ pub hakmem::isa::Level::Portable(hakmem::isa::Portable)
 pub hakmem::isa::Level::X86V2(hakmem::isa::X86V2)
 pub hakmem::isa::Level::X86V3(hakmem::isa::X86V3)
 pub hakmem::isa::Level::X86V4(hakmem::isa::X86V4)
+impl core::marker::Forget for hakmem::isa::Level
 impl core::marker::Freeze for hakmem::isa::Level
+impl core::marker::Move for hakmem::isa::Level
 impl core::marker::Send for hakmem::isa::Level
 impl core::marker::Sync for hakmem::isa::Level
 impl core::marker::Unpin for hakmem::isa::Level
@@ -432,7 +446,9 @@ pub fn hakmem::isa::Native::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Native::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Native::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Native::zip<W: hakmem::word::Word>(self, W, W) -> W
+impl core::marker::Forget for hakmem::isa::Native
 impl core::marker::Freeze for hakmem::isa::Native
+impl core::marker::Move for hakmem::isa::Native
 impl core::marker::Send for hakmem::isa::Native
 impl core::marker::Sync for hakmem::isa::Native
 impl core::marker::Unpin for hakmem::isa::Native
@@ -450,7 +466,9 @@ pub fn hakmem::isa::Portable::unzip<W: hakmem::word::Word>(self, W) -> (W, W)
 pub fn hakmem::isa::Portable::xor_scan<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Portable::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::Portable::zip<W: hakmem::word::Word>(self, W, W) -> W
+impl core::marker::Forget for hakmem::isa::Portable
 impl core::marker::Freeze for hakmem::isa::Portable
+impl core::marker::Move for hakmem::isa::Portable
 impl core::marker::Send for hakmem::isa::Portable
 impl core::marker::Sync for hakmem::isa::Portable
 impl core::marker::Unpin for hakmem::isa::Portable
@@ -476,7 +494,9 @@ pub fn hakmem::isa::X86V2::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::X86V2::zip<W: hakmem::word::Word>(self, W, W) -> W
 impl hakmem::isa::X86Level for hakmem::isa::X86V2
 pub const hakmem::isa::X86V2::GFNI: bool
+impl core::marker::Forget for hakmem::isa::X86V2
 impl core::marker::Freeze for hakmem::isa::X86V2
+impl core::marker::Move for hakmem::isa::X86V2
 impl core::marker::Send for hakmem::isa::X86V2
 impl core::marker::Sync for hakmem::isa::X86V2
 impl core::marker::Unpin for hakmem::isa::X86V2
@@ -502,7 +522,9 @@ pub fn hakmem::isa::X86V3::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::X86V3::zip<W: hakmem::word::Word>(self, W, W) -> W
 impl hakmem::isa::X86Level for hakmem::isa::X86V3
 pub const hakmem::isa::X86V3::GFNI: bool
+impl core::marker::Forget for hakmem::isa::X86V3
 impl core::marker::Freeze for hakmem::isa::X86V3
+impl core::marker::Move for hakmem::isa::X86V3
 impl core::marker::Send for hakmem::isa::X86V3
 impl core::marker::Sync for hakmem::isa::X86V3
 impl core::marker::Unpin for hakmem::isa::X86V3
@@ -528,7 +550,9 @@ pub fn hakmem::isa::X86V4::xor_scan_down<W: hakmem::word::Word>(self, W) -> W
 pub fn hakmem::isa::X86V4::zip<W: hakmem::word::Word>(self, W, W) -> W
 impl hakmem::isa::X86Level for hakmem::isa::X86V4
 pub const hakmem::isa::X86V4::GFNI: bool
+impl core::marker::Forget for hakmem::isa::X86V4
 impl core::marker::Freeze for hakmem::isa::X86V4
+impl core::marker::Move for hakmem::isa::X86V4
 impl core::marker::Send for hakmem::isa::X86V4
 impl core::marker::Sync for hakmem::isa::X86V4
 impl core::marker::Unpin for hakmem::isa::X86V4
@@ -662,7 +686,9 @@ pub fn hakmem::lanes::Swar16<I>::unpack_hi(self, Self) -> Self
 pub fn hakmem::lanes::Swar16<I>::unpack_lo(self, Self) -> Self
 pub fn hakmem::lanes::Swar16<I>::xor(self, Self) -> Self
 pub fn hakmem::lanes::Swar16<I>::zero(Self::Isa) -> Self
+impl<I> core::marker::Forget for hakmem::lanes::Swar16<I>
 impl<I> core::marker::Freeze for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::Freeze
+impl<I> core::marker::Move for hakmem::lanes::Swar16<I>
 impl<I> core::marker::Send for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::Send
 impl<I> core::marker::Sync for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::Sync
 impl<I> core::marker::Unpin for hakmem::lanes::Swar16<I> where core::marker::PhantomData<I>: core::marker::Unpin
@@ -721,7 +747,9 @@ pub fn hakmem::lanes::U8x8::unpack_hi(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::unpack_lo(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::xor(self, Self) -> Self
 pub fn hakmem::lanes::U8x8::zero(Self::Isa) -> Self
+impl core::marker::Forget for hakmem::lanes::U8x8
 impl core::marker::Freeze for hakmem::lanes::U8x8
+impl core::marker::Move for hakmem::lanes::U8x8
 impl core::marker::Send for hakmem::lanes::U8x8
 impl core::marker::Sync for hakmem::lanes::U8x8
 impl core::marker::Unpin for hakmem::lanes::U8x8
@@ -781,7 +809,9 @@ pub fn hakmem::lanes::X86x16<L>::unpack_hi(self, Self) -> Self
 pub fn hakmem::lanes::X86x16<L>::unpack_lo(self, Self) -> Self
 pub fn hakmem::lanes::X86x16<L>::xor(self, Self) -> Self
 pub fn hakmem::lanes::X86x16<L>::zero(Self::Isa) -> Self
+impl<L> core::marker::Forget for hakmem::lanes::X86x16<L>
 impl<L> core::marker::Freeze for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::Freeze
+impl<L> core::marker::Move for hakmem::lanes::X86x16<L>
 impl<L> core::marker::Send for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::Send
 impl<L> core::marker::Sync for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::Sync
 impl<L> core::marker::Unpin for hakmem::lanes::X86x16<L> where core::marker::PhantomData<L>: core::marker::Unpin
@@ -1097,7 +1127,9 @@ pub const fn hakmem::myers::Occurrence::distance(&self) -> u32
 pub const fn hakmem::myers::Occurrence::end(&self) -> usize
 pub const fn hakmem::myers::Occurrence::range(&self) -> core::ops::range::Range<usize>
 pub const fn hakmem::myers::Occurrence::start(&self) -> usize
+impl core::marker::Forget for hakmem::myers::Occurrence
 impl core::marker::Freeze for hakmem::myers::Occurrence
+impl core::marker::Move for hakmem::myers::Occurrence
 impl core::marker::Send for hakmem::myers::Occurrence
 impl core::marker::Sync for hakmem::myers::Occurrence
 impl core::marker::Unpin for hakmem::myers::Occurrence
@@ -1111,7 +1143,9 @@ impl<W: hakmem::word::Word> core::iter::traits::iterator::Iterator for hakmem::m
 pub type hakmem::myers::Occurrences<'_, W>::Item = hakmem::myers::Occurrence
 pub fn hakmem::myers::Occurrences<'_, W>::next(&mut self) -> core::option::Option<hakmem::myers::Occurrence>
 impl<W: hakmem::word::Word> core::iter::traits::marker::FusedIterator for hakmem::myers::Occurrences<'_, W>
+impl<'t, W> core::marker::Forget for hakmem::myers::Occurrences<'t, W>
 impl<'t, W> core::marker::Freeze for hakmem::myers::Occurrences<'t, W> where hakmem::myers::Search<'t, W>: core::marker::Freeze, Peq<W>: core::marker::Freeze
+impl<'t, W> core::marker::Move for hakmem::myers::Occurrences<'t, W>
 impl<'t, W> core::marker::Send for hakmem::myers::Occurrences<'t, W> where hakmem::myers::Search<'t, W>: core::marker::Send, Peq<W>: core::marker::Send
 impl<'t, W> core::marker::Sync for hakmem::myers::Occurrences<'t, W> where hakmem::myers::Search<'t, W>: core::marker::Sync, Peq<W>: core::marker::Sync
 impl<'t, W> core::marker::Unpin for hakmem::myers::Occurrences<'t, W> where hakmem::myers::Search<'t, W>: core::marker::Unpin, Peq<W>: core::marker::Unpin
@@ -1127,7 +1161,9 @@ impl<W: hakmem::word::Word> core::iter::traits::iterator::Iterator for hakmem::m
 pub type hakmem::myers::Search<'_, W>::Item = (usize, u32)
 pub fn hakmem::myers::Search<'_, W>::next(&mut self) -> core::option::Option<(usize, u32)>
 impl<W: hakmem::word::Word> core::iter::traits::marker::FusedIterator for hakmem::myers::Search<'_, W>
+impl<'t, W> core::marker::Forget for hakmem::myers::Search<'t, W>
 impl<'t, W> core::marker::Freeze for hakmem::myers::Search<'t, W> where Peq<W>: core::marker::Freeze, Column<W>: core::marker::Freeze
+impl<'t, W> core::marker::Move for hakmem::myers::Search<'t, W>
 impl<'t, W> core::marker::Send for hakmem::myers::Search<'t, W> where Peq<W>: core::marker::Send, Column<W>: core::marker::Send
 impl<'t, W> core::marker::Sync for hakmem::myers::Search<'t, W> where Peq<W>: core::marker::Sync, Column<W>: core::marker::Sync
 impl<'t, W> core::marker::Unpin for hakmem::myers::Search<'t, W> where Peq<W>: core::marker::Unpin, Column<W>: core::marker::Unpin
@@ -1152,7 +1188,9 @@ pub hakmem::permute::board8::Dir::West
 impl hakmem::permute::board8::Dir
 pub const hakmem::permute::board8::Dir::ALL: [Self; 8]
 pub const fn hakmem::permute::board8::Dir::shift(self, u64) -> u64
+impl core::marker::Forget for hakmem::permute::board8::Dir
 impl core::marker::Freeze for hakmem::permute::board8::Dir
+impl core::marker::Move for hakmem::permute::board8::Dir
 impl core::marker::Send for hakmem::permute::board8::Dir
 impl core::marker::Sync for hakmem::permute::board8::Dir
 impl core::marker::Unpin for hakmem::permute::board8::Dir
@@ -1182,7 +1220,9 @@ impl<W: hakmem::word::Word, const D: u32> core::default::Default for hakmem::dil
 pub fn hakmem::dilated::Dilated<W, D>::default() -> Self
 impl<W: hakmem::word::Word, const D: u32> core::fmt::Binary for hakmem::dilated::Dilated<W, D>
 pub fn hakmem::dilated::Dilated<W, D>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<W, const D: u32> core::marker::Forget for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Freeze for hakmem::dilated::Dilated<W, D> where W: core::marker::Freeze
+impl<W, const D: u32> core::marker::Move for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Send for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Sync for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Unpin for hakmem::dilated::Dilated<W, D> where W: core::marker::Unpin
@@ -1240,7 +1280,9 @@ pub fn hakmem::hilbert::Hilbert2<W>::encode(W, W) -> Self
 pub fn hakmem::hilbert::Hilbert2<W>::from_key(W) -> Self
 pub fn hakmem::hilbert::Hilbert2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
 pub fn hakmem::hilbert::Hilbert2<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Freeze for hakmem::hilbert::Hilbert2<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Send for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Sync for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Unpin for hakmem::hilbert::Hilbert2<W> where W: core::marker::Unpin
@@ -1290,7 +1332,9 @@ pub fn hakmem::hilbert3::Hilbert3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::hilbert3::Hilbert3<W>::encode(W, W, W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::from_key(W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Freeze for hakmem::hilbert3::Hilbert3<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Send for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Sync for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Unpin for hakmem::hilbert3::Hilbert3<W> where W: core::marker::Unpin
@@ -1340,7 +1384,9 @@ pub fn hakmem::dilated::Morton2<W>::encode(W, W) -> Self
 pub fn hakmem::dilated::Morton2<W>::from_key(W) -> Self
 pub fn hakmem::dilated::Morton2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
 pub fn hakmem::dilated::Morton2<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Freeze for hakmem::dilated::Morton2<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Send for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Sync for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Unpin for hakmem::dilated::Morton2<W> where W: core::marker::Unpin
@@ -1373,7 +1419,9 @@ pub fn hakmem::dilated::Morton3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::dilated::Morton3<W>::encode(W, W, W) -> Self
 pub fn hakmem::dilated::Morton3<W>::from_key(W) -> Self
 pub fn hakmem::dilated::Morton3<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Freeze for hakmem::dilated::Morton3<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Send for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Sync for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Unpin for hakmem::dilated::Morton3<W> where W: core::marker::Unpin
@@ -1440,7 +1488,9 @@ pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> 
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
+impl<const N: usize> core::marker::Forget for hakmem::wide::Wide<N>
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
+impl<const N: usize> core::marker::Move for hakmem::wide::Wide<N>
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
 impl<const N: usize> core::marker::Unpin for hakmem::wide::Wide<N> where [u64; N]: core::marker::Unpin
@@ -2104,7 +2154,9 @@ pub fn hakmem::rank9::Rank9<'a>::rank_in<I: hakmem::isa::Isa>(&self, usize, I) -
 pub fn hakmem::rank9::Rank9<'a>::select(&self, usize) -> core::option::Option<usize>
 pub fn hakmem::rank9::Rank9<'a>::select_in<I: hakmem::isa::Isa>(&self, usize, I) -> core::option::Option<usize>
 pub const fn hakmem::rank9::Rank9<'a>::select_len(usize) -> usize
+impl<'a> core::marker::Forget for hakmem::rank9::Rank9<'a>
 impl<'a> core::marker::Freeze for hakmem::rank9::Rank9<'a>
+impl<'a> core::marker::Move for hakmem::rank9::Rank9<'a>
 impl<'a> core::marker::Send for hakmem::rank9::Rank9<'a>
 impl<'a> core::marker::Sync for hakmem::rank9::Rank9<'a>
 impl<'a> core::marker::Unpin for hakmem::rank9::Rank9<'a>
@@ -2121,7 +2173,9 @@ pub fn hakmem::rank9::Rank9Buf<'a>::rank0(&self, usize) -> usize
 pub fn hakmem::rank9::Rank9Buf<'a>::rank_only(&'a [u64]) -> Self
 pub fn hakmem::rank9::Rank9Buf<'a>::select(&self, usize) -> core::option::Option<usize>
 pub fn hakmem::rank9::Rank9Buf<'a>::view(&self) -> hakmem::rank9::Rank9<'_>
+impl<'a> core::marker::Forget for hakmem::rank9::Rank9Buf<'a>
 impl<'a> core::marker::Freeze for hakmem::rank9::Rank9Buf<'a>
+impl<'a> core::marker::Move for hakmem::rank9::Rank9Buf<'a>
 impl<'a> core::marker::Send for hakmem::rank9::Rank9Buf<'a>
 impl<'a> core::marker::Sync for hakmem::rank9::Rank9Buf<'a>
 impl<'a> core::marker::Unpin for hakmem::rank9::Rank9Buf<'a>
@@ -2138,7 +2192,9 @@ pub type hakmem::set::Positions<W>::Item = u32
 pub fn hakmem::set::Positions<W>::next(&mut self) -> core::option::Option<u32>
 pub fn hakmem::set::Positions<W>::size_hint(&self) -> (usize, core::option::Option<usize>)
 impl<W: hakmem::word::Word> core::iter::traits::marker::FusedIterator for hakmem::set::Positions<W>
+impl<W> core::marker::Forget for hakmem::set::Positions<W>
 impl<W> core::marker::Freeze for hakmem::set::Positions<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::set::Positions<W>
 impl<W> core::marker::Send for hakmem::set::Positions<W>
 impl<W> core::marker::Sync for hakmem::set::Positions<W>
 impl<W> core::marker::Unpin for hakmem::set::Positions<W> where W: core::marker::Unpin
@@ -2150,7 +2206,9 @@ impl<W: hakmem::word::Word> core::iter::traits::iterator::Iterator for hakmem::s
 pub type hakmem::set::Subsets<W>::Item = W
 pub fn hakmem::set::Subsets<W>::next(&mut self) -> core::option::Option<W>
 impl<W: hakmem::word::Word> core::iter::traits::marker::FusedIterator for hakmem::set::Subsets<W>
+impl<W> core::marker::Forget for hakmem::set::Subsets<W>
 impl<W> core::marker::Freeze for hakmem::set::Subsets<W> where W: core::marker::Freeze, core::option::Option<W>: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::set::Subsets<W>
 impl<W> core::marker::Send for hakmem::set::Subsets<W> where core::option::Option<W>: core::marker::Send
 impl<W> core::marker::Sync for hakmem::set::Subsets<W> where core::option::Option<W>: core::marker::Sync
 impl<W> core::marker::Unpin for hakmem::set::Subsets<W> where W: core::marker::Unpin, core::option::Option<W>: core::marker::Unpin
@@ -2251,7 +2309,9 @@ pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> 
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
+impl<const N: usize> core::marker::Forget for hakmem::wide::Wide<N>
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
+impl<const N: usize> core::marker::Move for hakmem::wide::Wide<N>
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
 impl<const N: usize> core::marker::Unpin for hakmem::wide::Wide<N> where [u64; N]: core::marker::Unpin
@@ -2568,7 +2628,9 @@ impl<W: hakmem::word::Word, const D: u32> core::default::Default for hakmem::dil
 pub fn hakmem::dilated::Dilated<W, D>::default() -> Self
 impl<W: hakmem::word::Word, const D: u32> core::fmt::Binary for hakmem::dilated::Dilated<W, D>
 pub fn hakmem::dilated::Dilated<W, D>::fmt(&self, &mut core::fmt::Formatter<'_>) -> core::fmt::Result
+impl<W, const D: u32> core::marker::Forget for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Freeze for hakmem::dilated::Dilated<W, D> where W: core::marker::Freeze
+impl<W, const D: u32> core::marker::Move for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Send for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Sync for hakmem::dilated::Dilated<W, D>
 impl<W, const D: u32> core::marker::Unpin for hakmem::dilated::Dilated<W, D> where W: core::marker::Unpin
@@ -2626,7 +2688,9 @@ pub fn hakmem::hilbert::Hilbert2<W>::encode(W, W) -> Self
 pub fn hakmem::hilbert::Hilbert2<W>::from_key(W) -> Self
 pub fn hakmem::hilbert::Hilbert2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
 pub fn hakmem::hilbert::Hilbert2<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Freeze for hakmem::hilbert::Hilbert2<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Send for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Sync for hakmem::hilbert::Hilbert2<W>
 impl<W> core::marker::Unpin for hakmem::hilbert::Hilbert2<W> where W: core::marker::Unpin
@@ -2676,7 +2740,9 @@ pub fn hakmem::hilbert3::Hilbert3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::hilbert3::Hilbert3<W>::encode(W, W, W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::from_key(W) -> Self
 pub fn hakmem::hilbert3::Hilbert3<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Freeze for hakmem::hilbert3::Hilbert3<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Send for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Sync for hakmem::hilbert3::Hilbert3<W>
 impl<W> core::marker::Unpin for hakmem::hilbert3::Hilbert3<W> where W: core::marker::Unpin
@@ -2726,7 +2792,9 @@ pub fn hakmem::dilated::Morton2<W>::encode(W, W) -> Self
 pub fn hakmem::dilated::Morton2<W>::from_key(W) -> Self
 pub fn hakmem::dilated::Morton2<W>::intersects(impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>, impl core::ops::range::RangeBounds<W>) -> bool
 pub fn hakmem::dilated::Morton2<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Freeze for hakmem::dilated::Morton2<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Send for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Sync for hakmem::dilated::Morton2<W>
 impl<W> core::marker::Unpin for hakmem::dilated::Morton2<W> where W: core::marker::Unpin
@@ -2759,7 +2827,9 @@ pub fn hakmem::dilated::Morton3<W>::decode(self) -> (W, W, W)
 pub fn hakmem::dilated::Morton3<W>::encode(W, W, W) -> Self
 pub fn hakmem::dilated::Morton3<W>::from_key(W) -> Self
 pub fn hakmem::dilated::Morton3<W>::key(self) -> W
+impl<W> core::marker::Forget for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Freeze for hakmem::dilated::Morton3<W> where W: core::marker::Freeze
+impl<W> core::marker::Move for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Send for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Sync for hakmem::dilated::Morton3<W>
 impl<W> core::marker::Unpin for hakmem::dilated::Morton3<W> where W: core::marker::Unpin
@@ -2826,7 +2896,9 @@ pub fn hakmem::wide::Wide<N>::xor_scan_down_in<I: hakmem::isa::Isa>(self, I) -> 
 pub fn hakmem::wide::Wide<N>::xor_scan_in<I: hakmem::isa::Isa>(self, I) -> Self
 pub fn hakmem::wide::Wide<N>::zip(self, Self) -> Self
 pub fn hakmem::wide::Wide<N>::zip_in<I: hakmem::isa::Isa>(self, Self, I) -> Self
+impl<const N: usize> core::marker::Forget for hakmem::wide::Wide<N>
 impl<const N: usize> core::marker::Freeze for hakmem::wide::Wide<N> where [u64; N]: core::marker::Freeze
+impl<const N: usize> core::marker::Move for hakmem::wide::Wide<N>
 impl<const N: usize> core::marker::Send for hakmem::wide::Wide<N> where [u64; N]: core::marker::Send
 impl<const N: usize> core::marker::Sync for hakmem::wide::Wide<N> where [u64; N]: core::marker::Sync
 impl<const N: usize> core::marker::Unpin for hakmem::wide::Wide<N> where [u64; N]: core::marker::Unpin
