@@ -1618,7 +1618,7 @@ pub fn rank9_select_inverts_rank(dir: &Rank9<'_>, k: usize) -> bool {
 pub fn rank9_rank_steps_by_bit(dir: &Rank9<'_>, i: usize) -> bool {
     // `i % 64 < 64` fits a u32.
     #[allow(clippy::cast_possible_truncation)]
-    let bit = i < dir.len() && dir.bits()[i / 64].bit((i % 64) as u32);
+    let bit = i < dir.len() && Word::bit(dir.bits()[i / 64], (i % 64) as u32);
     dir.rank(i + 1) == dir.rank(i) + usize::from(bit)
 }
 
