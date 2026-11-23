@@ -16,8 +16,10 @@ hilbert	<hakmem::hilbert3::Hilbert3<u64>>::from_morton_in_place
 hilbert	<hakmem::hilbert3::Hilbert3<u64>>::to_morton
 hilbert	<hakmem::hilbert3::Hilbert3<u64>>::to_morton_in_place
 hilbert	<hakmem::hilbert::Hilbert2<u32>>::from_morton_in_place
+hilbert	<hakmem::hilbert::Hilbert2<u64>>::decode_columns
 hilbert	<hakmem::hilbert::Hilbert2<u64>>::encode_columns
 hilbert	<hakmem::hilbert::Hilbert2<u64>>::from_morton_in_place
+hilbert	<hakmem::hilbert::Hilbert2<u64>>::to_morton_in_place
 hilbert	<hakmem::hilbert::HilbertQuadrants as hakmem::cover::Quadrants>::context::<u64>
 hilbert	<hakmem::hilbert::HilbertQuadrants as hakmem::cover::Quadrants>::runs::<u64>
 hilbert	hakmem::cover::cover_ranges::<u64, hakmem::dilated::ZQuadrants, core::ops::range::RangeInclusive<u64>, core::ops::range::RangeInclusive<u64>>
@@ -41,8 +43,11 @@ hilbert	hakmem::hilbert3::batch::planes::encode_columns
 hilbert	hakmem::hilbert3::batch::planes::from_morton_u64
 hilbert	hakmem::hilbert3::batch::planes::run
 hilbert	hakmem::hilbert3::batch::planes::to_morton_u64
-hilbert	hakmem::hilbert::batch::vbmi::from_morton_u32
-hilbert	hakmem::hilbert::batch::vbmi::from_morton_u64
+hilbert	hakmem::hilbert::batch::avx2::from_morton_u32
+hilbert	hakmem::hilbert::batch::avx2::from_morton_u64
+hilbert	hakmem::hilbert::batch::planes::from_morton_u32
+hilbert	hakmem::hilbert::batch::planes::from_morton_u64
+hilbert	hakmem::hilbert::batch::planes::to_morton_u64
 hilbert	hakmem::hilbert::side::<u64>
 hilbert	hakmem::hilbert::side::<u64>::{closure#2}
 incumbents	hakmem::myers::distance_in::<hakmem::wide::Wide<4>>

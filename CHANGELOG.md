@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.3.0, unreleased
 
 `Hilbert2::from_morton_in_place` with AVX-512 VBMI, and `encode_columns`
 through it: the keys in byte planes, as `Hilbert3` has them, in place of

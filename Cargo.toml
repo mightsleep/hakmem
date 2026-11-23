@@ -1,6 +1,6 @@
 [package]
 name = "hakmem"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2024"
 # MSRV: edition 2024 needs 1.85, cast_signed/cast_unsigned 1.87, the GFNI
 # intrinsics 1.89. Checked in CI
