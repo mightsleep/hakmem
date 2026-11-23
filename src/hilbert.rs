@@ -312,6 +312,36 @@ const ENCODE_FRAMED: [u8; 64] = framed().0;
 )]
 const DECODE_FRAMED: [u8; 64] = framed().1;
 
+/// One level a step with the frame in the index, for the byte planes
+/// without AVX-512: the machine of [`level`] as it stands, a frame and a
+/// cell to four bits, sixteen entries, one `pshufb`. Two layouts take
+/// turns, so that the cell is read where it lies in its byte: `[0]` is
+/// indexed `frame << 2 | cell` and holds the frame below in its low two
+/// bits, `[1]` is indexed `cell << 2 | frame` and holds the frame below
+/// at bits 2 and 3, each ready to be the other's index once the next
+/// cell is put in by OR. The digit sits at bits 4 and 5, which `pshufb` does
+/// not read. A cell is the Morton pair, `y << 1 | x`.
+#[cfg_attr(
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )),
+    allow(dead_code)
+)]
+const LEVELS4: [[u8; 16]; 2] = {
+    let mut tables = [[0u8; 16]; 2];
+    let mut i = 0u8;
+    while i < 16 {
+        let (frame, cell) = (i >> 2, i & 3);
+        let (digit, below) = level(frame, cell & 1, cell >> 1);
+        tables[0][i as usize] = below | (digit << 4);
+        tables[1][((cell << 2) | frame) as usize] = (below << 2) | (digit << 4);
+        i += 1;
+    }
+    tables
+};
+
 /// The two tables of the byte planes, encode and decode.
 #[cfg_attr(
     not(all(
@@ -354,7 +384,10 @@ macro_rules! hilbert2_batch {
             /// the whole batch: two levels through a 64-entry table with
             /// the frame in the index, two steps a byte of the key.
             /// Rounds of `vpermi2b` turn the keys, three for a `u64`,
-            /// and the same rounds turn them back. With NEON the frame
+            /// and the same rounds turn them back. With AVX2 alone the
+            /// planes hold 32 keys and a step is one `pshufb` through
+            /// sixteen entries, a level at a time with the frame in the
+            /// index, between two transposes by unpacks. With NEON the frame
             /// modulo the reflection of both axes, two levels at a
             /// time, 32 entries in two registers for `tbl`. Otherwise,
             /// and for a few keys past the last whole batch (more of
@@ -1072,6 +1105,196 @@ mod batch {
         );
     }
 
+    /// The byte planes without AVX-512: 32 keys a plane, a `pshufb`
+    /// through [`LEVELS4`](super::LEVELS4) a level, the last entry
+    /// with the next cell put in by OR as the index. The turn is the 8 × 8 transpose of bytes by
+    /// unpacks, three rounds that pair bytes, words and doublewords of
+    /// eight registers and a fourth that parts the even planes from the
+    /// odd, each within a 128-bit lane; it is its own inverse.
+    #[cfg(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    ))]
+    #[allow(unsafe_code)]
+    mod avx2 {
+        use core::arch::x86_64::{
+            __m256i, _mm_loadu_si128, _mm256_and_si256, _mm256_broadcastsi128_si256,
+            _mm256_loadu_si256, _mm256_or_si256, _mm256_set1_epi8, _mm256_setzero_si256,
+            _mm256_shuffle_epi8, _mm256_slli_epi16, _mm256_srli_epi16, _mm256_storeu_si256,
+            _mm256_unpackhi_epi8, _mm256_unpackhi_epi16, _mm256_unpackhi_epi32,
+            _mm256_unpackhi_epi64, _mm256_unpacklo_epi8, _mm256_unpacklo_epi16,
+            _mm256_unpacklo_epi32, _mm256_unpacklo_epi64,
+        };
+
+        use super::super::LEVELS4;
+
+        /// Eight registers of four `u64` keys to eight planes of 32, or
+        /// back.
+        #[target_feature(enable = "avx2")]
+        fn turn8(r: [__m256i; 8]) -> [__m256i; 8] {
+            // Bytes of two registers side by side, the low keys of the
+            // lanes and the high ones apart.
+            let a = [
+                _mm256_unpacklo_epi8(r[0], r[1]),
+                _mm256_unpacklo_epi8(r[2], r[3]),
+                _mm256_unpacklo_epi8(r[4], r[5]),
+                _mm256_unpacklo_epi8(r[6], r[7]),
+                _mm256_unpackhi_epi8(r[0], r[1]),
+                _mm256_unpackhi_epi8(r[2], r[3]),
+                _mm256_unpackhi_epi8(r[4], r[5]),
+                _mm256_unpackhi_epi8(r[6], r[7]),
+            ];
+            // Of four: bytes 0 to 3 of a key, then 4 to 7.
+            let b = [
+                _mm256_unpacklo_epi16(a[0], a[1]),
+                _mm256_unpackhi_epi16(a[0], a[1]),
+                _mm256_unpacklo_epi16(a[2], a[3]),
+                _mm256_unpackhi_epi16(a[2], a[3]),
+                _mm256_unpacklo_epi16(a[4], a[5]),
+                _mm256_unpackhi_epi16(a[4], a[5]),
+                _mm256_unpacklo_epi16(a[6], a[7]),
+                _mm256_unpackhi_epi16(a[6], a[7]),
+            ];
+            // Of eight: two bytes of a key to a register.
+            let c = [
+                _mm256_unpacklo_epi32(b[0], b[2]),
+                _mm256_unpackhi_epi32(b[0], b[2]),
+                _mm256_unpacklo_epi32(b[1], b[3]),
+                _mm256_unpackhi_epi32(b[1], b[3]),
+                _mm256_unpacklo_epi32(b[4], b[6]),
+                _mm256_unpackhi_epi32(b[4], b[6]),
+                _mm256_unpacklo_epi32(b[5], b[7]),
+                _mm256_unpackhi_epi32(b[5], b[7]),
+            ];
+            // One byte to a register, the low keys beside the high.
+            [
+                _mm256_unpacklo_epi64(c[0], c[4]),
+                _mm256_unpackhi_epi64(c[0], c[4]),
+                _mm256_unpacklo_epi64(c[1], c[5]),
+                _mm256_unpackhi_epi64(c[1], c[5]),
+                _mm256_unpacklo_epi64(c[2], c[6]),
+                _mm256_unpackhi_epi64(c[2], c[6]),
+                _mm256_unpacklo_epi64(c[3], c[7]),
+                _mm256_unpackhi_epi64(c[3], c[7]),
+            ]
+        }
+
+        /// Four registers of eight `u32` keys to four planes of 32, or
+        /// back: the 4 × 4 transpose, the same rounds over half as many
+        /// registers.
+        #[target_feature(enable = "avx2")]
+        fn turn4(r: [__m256i; 4]) -> [__m256i; 4] {
+            let a = [
+                _mm256_unpacklo_epi8(r[0], r[1]),
+                _mm256_unpacklo_epi8(r[2], r[3]),
+                _mm256_unpackhi_epi8(r[0], r[1]),
+                _mm256_unpackhi_epi8(r[2], r[3]),
+            ];
+            // The four bytes of one key of a lane each, by register.
+            let b = [
+                _mm256_unpacklo_epi16(a[0], a[1]),
+                _mm256_unpackhi_epi16(a[0], a[1]),
+                _mm256_unpacklo_epi16(a[2], a[3]),
+                _mm256_unpackhi_epi16(a[2], a[3]),
+            ];
+            let c = [
+                _mm256_unpacklo_epi32(b[0], b[1]),
+                _mm256_unpackhi_epi32(b[0], b[1]),
+                _mm256_unpacklo_epi32(b[2], b[3]),
+                _mm256_unpackhi_epi32(b[2], b[3]),
+            ];
+            [
+                _mm256_unpacklo_epi64(c[0], c[2]),
+                _mm256_unpackhi_epi64(c[0], c[2]),
+                _mm256_unpacklo_epi64(c[1], c[3]),
+                _mm256_unpackhi_epi64(c[1], c[3]),
+            ]
+        }
+
+        macro_rules! kernel {
+            ($name:ident, $w:ty, $turn:ident) => {
+                /// Batches of 32 keys: as many registers as a key has
+                /// bytes, and as many planes.
+                #[target_feature(enable = "avx2")]
+                pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
+                    const BYTES: usize = size_of::<$w>();
+                    const LANES: usize = 32 / BYTES;
+                    let (chunks, _) = keys.as_chunks_mut::<32>();
+                    let done = chunks.len() * 32;
+                    for chunk in chunks {
+                        // SAFETY: AVX2 is enabled on this function; every load
+                        // and store stays inside the 32 keys of `chunk` or the
+                        // 16 bytes of a table.
+                        unsafe {
+                            let by_frame = _mm256_broadcastsi128_si256(_mm_loadu_si128(
+                                LEVELS4[0].as_ptr().cast(),
+                            ));
+                            let by_cell = _mm256_broadcastsi128_si256(_mm_loadu_si128(
+                                LEVELS4[1].as_ptr().cast(),
+                            ));
+                            let low = _mm256_set1_epi8(0x03);
+                            let high = _mm256_set1_epi8(0x0C);
+                            let digit = _mm256_set1_epi8(0x30);
+                            let mut r = [_mm256_setzero_si256(); BYTES];
+                            for (i, reg) in r.iter_mut().enumerate() {
+                                *reg = _mm256_loadu_si256(chunk.as_ptr().add(LANES * i).cast());
+                            }
+                            let mut r = $turn(r);
+                            // The last entry: the frame where the next table
+                            // reads it, so with the next cell put in by OR it is
+                            // the next index. From the identity frame.
+                            let mut entry = _mm256_setzero_si256();
+                            let mut k = BYTES;
+                            while k > 0 {
+                                k -= 1;
+                                let cells = r[k];
+                                let upper = _mm256_srli_epi16::<4>(cells);
+                                // Four levels, the cell at bits 2 and 3 for
+                                // one table and at 0 and 1 for the other.
+                                let e3 = _mm256_shuffle_epi8(
+                                    by_cell,
+                                    _mm256_or_si256(entry, _mm256_and_si256(upper, high)),
+                                );
+                                let e2 = _mm256_shuffle_epi8(
+                                    by_frame,
+                                    _mm256_or_si256(e3, _mm256_and_si256(upper, low)),
+                                );
+                                let e1 = _mm256_shuffle_epi8(
+                                    by_cell,
+                                    _mm256_or_si256(e2, _mm256_and_si256(cells, high)),
+                                );
+                                entry = _mm256_shuffle_epi8(
+                                    by_frame,
+                                    _mm256_or_si256(e1, _mm256_and_si256(cells, low)),
+                                );
+                                // The four digits, each from bits 4 and 5 of
+                                // its entry to its place.
+                                let top = _mm256_or_si256(
+                                    _mm256_slli_epi16::<2>(_mm256_and_si256(e3, digit)),
+                                    _mm256_and_si256(e2, digit),
+                                );
+                                let bottom = _mm256_or_si256(
+                                    _mm256_slli_epi16::<2>(_mm256_and_si256(e1, digit)),
+                                    _mm256_and_si256(entry, digit),
+                                );
+                                r[k] = _mm256_or_si256(top, _mm256_srli_epi16::<4>(bottom));
+                            }
+                            let r = $turn(r);
+                            for (i, reg) in r.iter().enumerate() {
+                                _mm256_storeu_si256(chunk.as_mut_ptr().add(LANES * i).cast(), *reg);
+                            }
+                        }
+                    }
+                    done
+                }
+            };
+        }
+
+        kernel!(from_morton_u32, u32, turn4);
+        kernel!(from_morton_u64, u64, turn8);
+    }
+
     /// `x86_64` chooses the kernel once a call, as in `hilbert3`: at
     /// compile time when the build has the features, else at run time.
     #[cfg(all(
@@ -1081,7 +1304,7 @@ mod batch {
     ))]
     #[allow(unsafe_code)]
     mod dispatch {
-        use super::planes;
+        use super::{avx2, planes};
 
         macro_rules! keys {
             ($($name:ident: $w:ty;)*) => {$(
@@ -1097,10 +1320,32 @@ mod batch {
         }
 
         keys! {
-            from_morton_u32: u32;
-            from_morton_u64: u64;
             to_morton_u32: u32;
             to_morton_u64: u64;
+        }
+
+        // Encoding has a kernel without AVX-512 too; decoding per key is
+        // two suffix XORs and about as fast as one would be.
+        macro_rules! encode {
+            ($($name:ident: $w:ty;)*) => {$(
+                pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
+                    let batch = crate::isa::batch();
+                    if batch.vbmi {
+                        // SAFETY: AVX-512 F, BW and VBMI are present.
+                        unsafe { planes::$name(keys) }
+                    } else if batch.avx2 {
+                        // SAFETY: AVX2 is present.
+                        unsafe { avx2::$name(keys) }
+                    } else {
+                        0
+                    }
+                }
+            )*};
+        }
+
+        encode! {
+            from_morton_u32: u32;
+            from_morton_u64: u64;
         }
     }
 

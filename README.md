@@ -396,9 +396,10 @@ the `_order` forms for a curve of fewer levels). With AVX-512 VBMI the
 2D keys turn into byte planes, the same byte of 64 keys to a register,
 and a step is one `vpermb` over the whole batch, two levels through 64
 entries with the frame in the index; in 3D a step is one `vpermi2b`
-through the 96-byte encode or decode table; with AVX2 alone the 3D
-machine modulo its translations,
-two PSHUFB a level; NEON uses `tbl`; elsewhere it is the per-key
+through the 96-byte encode or decode table; with AVX2 alone the 2D
+encode keeps the planes, 32 keys each, and steps a level with one PSHUFB
+through sixteen entries, and the 3D machine goes modulo its translations, two
+PSHUFB a level; NEON uses `tbl`; elsewhere it is the per-key
 conversion. Coordinates never enter these kernels. For the 3D curve on
 `u64` they may, as three columns (`Hilbert3::<u64>::encode_columns`,
 `decode_columns`): with VBMI and GFNI that skips the Morton code both

@@ -32,6 +32,22 @@ the `u32` decode and 36 for the `u64` decode, where a batch of 63 costs
 25 to 50 ns and a key by itself 1 to 4; fewer are converted per key as
 before. A masked load reads only the keys its mask names.
 
+`Hilbert2::from_morton_in_place` with AVX2 alone, where it was per key:
+the byte planes at 32 keys each. `pshufb` reads four bits, which is a
+frame and one cell, so a step is one level: the machine as it stands,
+sixteen entries, the frame below where the next index reads it and the
+digit above, where `pshufb` does not look, so the next index is the
+entry with the next cell put in by OR. Two layouts of the table take turns,
+the frame below the cell and above it, and each cell is read where it
+lies in its byte. The turn is the 8 × 8 transpose of bytes by unpacks
+(4 × 4 for `u32`), its own inverse. Measured on Zen 5 with the AVX-512
+kernels switched off: 0.87 ns a key on `u64` against 3.7 per key and
+0.45 on `u32` against 1.6, in a build without flags. Two levels a step
+through a table with the frame folded into the index as two XORs, in
+the cell basis `(x, x ^ y)`, was 1.06 on `u64`: half the lookups and
+more of everything else.
+The decode stays per key there: two suffix XORs are about as fast.
+
 ## 0.2.0, 2026-09-26: A Nocturne of Curves
 
 `hakmem::hilbert::Hilbert2`: 2D Hilbert indices over any `Word`,
