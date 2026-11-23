@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.3.0, unreleased
+
+`Hilbert2::from_morton_in_place` with AVX-512 VBMI, and `encode_columns`
+through it: the keys in byte planes, as `Hilbert3` has them, in place of
+the kernel that kept them in their lanes. A plane is the same byte of 64
+keys, so one `vpermb` steps the whole batch where a `vpermi2b` stepped a
+register of eight keys and looked up zeros in the other 56 bytes. A byte
+is four levels: two steps through a 64-entry table that holds the two
+digits and the frame below, the frame at the place the index reads it,
+so the entry with its low half replaced is the next index. The turn is a
+round of `vpermi2b` over pairs of registers per bit of the byte's place
+in its key, three for a `u64` and two for a `u32`; a round trades that
+bit for a bit of the register's number and is its own inverse, so the
+same rounds turn the planes back. On Zen 5, 1024 keys: 0.45 ns a key on
+`u64` against 1.15 and 0.16 on `u32` against 0.35 for the conversion
+alone, 0.54 µs against 1.3 from two columns of coordinates. The 128-entry
+table of three levels a step went with the old kernel; NEON keeps its
+own.
+
+`Hilbert2::to_morton_in_place` batches too, and `decode_columns` through
+it: the same walk through the table read the other way, which a frame
+allows because it sends the sixteen nibbles to the sixteen pairs of
+digits one to one (asserted when the tables are built). 0.45 ns a key on
+`u64` against 1.4 for the two suffix XORs per key and 0.16 on `u32`
+against 1.1; 0.69 µs for 1024 keys into two columns against 1.7 per key.
+
+The keys past the last whole batch of 64 go through one more batch under
+masks when there are enough of them to pay for it, 28 for the encode and
+the `u32` decode and 36 for the `u64` decode, where a batch of 63 costs
+25 to 50 ns and a key by itself 1 to 4; fewer are converted per key as
+before. A masked load reads only the keys its mask names.
+
+`Hilbert2::from_morton_in_place` with AVX2 alone, where it was per key:
+the byte planes at 32 keys each. `pshufb` reads four bits, which is a
+frame and one cell, so a step is one level: the machine as it stands,
+sixteen entries, the frame below where the next index reads it and the
+digit above, where `pshufb` does not look, so the next index is the
+entry with the next cell put in by OR. Two layouts of the table take turns,
+the frame below the cell and above it, and each cell is read where it
+lies in its byte. The turn is the 8 × 8 transpose of bytes by unpacks
+(4 × 4 for `u32`), its own inverse. Measured on Zen 5 with the AVX-512
+kernels switched off: 0.87 ns a key on `u64` against 3.7 per key and
+0.45 on `u32` against 1.6, in a build without flags. Two levels a step
+through a table with the frame folded into the index as two XORs, in
+the cell basis `(x, x ^ y)`, was 1.06 on `u64`: half the lookups and
+more of everything else.
+The decode stays per key there: two suffix XORs are about as fast.
+
 ## 0.2.0, 2026-09-26: A Nocturne of Curves
 
 `hakmem::hilbert::Hilbert2`: 2D Hilbert indices over any `Word`,

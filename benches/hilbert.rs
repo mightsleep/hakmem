@@ -139,6 +139,46 @@ fn bench(c: &mut Criterion) {
     }
 }
 
+/// Batch decode, from keys to two columns of coordinates, against the
+/// per-key forms on the same keys.
+fn bench_batch_decode(c: &mut Criterion) {
+    let indices = words();
+    let (mut xs, mut ys) = (vec![0u64; N], vec![0u64; N]);
+    let mut g = c.benchmark_group("hilbert/decode batch");
+    g.bench_function("hakmem columns", |b| {
+        b.iter(|| {
+            Hilbert2::<u64>::decode_columns(black_box(&indices), &mut xs, &mut ys);
+            black_box((&xs, &ys));
+        });
+    });
+    g.bench_function("hakmem in place, to Morton codes", |b| {
+        let mut keys = indices.clone();
+        b.iter(|| {
+            keys.copy_from_slice(black_box(&indices));
+            Hilbert2::<u64>::to_morton_in_place(&mut keys);
+            black_box(&keys);
+        });
+    });
+    g.bench_function("hakmem per key", |b| {
+        b.iter(|| {
+            for ((x, y), &h) in xs.iter_mut().zip(ys.iter_mut()).zip(&indices) {
+                (*x, *y) = Hilbert2::<u64>::from_index(black_box(h)).decode();
+            }
+            black_box((&xs, &ys));
+        });
+    });
+    g.bench_function("fast_hilbert", |b| {
+        let (mut xs, mut ys) = (vec![0u32; N], vec![0u32; N]);
+        b.iter(|| {
+            for ((x, y), &h) in xs.iter_mut().zip(ys.iter_mut()).zip(&indices) {
+                (*x, *y) = fast_hilbert::h2xy::<u32>(black_box(h), 32);
+            }
+            black_box((&xs, &ys));
+        });
+    });
+    g.finish();
+}
+
 /// Batch encode against the per-key forms, from coordinates to keys.
 fn bench_batch(c: &mut Criterion) {
     let coords: Vec<(u64, u64)> = words()
@@ -889,6 +929,7 @@ criterion_group!(
     benches,
     bench,
     bench_batch,
+    bench_batch_decode,
     bench3,
     bench3_batch,
     bench_morton_batch,

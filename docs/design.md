@@ -290,9 +290,10 @@ factor as 24 between two XORs, which fits two 16-entry shuffles; the
 AVX2 kernel relies on that.
 
 **The batch kernels are the level machine applied to a register of
-keys.** With AVX-512 VBMI a step is one `vpermi2b` per register: in 2D
-through 128 entries, three levels a step; in 3D through the 96-byte
-table, one level a step, and on `u64` through byte planes of 64 keys.
+keys.** With AVX-512 VBMI a step is one byte shuffle: in 2D a `vpermb`
+through 64 entries with the frame in the index, two levels a step, over
+byte planes of 64 keys; in 3D a `vpermi2b` through the 96-byte table,
+one level a step, per register and on `u64` through byte planes too.
 NEON uses `tbl`, AVX2 alone the factored 3D table. The numbers are in
 the README.
 
