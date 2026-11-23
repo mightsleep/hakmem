@@ -423,6 +423,7 @@ keys.sort_unstable(); // curve order, as a packed R-tree builds it
 | 2D encode, `u64` keys, 32 levels | **0.87 µs** | 6.1 µs | `fast_hilbert` 12.2 µs |
 | 2D encode, `u16` coordinates, `u32` keys, 16 levels | **0.72 µs** | 6.3 µs | `fast_hilbert` 8.5 µs |
 | 2D encode from two columns, `u64` keys (`Hilbert2::encode_columns`) | **0.54 µs** | 6.1 µs | `fast_hilbert` 12.2 µs |
+| 2D decode into two columns, `u64` keys (`Hilbert2::decode_columns`) | **0.69 µs** | 1.7 µs | `fast_hilbert` 12.1 µs |
 | 3D encode, `u64` keys, 21 levels | **1.8 µs** | 13.1 µs | rawrunprotected's tables 15.2 µs |
 | 3D decode, `u64` keys, 21 levels | **1.8 µs** | 8.8 µs | rawrunprotected's tables 15.1 µs |
 

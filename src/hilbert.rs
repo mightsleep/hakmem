@@ -296,22 +296,54 @@ const TABLE4: [u8; 32] = reduced();
     )),
     allow(dead_code)
 )]
-const FRAMED4: [u8; 64] = {
-    let mut table = [0u8; 64];
+const ENCODE_FRAMED: [u8; 64] = framed().0;
+
+/// [`ENCODE_FRAMED`] the other way: the entry at `frame << 4 | digits`
+/// holds the nibble of the Morton code and the frame below. A frame
+/// sends the sixteen nibbles to the sixteen pairs of digits one to one,
+/// so every entry is written once.
+#[cfg_attr(
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )),
+    allow(dead_code)
+)]
+const DECODE_FRAMED: [u8; 64] = framed().1;
+
+/// The two tables of the byte planes, encode and decode.
+#[cfg_attr(
+    not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )),
+    allow(dead_code)
+)]
+const fn framed() -> ([u8; 64], [u8; 64]) {
+    let (mut encode, mut decode) = ([0u8; 64], [0xFFu8; 64]);
     let mut i = 0;
     while i < 64 {
         #[allow(clippy::cast_possible_truncation)]
-        let (frame, nibble) = ((i >> 4) as u8, i as u8);
-        let (high, frame) = level(frame, (nibble >> 2) & 1, (nibble >> 3) & 1);
+        let (top, nibble) = ((i >> 4) as u8, (i & 15) as u8);
+        let (high, frame) = level(top, (nibble >> 2) & 1, (nibble >> 3) & 1);
         let (low, frame) = level(frame, nibble & 1, (nibble >> 1) & 1);
-        table[i] = (high << 2) | low | (frame << 4);
+        let digits = (high << 2) | low;
+        encode[i] = digits | (frame << 4);
+        let back = ((top << 4) | digits) as usize;
+        assert!(
+            decode[back] == 0xFF,
+            "two nibbles of a frame with the same digits"
+        );
+        decode[back] = nibble | (frame << 4);
         i += 1;
     }
-    table
-};
+    (encode, decode)
+}
 
 macro_rules! hilbert2_batch {
-    ($($w:ty => $kernel:ident),* $(,)?) => {$(
+    ($($w:ty => $kernel:ident, $back:ident);* $(;)?) => {$(
         impl Hilbert2<$w> {
             /// [`from_morton`](Self::from_morton) over a slice of keys, in
             /// place: each Morton code becomes the Hilbert index of the
@@ -325,9 +357,9 @@ macro_rules! hilbert2_batch {
             /// and the same rounds turn them back. With NEON the frame
             /// modulo the reflection of both axes, two levels at a
             /// time, 32 entries in two registers for `tbl`. Otherwise,
-            /// and for the keys past the
-            /// last whole batch, it is [`from_morton`](Self::from_morton)
-            /// per key. Coordinates never enter: fill the slice with
+            /// and for a few keys past the last whole batch (more of
+            /// them go through one more batch under masks), it is
+            /// [`from_morton`](Self::from_morton) per key. Coordinates never enter: fill the slice with
             /// [`Morton2::encode`] from whatever layout the points are in.
             // A whole slice per call: the loop is inside, the call is paid once.
             #[allow(clippy::missing_inline_in_public_items)]
@@ -340,12 +372,16 @@ macro_rules! hilbert2_batch {
 
             /// [`to_morton`](Self::to_morton) over a slice of keys, in
             /// place: each Hilbert index becomes the Morton code of the
-            /// same cell. Per key; the decode is two suffix XORs and has no
-            /// table to batch.
+            /// same cell. With AVX-512 VBMI the byte planes of
+            /// [`from_morton_in_place`](Self::from_morton_in_place) and
+            /// its table the other way; otherwise, and for a few keys
+            /// past the last whole batch, [`to_morton`](Self::to_morton)
+            /// per key, two suffix XORs.
             // A whole slice per call: the loop is inside, the call is paid once.
             #[allow(clippy::missing_inline_in_public_items)]
             pub fn to_morton_in_place(keys: &mut [$w]) {
-                for key in keys {
+                let done = batch::$back(keys);
+                for key in &mut keys[done..] {
                     *key = Self::from_index(*key).to_morton().code();
                 }
             }
@@ -396,7 +432,7 @@ macro_rules! hilbert2_batch {
     )*};
 }
 
-hilbert2_batch!(u32 => from_morton_u32, u64 => from_morton_u64);
+hilbert2_batch!(u32 => from_morton_u32, to_morton_u32; u64 => from_morton_u64, to_morton_u64);
 
 macro_rules! hilbert2_columns {
     ($($w:ty),* $(,)?) => {$(
@@ -426,9 +462,9 @@ macro_rules! hilbert2_columns {
             /// [`decode`](Self::decode) of a column of indices into two
             /// columns of coordinates, the inverse of
             /// [`encode_columns`](Self::encode_columns). The indices go
-            /// to Morton codes per key ([`to_morton`](Self::to_morton),
-            /// two suffix XORs) in blocks of 256 on the stack, and each
-            /// block through [`Morton2::decode_columns`].
+            /// to Morton codes in blocks of 256 on the stack
+            /// ([`to_morton_in_place`](Self::to_morton_in_place)), and
+            /// each block through [`Morton2::decode_columns`].
             ///
             /// # Panics
             ///
@@ -446,9 +482,8 @@ macro_rules! hilbert2_columns {
                 let mut codes = [0 as $w; 256];
                 for ((k, x), y) in keys.chunks(256).zip(xs.chunks_mut(256)).zip(ys.chunks_mut(256)) {
                     let codes = &mut codes[..k.len()];
-                    for (c, &h) in codes.iter_mut().zip(k) {
-                        *c = Self::from_index(h).to_morton().code();
-                    }
+                    codes.copy_from_slice(k);
+                    Self::to_morton_in_place(codes);
                     Morton2::<$w>::decode_columns(codes, x, y);
                 }
             }
@@ -826,8 +861,10 @@ mod batch {
     /// byte a key, so a `vpermb` serves 64 keys, where a kernel that
     /// leaves the keys in their lanes serves a register of them and
     /// looks up zeros in the other bytes. A
-    /// byte is four levels, two steps through [`FRAMED4`](super::FRAMED4)
-    /// with the frame riding in the index. The price is a turn each way:
+    /// byte is four levels, two steps through
+    /// [`ENCODE_FRAMED`](super::ENCODE_FRAMED) with the frame riding in
+    /// the index, and decoding is the same walk through
+    /// [`DECODE_FRAMED`](super::DECODE_FRAMED). The price is a turn each way:
     /// one round of `vpermi2b` over pairs of registers trades a bit of
     /// the register's number for a bit of the byte's place in its key,
     /// and as many rounds as either has bits make planes of keys. A
@@ -842,12 +879,13 @@ mod batch {
     #[allow(unsafe_code)]
     mod planes {
         use core::arch::x86_64::{
-            _mm512_loadu_si512, _mm512_permutex2var_epi8, _mm512_permutexvar_epi8,
-            _mm512_set1_epi8, _mm512_setzero_si512, _mm512_slli_epi16, _mm512_srli_epi16,
-            _mm512_storeu_si512, _mm512_ternarylogic_epi32,
+            _mm512_loadu_si512, _mm512_mask_storeu_epi32, _mm512_mask_storeu_epi64,
+            _mm512_maskz_loadu_epi32, _mm512_maskz_loadu_epi64, _mm512_permutex2var_epi8,
+            _mm512_permutexvar_epi8, _mm512_set1_epi8, _mm512_setzero_si512, _mm512_slli_epi16,
+            _mm512_srli_epi16, _mm512_storeu_si512, _mm512_ternarylogic_epi32,
         };
 
-        use super::super::FRAMED4;
+        use super::super::{DECODE_FRAMED, ENCODE_FRAMED};
 
         /// `vpternlog` over `(a, b, c)`: `b` where `a` is set, else `c`.
         const SELECT: i32 = 0xCA;
@@ -875,50 +913,50 @@ mod batch {
         const ROUNDS: [[[u8; 64]; 2]; 3] = [round(0), round(1), round(2)];
 
         macro_rules! kernel {
-            ($name:ident, $w:ty) => {
+            (
+                $name:ident, $w:ty, $table:ident, $mask:ty, $load:ident, $store:ident,
+                $tail:literal
+            ) => {
                 /// Batches of 64 keys: as many registers as a key has
-                /// bytes, and as many planes.
+                /// bytes, and as many planes. The keys past the last whole
+                /// batch go through one more under masks when there are
+                /// at least `TAIL` of them, the count from which a batch
+                /// costs less than the per-key form.
                 #[target_feature(enable = "avx512f,avx512bw,avx512vbmi")]
                 pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
                     const BYTES: usize = size_of::<$w>();
                     const LANES: usize = 64 / BYTES;
-                    let (chunks, _) = keys.as_chunks_mut::<64>();
-                    let done = chunks.len() * 64;
-                    for chunk in chunks {
-                        // SAFETY: AVX-512 F, BW and VBMI are enabled on this function;
-                        // every load and store stays inside the 64 keys of
-                        // `chunk`, the 64 bytes of the table or of a control.
-                        unsafe {
-                            let table = _mm512_loadu_si512(FRAMED4.as_ptr().cast());
-                            let low = _mm512_set1_epi8(0x0F);
-                            let mut r = [_mm512_setzero_si512(); BYTES];
-                            for (i, reg) in r.iter_mut().enumerate() {
-                                *reg = _mm512_loadu_si512(chunk.as_ptr().add(LANES * i).cast());
-                            }
-                            macro_rules! turn {
-                                () => {
-                                    let mut bit = 0;
-                                    while 1 << bit < BYTES {
-                                        let a = _mm512_loadu_si512(ROUNDS[bit][0].as_ptr().cast());
-                                        let b = _mm512_loadu_si512(ROUNDS[bit][1].as_ptr().cast());
-                                        let mut i = 0;
-                                        while i < BYTES {
-                                            if i >> bit & 1 == 0 {
-                                                let j = i | 1 << bit;
-                                                let (x, y) = (r[i], r[j]);
-                                                r[i] = _mm512_permutex2var_epi8(x, a, y);
-                                                r[j] = _mm512_permutex2var_epi8(x, b, y);
-                                            }
-                                            i += 1;
-                                        }
-                                        bit += 1;
+                    const TAIL: usize = $tail;
+                    // `$r`, registers of keys, to planes, through the
+                    // table from the top byte down, and back to keys.
+                    macro_rules! turn {
+                        ($r:ident) => {
+                            let mut bit = 0;
+                            while 1 << bit < BYTES {
+                                let a = _mm512_loadu_si512(ROUNDS[bit][0].as_ptr().cast());
+                                let b = _mm512_loadu_si512(ROUNDS[bit][1].as_ptr().cast());
+                                let mut i = 0;
+                                while i < BYTES {
+                                    if i >> bit & 1 == 0 {
+                                        let j = i | 1 << bit;
+                                        let (x, y) = ($r[i], $r[j]);
+                                        $r[i] = _mm512_permutex2var_epi8(x, a, y);
+                                        $r[j] = _mm512_permutex2var_epi8(x, b, y);
                                     }
-                                };
+                                    i += 1;
+                                }
+                                bit += 1;
                             }
-                            turn!();
-                            // From the top byte down. `vpermb` reads six bits
-                            // of an index, so the entry with its low half
-                            // replaced by the next nibble is the next index.
+                        };
+                    }
+                    macro_rules! walk {
+                        ($r:ident) => {
+                            let table = _mm512_loadu_si512($table.as_ptr().cast());
+                            let low = _mm512_set1_epi8(0x0F);
+                            turn!($r);
+                            // `vpermb` reads six bits of an index, so the
+                            // entry with its low half replaced by the next
+                            // nibble is the next index.
                             let mut entry = _mm512_setzero_si512();
                             let mut k = BYTES;
                             while k > 0 {
@@ -926,36 +964,112 @@ mod batch {
                                 let high = _mm512_permutexvar_epi8(
                                     _mm512_ternarylogic_epi32::<SELECT>(
                                         low,
-                                        _mm512_srli_epi16::<4>(r[k]),
+                                        _mm512_srli_epi16::<4>($r[k]),
                                         entry,
                                     ),
                                     table,
                                 );
                                 entry = _mm512_permutexvar_epi8(
-                                    _mm512_ternarylogic_epi32::<SELECT>(low, r[k], high),
+                                    _mm512_ternarylogic_epi32::<SELECT>(low, $r[k], high),
                                     table,
                                 );
-                                // The digits of both steps, in the byte they
-                                // came from.
-                                r[k] = _mm512_ternarylogic_epi32::<SELECT>(
+                                // What both steps put out, in the byte
+                                // their nibbles came from.
+                                $r[k] = _mm512_ternarylogic_epi32::<SELECT>(
                                     low,
                                     entry,
                                     _mm512_slli_epi16::<4>(high),
                                 );
                             }
-                            turn!();
+                            turn!($r);
+                        };
+                    }
+                    let (chunks, rest) = keys.as_chunks_mut::<64>();
+                    let mut done = chunks.len() * 64;
+                    for chunk in chunks {
+                        // SAFETY: AVX-512 F, BW and VBMI are enabled on this function;
+                        // every load and store stays inside the 64 keys of
+                        // `chunk`, the 64 bytes of the table or of a control.
+                        unsafe {
+                            let mut r = [_mm512_setzero_si512(); BYTES];
+                            for (i, reg) in r.iter_mut().enumerate() {
+                                *reg = _mm512_loadu_si512(chunk.as_ptr().add(LANES * i).cast());
+                            }
+                            walk!(r);
                             for (i, reg) in r.iter().enumerate() {
                                 _mm512_storeu_si512(chunk.as_mut_ptr().add(LANES * i).cast(), *reg);
                             }
                         }
+                    }
+                    if rest.len() >= TAIL {
+                        let left = rest.len();
+                        // The keys a register holds of the `rest`, as a mask.
+                        #[allow(clippy::cast_possible_truncation)]
+                        let held = |i: usize| -> $mask {
+                            let n = left.saturating_sub(LANES * i).min(LANES);
+                            ((1u32 << n) - 1) as $mask
+                        };
+                        // SAFETY: as above; a masked load or store touches
+                        // the keys its mask names, all of them inside `rest`,
+                        // and a register that would hold none is skipped, so
+                        // no pointer is made past the end.
+                        unsafe {
+                            let mut r = [_mm512_setzero_si512(); BYTES];
+                            for (i, reg) in r.iter_mut().enumerate() {
+                                if held(i) != 0 {
+                                    *reg = $load(held(i), rest.as_ptr().add(LANES * i).cast());
+                                }
+                            }
+                            walk!(r);
+                            for (i, reg) in r.iter().enumerate() {
+                                if held(i) != 0 {
+                                    $store(rest.as_mut_ptr().add(LANES * i).cast(), held(i), *reg);
+                                }
+                            }
+                        }
+                        done += rest.len();
                     }
                     done
                 }
             };
         }
 
-        kernel!(from_morton_u32, u32);
-        kernel!(from_morton_u64, u64);
+        kernel!(
+            from_morton_u32,
+            u32,
+            ENCODE_FRAMED,
+            u16,
+            _mm512_maskz_loadu_epi32,
+            _mm512_mask_storeu_epi32,
+            28
+        );
+        kernel!(
+            from_morton_u64,
+            u64,
+            ENCODE_FRAMED,
+            u8,
+            _mm512_maskz_loadu_epi64,
+            _mm512_mask_storeu_epi64,
+            28
+        );
+        kernel!(
+            to_morton_u32,
+            u32,
+            DECODE_FRAMED,
+            u16,
+            _mm512_maskz_loadu_epi32,
+            _mm512_mask_storeu_epi32,
+            28
+        );
+        kernel!(
+            to_morton_u64,
+            u64,
+            DECODE_FRAMED,
+            u8,
+            _mm512_maskz_loadu_epi64,
+            _mm512_mask_storeu_epi64,
+            36
+        );
     }
 
     /// `x86_64` chooses the kernel once a call, as in `hilbert3`: at
@@ -985,6 +1099,8 @@ mod batch {
         keys! {
             from_morton_u32: u32;
             from_morton_u64: u64;
+            to_morton_u32: u32;
+            to_morton_u64: u64;
         }
     }
 
@@ -993,7 +1109,26 @@ mod batch {
         target_feature = "sse2",
         not(feature = "portable")
     ))]
-    pub(super) use dispatch::{from_morton_u32, from_morton_u64};
+    pub(super) use dispatch::{from_morton_u32, from_morton_u64, to_morton_u32, to_morton_u64};
+
+    /// Only the byte planes batch the decode: elsewhere it is per key.
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
+    pub(super) const fn to_morton_u32(_: &mut [u32]) -> usize {
+        0
+    }
+
+    #[cfg(not(all(
+        target_arch = "x86_64",
+        target_feature = "sse2",
+        not(feature = "portable")
+    )))]
+    pub(super) const fn to_morton_u64(_: &mut [u64]) -> usize {
+        0
+    }
 
     #[cfg(all(
         target_arch = "aarch64",

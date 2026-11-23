@@ -19,6 +19,19 @@ alone, 0.54 µs against 1.3 from two columns of coordinates. The 128-entry
 table of three levels a step went with the old kernel; NEON keeps its
 own.
 
+`Hilbert2::to_morton_in_place` batches too, and `decode_columns` through
+it: the same walk through the table read the other way, which a frame
+allows because it sends the sixteen nibbles to the sixteen pairs of
+digits one to one (asserted when the tables are built). 0.45 ns a key on
+`u64` against 1.4 for the two suffix XORs per key and 0.16 on `u32`
+against 1.1; 0.69 µs for 1024 keys into two columns against 1.7 per key.
+
+The keys past the last whole batch of 64 go through one more batch under
+masks when there are enough of them to pay for it, 28 for the encode and
+the `u32` decode and 36 for the `u64` decode, where a batch of 63 costs
+25 to 50 ns and a key by itself 1 to 4; fewer are converted per key as
+before. A masked load reads only the keys its mask names.
+
 ## 0.2.0, 2026-09-26: A Nocturne of Curves
 
 `hakmem::hilbert::Hilbert2`: 2D Hilbert indices over any `Word`,
