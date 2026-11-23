@@ -270,10 +270,11 @@ rank9 rank9.rs:81  87 insns  znver5 35.5  x86-64-v3 40.1
     1  isa::{closure#0}<&usize, usize, usize, rank9::bench_rank_select::{closure#4}::{closure#0}::{closure_env#0}, fn(usize, usize) -> usize>
     1  rank9::rank
     6  (not hakmem)
-rank9 rank9.rs:113  17 insns  znver5 11.1  x86-64-v3 15.1
-   17  isa::select → isa::run → rank9::{closure#0} → rank9::select_in<isa::Portable> → isa::run → rank9::{closure#0}<isa::Portable> → rank9::select_with<isa::Portable> → rank9::search
-rank9 rank9.rs:113  17 insns  znver5 11.1  x86-64-v3 15.1
-   17  isa::select → isa::run → rank9::{closure#0} → rank9::select_in<isa::Portable> → isa::run → rank9::{closure#0}<isa::Portable> → rank9::select_with<isa::Portable> → rank9::search
+rank9 rank9.rs:113  20 insns  znver5 5.1  x86-64-v3 7.1
+   20  isa::select → isa::run → rank9::{closure#0} → rank9::select_in<isa::Portable> → isa::run → rank9::{closure#0}<isa::Portable> → rank9::select_with<isa::Portable> → rank9::search
+rank9 rank9.rs:113  20 insns  znver5 5.1  x86-64-v3 7.1
+   20  isa::select → isa::run → rank9::{closure#0} → rank9::select_in<isa::Portable> → isa::run → rank9::{closure#0}<isa::Portable> → rank9::select_with<isa::Portable>
+   19    rank9::search
 rank9 rank9.rs:113  43 insns  znver5 9.4  x86-64-v3 17.6
        calls <isa::x86v2::X86V2 as isa::Isa>::run::trampoline, <isa::x86v3::X86V3 as isa::Isa>::run::trampoline, <isa::x86v4::X86V4 as isa::Isa>::run::trampoline, <rank9::Rank9>::select_in_block::<isa::Portable>, cpu::detect
    35  isa::select
