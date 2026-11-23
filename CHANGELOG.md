@@ -1,5 +1,24 @@
 # Changelog
 
+## Unreleased
+
+`Hilbert2::from_morton_in_place` with AVX-512 VBMI, and `encode_columns`
+through it: the keys in byte planes, as `Hilbert3` has them, in place of
+the kernel that kept them in their lanes. A plane is the same byte of 64
+keys, so one `vpermb` steps the whole batch where a `vpermi2b` stepped a
+register of eight keys and looked up zeros in the other 56 bytes. A byte
+is four levels: two steps through a 64-entry table that holds the two
+digits and the frame below, the frame at the place the index reads it,
+so the entry with its low half replaced is the next index. The turn is a
+round of `vpermi2b` over pairs of registers per bit of the byte's place
+in its key, three for a `u64` and two for a `u32`; a round trades that
+bit for a bit of the register's number and is its own inverse, so the
+same rounds turn the planes back. On Zen 5, 1024 keys: 0.45 ns a key on
+`u64` against 1.15 and 0.16 on `u32` against 0.35 for the conversion
+alone, 0.54 µs against 1.3 from two columns of coordinates. The 128-entry
+table of three levels a step went with the old kernel; NEON keeps its
+own.
+
 ## 0.2.0, 2026-09-26: A Nocturne of Curves
 
 `hakmem::hilbert::Hilbert2`: 2D Hilbert indices over any `Word`,

@@ -239,17 +239,10 @@ const fn level(frame: u8, x: u8, y: u8) -> (u8, u8) {
 /// index `cells ^ state`. The low digit bits are `x ^ y`, the input
 /// itself. `N = 2 · 4^L` entries, half of the unreduced table.
 #[cfg_attr(
-    not(any(
-        all(
-            target_arch = "x86_64",
-            target_feature = "sse2",
-            not(feature = "portable")
-        ),
-        all(
-            target_arch = "aarch64",
-            target_feature = "neon",
-            not(feature = "portable")
-        )
+    not(all(
+        target_arch = "aarch64",
+        target_feature = "neon",
+        not(feature = "portable")
     )),
     allow(dead_code)
 )]
@@ -290,8 +283,11 @@ const fn reduced<const N: usize>() -> [u8; N] {
 )]
 const TABLE4: [u8; 32] = reduced();
 
-/// Three levels a byte, 128 entries: two AVX-512 registers for
-/// `vpermi2b`.
+/// Two levels a byte with the whole frame in the index, for the byte
+/// planes: the entry at `frame << 4 | nibble`, a nibble of the Morton
+/// code, holds the two digits in its low half and the frame below above
+/// them, so an entry with its low half replaced is the next index. 64
+/// entries: one AVX-512 register for `vpermb`.
 #[cfg_attr(
     not(all(
         target_arch = "x86_64",
@@ -300,7 +296,19 @@ const TABLE4: [u8; 32] = reduced();
     )),
     allow(dead_code)
 )]
-const TABLE6: [u8; 128] = reduced();
+const FRAMED4: [u8; 64] = {
+    let mut table = [0u8; 64];
+    let mut i = 0;
+    while i < 64 {
+        #[allow(clippy::cast_possible_truncation)]
+        let (frame, nibble) = ((i >> 4) as u8, i as u8);
+        let (high, frame) = level(frame, (nibble >> 2) & 1, (nibble >> 3) & 1);
+        let (low, frame) = level(frame, nibble & 1, (nibble >> 1) & 1);
+        table[i] = (high << 2) | low | (frame << 4);
+        i += 1;
+    }
+    table
+};
 
 macro_rules! hilbert2_batch {
     ($($w:ty => $kernel:ident),* $(,)?) => {$(
@@ -309,13 +317,15 @@ macro_rules! hilbert2_batch {
             /// place: each Morton code becomes the Hilbert index of the
             /// same cell.
             ///
-            /// With AVX-512 VBMI a step is one `vpermi2b` through a
-            /// 128-entry table per register of keys, three levels at a
-            /// time: the frame modulo the reflection of both axes, which
-            /// rides as a XOR mask on the cells, three `vpternlog` around
-            /// the lookup. With NEON the same reduction two levels at a
-            /// time, 32 entries in two registers for `tbl`. Otherwise, and
-            /// for the keys past the
+            /// With AVX-512 VBMI the keys turn into byte planes, a plane
+            /// the same byte of 64 keys, and a step is one `vpermb` over
+            /// the whole batch: two levels through a 64-entry table with
+            /// the frame in the index, two steps a byte of the key.
+            /// Rounds of `vpermi2b` turn the keys, three for a `u64`,
+            /// and the same rounds turn them back. With NEON the frame
+            /// modulo the reflection of both axes, two levels at a
+            /// time, 32 entries in two registers for `tbl`. Otherwise,
+            /// and for the keys past the
             /// last whole batch, it is [`from_morton`](Self::from_morton)
             /// per key. Coordinates never enter: fill the slice with
             /// [`Morton2::encode`] from whatever layout the points are in.
@@ -812,102 +822,130 @@ impl<W: Word> Hilbert2<W> {
 /// `target_feature` and is called only where `crate::isa` found them;
 /// on `aarch64` NEON is a compile-time fact.
 mod batch {
+    /// Keys in byte planes: register `k` holds byte `k` of all 64 keys, a
+    /// byte a key, so a `vpermb` serves 64 keys, where a kernel that
+    /// leaves the keys in their lanes serves a register of them and
+    /// looks up zeros in the other bytes. A
+    /// byte is four levels, two steps through [`FRAMED4`](super::FRAMED4)
+    /// with the frame riding in the index. The price is a turn each way:
+    /// one round of `vpermi2b` over pairs of registers trades a bit of
+    /// the register's number for a bit of the byte's place in its key,
+    /// and as many rounds as either has bits make planes of keys. A
+    /// round is its own inverse, so the same rounds turn back. Where a
+    /// key lands within a plane the rounds do not keep in order and the
+    /// steps do not ask: it is the same place in every plane.
     #[cfg(all(
         target_arch = "x86_64",
         target_feature = "sse2",
         not(feature = "portable")
     ))]
     #[allow(unsafe_code)]
-    mod vbmi {
+    mod planes {
         use core::arch::x86_64::{
-            _mm512_loadu_si512, _mm512_permutex2var_epi8, _mm512_set1_epi8, _mm512_set1_epi32,
-            _mm512_set1_epi64, _mm512_setzero_si512, _mm512_slli_epi32, _mm512_slli_epi64,
-            _mm512_srli_epi32, _mm512_srli_epi64, _mm512_srlv_epi32, _mm512_srlv_epi64,
+            _mm512_loadu_si512, _mm512_permutex2var_epi8, _mm512_permutexvar_epi8,
+            _mm512_set1_epi8, _mm512_setzero_si512, _mm512_slli_epi16, _mm512_srli_epi16,
             _mm512_storeu_si512, _mm512_ternarylogic_epi32,
         };
 
-        use super::super::TABLE6;
+        use super::super::FRAMED4;
 
-        // `vpternlog` truth tables over `(a, b, c) = (0xF0, 0xCC, 0xAA)`.
-        // The `d` form: unmasked it is the same bits as `q`, and Miri knows it.
-        /// `a ^ (b & c)`
-        const XOR_AND: i32 = 0x78;
-        /// `(a & c) ^ b`
-        const AND_XOR: i32 = 0x6C;
-        /// `a | (b & c)`
-        const OR_AND: i32 = 0xF8;
-        /// `(a ^ b) & c`
-        const XOR_THEN_AND: i32 = 0x28;
+        /// `vpternlog` over `(a, b, c)`: `b` where `a` is set, else `c`.
+        const SELECT: i32 = 0xCA;
+
+        /// The `vpermi2b` controls of one round: registers `a` and `b`,
+        /// whose numbers differ in bit `bit`, trade it for bit `bit` of
+        /// the byte position. Bit 6 of a control takes the byte from `b`.
+        const fn round(bit: u32) -> [[u8; 64]; 2] {
+            let mut ctl = [[0u8; 64]; 2];
+            let place = 1u8 << bit;
+            let mut p = 0u8;
+            while p < 64 {
+                if p & place == 0 {
+                    ctl[0][p as usize] = p;
+                    ctl[1][p as usize] = p | place;
+                } else {
+                    ctl[0][p as usize] = 64 | (p & !place);
+                    ctl[1][p as usize] = 64 | p;
+                }
+                p += 1;
+            }
+            ctl
+        }
+
+        const ROUNDS: [[[u8; 64]; 2]; 3] = [round(0), round(1), round(2)];
 
         macro_rules! kernel {
-            (
-                $name:ident, $w:ty, $lanes:literal, $set1:ident, $srli:ident, $slli:ident,
-                $srlv:ident
-            ) => {
-                /// Batches of 64 keys, `64 / LANES` registers in flight.
+            ($name:ident, $w:ty) => {
+                /// Batches of 64 keys: as many registers as a key has
+                /// bytes, and as many planes.
                 #[target_feature(enable = "avx512f,avx512bw,avx512vbmi")]
                 pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
-                    const REGS: usize = 64 / $lanes;
-                    const LEVELS: u32 = <$w>::BITS / 2;
-                    #[allow(clippy::cast_possible_truncation)]
-                    const STEPS: u8 = LEVELS.div_ceil(3) as u8;
-                    // Levels above the key read as cell 0; two of them
-                    // are the identity, so an odd number starts swapped.
-                    #[allow(clippy::cast_possible_truncation)]
-                    const START: u8 = (((3 * STEPS as u32 - LEVELS) & 1) << 6) as u8;
+                    const BYTES: usize = size_of::<$w>();
+                    const LANES: usize = 64 / BYTES;
                     let (chunks, _) = keys.as_chunks_mut::<64>();
                     let done = chunks.len() * 64;
                     for chunk in chunks {
                         // SAFETY: AVX-512 F, BW and VBMI are enabled on this function;
                         // every load and store stays inside the 64 keys of
-                        // `chunk` or the 128 bytes of the table.
+                        // `chunk`, the 64 bytes of the table or of a control.
                         unsafe {
-                            let lo = _mm512_loadu_si512(TABLE6.as_ptr().cast());
-                            let hi = _mm512_loadu_si512(TABLE6.as_ptr().add(64).cast());
-                            let cells = $set1(63);
-                            let high_digits = $set1(0x2A);
-                            let state_bits = $set1(0x55);
-                            #[allow(clippy::cast_possible_wrap)]
-                            let odd = _mm512_set1_epi8(0xAA_u8 as i8);
-                            let even = _mm512_set1_epi8(0x55);
-                            let mut code = [_mm512_setzero_si512(); REGS];
-                            let mut acc = [_mm512_setzero_si512(); REGS];
-                            let mut state = [$set1(START.into()); REGS];
-                            for (r, c) in code.iter_mut().enumerate() {
-                                let m = _mm512_loadu_si512(chunk.as_ptr().add($lanes * r).cast());
-                                // Each level's `(x, y)` to `(x, x ^ y)`.
-                                *c = _mm512_ternarylogic_epi32::<XOR_AND>(m, $slli::<1>(m), odd);
+                            let table = _mm512_loadu_si512(FRAMED4.as_ptr().cast());
+                            let low = _mm512_set1_epi8(0x0F);
+                            let mut r = [_mm512_setzero_si512(); BYTES];
+                            for (i, reg) in r.iter_mut().enumerate() {
+                                *reg = _mm512_loadu_si512(chunk.as_ptr().add(LANES * i).cast());
                             }
-                            let mut step = STEPS;
-                            while step > 0 {
-                                step -= 1;
-                                let shift = $set1((6 * step).into());
-                                for r in 0..REGS {
-                                    let index = _mm512_ternarylogic_epi32::<AND_XOR>(
-                                        $srlv(code[r], shift),
-                                        state[r],
-                                        cells,
-                                    );
-                                    let entry = _mm512_permutex2var_epi8(lo, index, hi);
-                                    acc[r] = _mm512_ternarylogic_epi32::<OR_AND>(
-                                        $slli::<6>(acc[r]),
+                            macro_rules! turn {
+                                () => {
+                                    let mut bit = 0;
+                                    while 1 << bit < BYTES {
+                                        let a = _mm512_loadu_si512(ROUNDS[bit][0].as_ptr().cast());
+                                        let b = _mm512_loadu_si512(ROUNDS[bit][1].as_ptr().cast());
+                                        let mut i = 0;
+                                        while i < BYTES {
+                                            if i >> bit & 1 == 0 {
+                                                let j = i | 1 << bit;
+                                                let (x, y) = (r[i], r[j]);
+                                                r[i] = _mm512_permutex2var_epi8(x, a, y);
+                                                r[j] = _mm512_permutex2var_epi8(x, b, y);
+                                            }
+                                            i += 1;
+                                        }
+                                        bit += 1;
+                                    }
+                                };
+                            }
+                            turn!();
+                            // From the top byte down. `vpermb` reads six bits
+                            // of an index, so the entry with its low half
+                            // replaced by the next nibble is the next index.
+                            let mut entry = _mm512_setzero_si512();
+                            let mut k = BYTES;
+                            while k > 0 {
+                                k -= 1;
+                                let high = _mm512_permutexvar_epi8(
+                                    _mm512_ternarylogic_epi32::<SELECT>(
+                                        low,
+                                        _mm512_srli_epi16::<4>(r[k]),
                                         entry,
-                                        high_digits,
-                                    );
-                                    state[r] = _mm512_ternarylogic_epi32::<XOR_THEN_AND>(
-                                        state[r], entry, state_bits,
-                                    );
-                                }
-                            }
-                            for (r, a) in acc.iter().enumerate() {
-                                // The low digit bits: `x ^ y`, the odd bits
-                                // of the rewritten code.
-                                let a = _mm512_ternarylogic_epi32::<OR_AND>(
-                                    *a,
-                                    $srli::<1>(code[r]),
-                                    even,
+                                    ),
+                                    table,
                                 );
-                                _mm512_storeu_si512(chunk.as_mut_ptr().add($lanes * r).cast(), a);
+                                entry = _mm512_permutexvar_epi8(
+                                    _mm512_ternarylogic_epi32::<SELECT>(low, r[k], high),
+                                    table,
+                                );
+                                // The digits of both steps, in the byte they
+                                // came from.
+                                r[k] = _mm512_ternarylogic_epi32::<SELECT>(
+                                    low,
+                                    entry,
+                                    _mm512_slli_epi16::<4>(high),
+                                );
+                            }
+                            turn!();
+                            for (i, reg) in r.iter().enumerate() {
+                                _mm512_storeu_si512(chunk.as_mut_ptr().add(LANES * i).cast(), *reg);
                             }
                         }
                     }
@@ -916,24 +954,8 @@ mod batch {
             };
         }
 
-        kernel!(
-            from_morton_u32,
-            u32,
-            16,
-            _mm512_set1_epi32,
-            _mm512_srli_epi32,
-            _mm512_slli_epi32,
-            _mm512_srlv_epi32
-        );
-        kernel!(
-            from_morton_u64,
-            u64,
-            8,
-            _mm512_set1_epi64,
-            _mm512_srli_epi64,
-            _mm512_slli_epi64,
-            _mm512_srlv_epi64
-        );
+        kernel!(from_morton_u32, u32);
+        kernel!(from_morton_u64, u64);
     }
 
     /// `x86_64` chooses the kernel once a call, as in `hilbert3`: at
@@ -945,14 +967,14 @@ mod batch {
     ))]
     #[allow(unsafe_code)]
     mod dispatch {
-        use super::vbmi;
+        use super::planes;
 
         macro_rules! keys {
             ($($name:ident: $w:ty;)*) => {$(
                 pub(in crate::hilbert) fn $name(keys: &mut [$w]) -> usize {
                     if crate::isa::batch().vbmi {
                         // SAFETY: AVX-512 F, BW and VBMI are present.
-                        unsafe { vbmi::$name(keys) }
+                        unsafe { planes::$name(keys) }
                     } else {
                         0
                     }
